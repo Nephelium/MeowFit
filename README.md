@@ -119,7 +119,7 @@ p.s.欢迎大家提出各种issues！
 * **UI**: Jetpack Compose (Material Design 3)
 * **架构**: MVVM (Model-View-ViewModel)
 * **数据库**: Room (SQLite)
-* **网络**: Retrofit (用于召唤 AI)
+* **网络**: OkHttp (用于召唤 AI)
 * **异步处理**: Coroutines & Flow
 * **导航**: Jetpack Navigation Compose
 
