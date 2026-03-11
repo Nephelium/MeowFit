@@ -1,0 +1,181 @@
+1<?xml version="1.0" encoding="utf-8"?>
+2<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+3    package="com.example.calorietracker"
+4    android:versionCode="4"
+5    android:versionName="1.3" >
+6
+7    <uses-sdk
+8        android:minSdkVersion="26"
+9        android:targetSdkVersion="34" />
+10
+11    <uses-permission android:name="android.permission.INTERNET" />
+11-->D:\project\【个人项目】\减肥日历\android\app\src\main\AndroidManifest.xml:5:5-67
+11-->D:\project\【个人项目】\减肥日历\android\app\src\main\AndroidManifest.xml:5:22-64
+12    <uses-permission
+12-->D:\project\【个人项目】\减肥日历\android\app\src\main\AndroidManifest.xml:6:5-108
+13        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+13-->D:\project\【个人项目】\减肥日历\android\app\src\main\AndroidManifest.xml:6:22-78
+14        android:maxSdkVersion="28" />
+14-->D:\project\【个人项目】\减肥日历\android\app\src\main\AndroidManifest.xml:6:79-105
+15
+16    <permission
+16-->[androidx.core:core:1.12.0] C:\Users\13680\.gradle\caches\transforms-3\0151249b72d6296e643df148676301af\transformed\core-1.12.0\AndroidManifest.xml:22:5-24:47
+17        android:name="com.example.calorietracker.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
+17-->[androidx.core:core:1.12.0] C:\Users\13680\.gradle\caches\transforms-3\0151249b72d6296e643df148676301af\transformed\core-1.12.0\AndroidManifest.xml:23:9-81
+18        android:protectionLevel="signature" />
+18-->[androidx.core:core:1.12.0] C:\Users\13680\.gradle\caches\transforms-3\0151249b72d6296e643df148676301af\transformed\core-1.12.0\AndroidManifest.xml:24:9-44
+19
+20    <uses-permission android:name="com.example.calorietracker.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION" />
+20-->[androidx.core:core:1.12.0] C:\Users\13680\.gradle\caches\transforms-3\0151249b72d6296e643df148676301af\transformed\core-1.12.0\AndroidManifest.xml:26:5-97
+20-->[androidx.core:core:1.12.0] C:\Users\13680\.gradle\caches\transforms-3\0151249b72d6296e643df148676301af\transformed\core-1.12.0\AndroidManifest.xml:26:22-94
+21
+22    <application
+22-->D:\project\【个人项目】\减肥日历\android\app\src\main\AndroidManifest.xml:8:5-38:19
+23        android:name="com.example.calorietracker.CalorieTrackerApp"
+23-->D:\project\【个人项目】\减肥日历\android\app\src\main\AndroidManifest.xml:9:9-42
+24        android:allowBackup="true"
+24-->D:\project\【个人项目】\减肥日历\android\app\src\main\AndroidManifest.xml:10:9-35
+25        android:appComponentFactory="androidx.core.app.CoreComponentFactory"
+25-->[androidx.core:core:1.12.0] C:\Users\13680\.gradle\caches\transforms-3\0151249b72d6296e643df148676301af\transformed\core-1.12.0\AndroidManifest.xml:28:18-86
+26        android:debuggable="true"
+27        android:extractNativeLibs="false"
+28        android:icon="@drawable/app_icon"
+28-->D:\project\【个人项目】\减肥日历\android\app\src\main\AndroidManifest.xml:11:9-42
+29        android:label="@string/app_name"
+29-->D:\project\【个人项目】\减肥日历\android\app\src\main\AndroidManifest.xml:13:9-41
+30        android:roundIcon="@drawable/app_icon"
+30-->D:\project\【个人项目】\减肥日历\android\app\src\main\AndroidManifest.xml:12:9-47
+31        android:supportsRtl="true"
+31-->D:\project\【个人项目】\减肥日历\android\app\src\main\AndroidManifest.xml:14:9-35
+32        android:theme="@style/Theme.CalorieTracker" >
+32-->D:\project\【个人项目】\减肥日历\android\app\src\main\AndroidManifest.xml:15:9-52
+33        <activity
+33-->D:\project\【个人项目】\减肥日历\android\app\src\main\AndroidManifest.xml:17:9-27:20
+34            android:name="com.example.calorietracker.MainActivity"
+34-->D:\project\【个人项目】\减肥日历\android\app\src\main\AndroidManifest.xml:18:13-41
+35            android:exported="true"
+35-->D:\project\【个人项目】\减肥日历\android\app\src\main\AndroidManifest.xml:19:13-36
+36            android:label="@string/app_name"
+36-->D:\project\【个人项目】\减肥日历\android\app\src\main\AndroidManifest.xml:20:13-45
+37            android:theme="@style/Theme.CalorieTracker" >
+37-->D:\project\【个人项目】\减肥日历\android\app\src\main\AndroidManifest.xml:21:13-56
+38            <intent-filter>
+38-->D:\project\【个人项目】\减肥日历\android\app\src\main\AndroidManifest.xml:22:13-26:29
+39                <action android:name="android.intent.action.MAIN" />
+39-->D:\project\【个人项目】\减肥日历\android\app\src\main\AndroidManifest.xml:23:17-69
+39-->D:\project\【个人项目】\减肥日历\android\app\src\main\AndroidManifest.xml:23:25-66
+40
+41                <category android:name="android.intent.category.LAUNCHER" />
+41-->D:\project\【个人项目】\减肥日历\android\app\src\main\AndroidManifest.xml:25:17-77
+41-->D:\project\【个人项目】\减肥日历\android\app\src\main\AndroidManifest.xml:25:27-74
+42            </intent-filter>
+43        </activity>
+44
+45        <provider
+46            android:name="androidx.core.content.FileProvider"
+46-->D:\project\【个人项目】\减肥日历\android\app\src\main\AndroidManifest.xml:30:13-62
+47            android:authorities="com.example.calorietracker.fileprovider"
+47-->D:\project\【个人项目】\减肥日历\android\app\src\main\AndroidManifest.xml:31:13-64
+48            android:exported="false"
+48-->D:\project\【个人项目】\减肥日历\android\app\src\main\AndroidManifest.xml:32:13-37
+49            android:grantUriPermissions="true" >
+49-->D:\project\【个人项目】\减肥日历\android\app\src\main\AndroidManifest.xml:33:13-47
+50            <meta-data
+50-->D:\project\【个人项目】\减肥日历\android\app\src\main\AndroidManifest.xml:34:13-36:54
+51                android:name="android.support.FILE_PROVIDER_PATHS"
+51-->D:\project\【个人项目】\减肥日历\android\app\src\main\AndroidManifest.xml:35:17-67
+52                android:resource="@xml/file_paths" />
+52-->D:\project\【个人项目】\减肥日历\android\app\src\main\AndroidManifest.xml:36:17-51
+53        </provider>
+54
+55        <activity
+55-->[androidx.compose.ui:ui-test-manifest:1.5.4] C:\Users\13680\.gradle\caches\transforms-3\f8210cf57e6240ef7353f66f9a962219\transformed\jetified-ui-test-manifest-1.5.4\AndroidManifest.xml:23:9-25:39
+56            android:name="androidx.activity.ComponentActivity"
+56-->[androidx.compose.ui:ui-test-manifest:1.5.4] C:\Users\13680\.gradle\caches\transforms-3\f8210cf57e6240ef7353f66f9a962219\transformed\jetified-ui-test-manifest-1.5.4\AndroidManifest.xml:24:13-63
+57            android:exported="true" />
+57-->[androidx.compose.ui:ui-test-manifest:1.5.4] C:\Users\13680\.gradle\caches\transforms-3\f8210cf57e6240ef7353f66f9a962219\transformed\jetified-ui-test-manifest-1.5.4\AndroidManifest.xml:25:13-36
+58
+59        <provider
+59-->[androidx.emoji2:emoji2:1.4.0] C:\Users\13680\.gradle\caches\transforms-3\6f71be61c45a570c69b12eebe1d23145\transformed\jetified-emoji2-1.4.0\AndroidManifest.xml:24:9-32:20
+60            android:name="androidx.startup.InitializationProvider"
+60-->[androidx.emoji2:emoji2:1.4.0] C:\Users\13680\.gradle\caches\transforms-3\6f71be61c45a570c69b12eebe1d23145\transformed\jetified-emoji2-1.4.0\AndroidManifest.xml:25:13-67
+61            android:authorities="com.example.calorietracker.androidx-startup"
+61-->[androidx.emoji2:emoji2:1.4.0] C:\Users\13680\.gradle\caches\transforms-3\6f71be61c45a570c69b12eebe1d23145\transformed\jetified-emoji2-1.4.0\AndroidManifest.xml:26:13-68
+62            android:exported="false" >
+62-->[androidx.emoji2:emoji2:1.4.0] C:\Users\13680\.gradle\caches\transforms-3\6f71be61c45a570c69b12eebe1d23145\transformed\jetified-emoji2-1.4.0\AndroidManifest.xml:27:13-37
+63            <meta-data
+63-->[androidx.emoji2:emoji2:1.4.0] C:\Users\13680\.gradle\caches\transforms-3\6f71be61c45a570c69b12eebe1d23145\transformed\jetified-emoji2-1.4.0\AndroidManifest.xml:29:13-31:52
+64                android:name="androidx.emoji2.text.EmojiCompatInitializer"
+64-->[androidx.emoji2:emoji2:1.4.0] C:\Users\13680\.gradle\caches\transforms-3\6f71be61c45a570c69b12eebe1d23145\transformed\jetified-emoji2-1.4.0\AndroidManifest.xml:30:17-75
+65                android:value="androidx.startup" />
+65-->[androidx.emoji2:emoji2:1.4.0] C:\Users\13680\.gradle\caches\transforms-3\6f71be61c45a570c69b12eebe1d23145\transformed\jetified-emoji2-1.4.0\AndroidManifest.xml:31:17-49
+66            <meta-data
+66-->[androidx.lifecycle:lifecycle-process:2.6.2] C:\Users\13680\.gradle\caches\transforms-3\62860e4cc7751c889458898bfb7bf5fe\transformed\jetified-lifecycle-process-2.6.2\AndroidManifest.xml:29:13-31:52
+67                android:name="androidx.lifecycle.ProcessLifecycleInitializer"
+67-->[androidx.lifecycle:lifecycle-process:2.6.2] C:\Users\13680\.gradle\caches\transforms-3\62860e4cc7751c889458898bfb7bf5fe\transformed\jetified-lifecycle-process-2.6.2\AndroidManifest.xml:30:17-78
+68                android:value="androidx.startup" />
+68-->[androidx.lifecycle:lifecycle-process:2.6.2] C:\Users\13680\.gradle\caches\transforms-3\62860e4cc7751c889458898bfb7bf5fe\transformed\jetified-lifecycle-process-2.6.2\AndroidManifest.xml:31:17-49
+69            <meta-data
+69-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\13680\.gradle\caches\transforms-3\b9e245a006ecd4f7adcd8d515be481b3\transformed\jetified-profileinstaller-1.3.1\AndroidManifest.xml:29:13-31:52
+70                android:name="androidx.profileinstaller.ProfileInstallerInitializer"
+70-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\13680\.gradle\caches\transforms-3\b9e245a006ecd4f7adcd8d515be481b3\transformed\jetified-profileinstaller-1.3.1\AndroidManifest.xml:30:17-85
+71                android:value="androidx.startup" />
+71-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\13680\.gradle\caches\transforms-3\b9e245a006ecd4f7adcd8d515be481b3\transformed\jetified-profileinstaller-1.3.1\AndroidManifest.xml:31:17-49
+72        </provider>
+73
+74        <activity
+74-->[androidx.compose.ui:ui-tooling-android:1.5.4] C:\Users\13680\.gradle\caches\transforms-3\785301843dcf071b99ad791a6179e7ce\transformed\jetified-ui-tooling-release\AndroidManifest.xml:23:9-25:39
+75            android:name="androidx.compose.ui.tooling.PreviewActivity"
+75-->[androidx.compose.ui:ui-tooling-android:1.5.4] C:\Users\13680\.gradle\caches\transforms-3\785301843dcf071b99ad791a6179e7ce\transformed\jetified-ui-tooling-release\AndroidManifest.xml:24:13-71
+76            android:exported="true" />
+76-->[androidx.compose.ui:ui-tooling-android:1.5.4] C:\Users\13680\.gradle\caches\transforms-3\785301843dcf071b99ad791a6179e7ce\transformed\jetified-ui-tooling-release\AndroidManifest.xml:25:13-36
+77
+78        <service
+78-->[androidx.room:room-runtime:2.6.1] C:\Users\13680\.gradle\caches\transforms-3\2d13f5d160adb0d5f197dd5d93bdf45d\transformed\room-runtime-2.6.1\AndroidManifest.xml:24:9-28:63
+79            android:name="androidx.room.MultiInstanceInvalidationService"
+79-->[androidx.room:room-runtime:2.6.1] C:\Users\13680\.gradle\caches\transforms-3\2d13f5d160adb0d5f197dd5d93bdf45d\transformed\room-runtime-2.6.1\AndroidManifest.xml:25:13-74
+80            android:directBootAware="true"
+80-->[androidx.room:room-runtime:2.6.1] C:\Users\13680\.gradle\caches\transforms-3\2d13f5d160adb0d5f197dd5d93bdf45d\transformed\room-runtime-2.6.1\AndroidManifest.xml:26:13-43
+81            android:exported="false" />
+81-->[androidx.room:room-runtime:2.6.1] C:\Users\13680\.gradle\caches\transforms-3\2d13f5d160adb0d5f197dd5d93bdf45d\transformed\room-runtime-2.6.1\AndroidManifest.xml:27:13-37
+82
+83        <receiver
+83-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\13680\.gradle\caches\transforms-3\b9e245a006ecd4f7adcd8d515be481b3\transformed\jetified-profileinstaller-1.3.1\AndroidManifest.xml:34:9-52:20
+84            android:name="androidx.profileinstaller.ProfileInstallReceiver"
+84-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\13680\.gradle\caches\transforms-3\b9e245a006ecd4f7adcd8d515be481b3\transformed\jetified-profileinstaller-1.3.1\AndroidManifest.xml:35:13-76
+85            android:directBootAware="false"
+85-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\13680\.gradle\caches\transforms-3\b9e245a006ecd4f7adcd8d515be481b3\transformed\jetified-profileinstaller-1.3.1\AndroidManifest.xml:36:13-44
+86            android:enabled="true"
+86-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\13680\.gradle\caches\transforms-3\b9e245a006ecd4f7adcd8d515be481b3\transformed\jetified-profileinstaller-1.3.1\AndroidManifest.xml:37:13-35
+87            android:exported="true"
+87-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\13680\.gradle\caches\transforms-3\b9e245a006ecd4f7adcd8d515be481b3\transformed\jetified-profileinstaller-1.3.1\AndroidManifest.xml:38:13-36
+88            android:permission="android.permission.DUMP" >
+88-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\13680\.gradle\caches\transforms-3\b9e245a006ecd4f7adcd8d515be481b3\transformed\jetified-profileinstaller-1.3.1\AndroidManifest.xml:39:13-57
+89            <intent-filter>
+89-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\13680\.gradle\caches\transforms-3\b9e245a006ecd4f7adcd8d515be481b3\transformed\jetified-profileinstaller-1.3.1\AndroidManifest.xml:40:13-42:29
+90                <action android:name="androidx.profileinstaller.action.INSTALL_PROFILE" />
+90-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\13680\.gradle\caches\transforms-3\b9e245a006ecd4f7adcd8d515be481b3\transformed\jetified-profileinstaller-1.3.1\AndroidManifest.xml:41:17-91
+90-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\13680\.gradle\caches\transforms-3\b9e245a006ecd4f7adcd8d515be481b3\transformed\jetified-profileinstaller-1.3.1\AndroidManifest.xml:41:25-88
+91            </intent-filter>
+92            <intent-filter>
+92-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\13680\.gradle\caches\transforms-3\b9e245a006ecd4f7adcd8d515be481b3\transformed\jetified-profileinstaller-1.3.1\AndroidManifest.xml:43:13-45:29
+93                <action android:name="androidx.profileinstaller.action.SKIP_FILE" />
+93-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\13680\.gradle\caches\transforms-3\b9e245a006ecd4f7adcd8d515be481b3\transformed\jetified-profileinstaller-1.3.1\AndroidManifest.xml:44:17-85
+93-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\13680\.gradle\caches\transforms-3\b9e245a006ecd4f7adcd8d515be481b3\transformed\jetified-profileinstaller-1.3.1\AndroidManifest.xml:44:25-82
+94            </intent-filter>
+95            <intent-filter>
+95-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\13680\.gradle\caches\transforms-3\b9e245a006ecd4f7adcd8d515be481b3\transformed\jetified-profileinstaller-1.3.1\AndroidManifest.xml:46:13-48:29
+96                <action android:name="androidx.profileinstaller.action.SAVE_PROFILE" />
+96-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\13680\.gradle\caches\transforms-3\b9e245a006ecd4f7adcd8d515be481b3\transformed\jetified-profileinstaller-1.3.1\AndroidManifest.xml:47:17-88
+96-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\13680\.gradle\caches\transforms-3\b9e245a006ecd4f7adcd8d515be481b3\transformed\jetified-profileinstaller-1.3.1\AndroidManifest.xml:47:25-85
+97            </intent-filter>
+98            <intent-filter>
+98-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\13680\.gradle\caches\transforms-3\b9e245a006ecd4f7adcd8d515be481b3\transformed\jetified-profileinstaller-1.3.1\AndroidManifest.xml:49:13-51:29
+99                <action android:name="androidx.profileinstaller.action.BENCHMARK_OPERATION" />
+99-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\13680\.gradle\caches\transforms-3\b9e245a006ecd4f7adcd8d515be481b3\transformed\jetified-profileinstaller-1.3.1\AndroidManifest.xml:50:17-95
+99-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\13680\.gradle\caches\transforms-3\b9e245a006ecd4f7adcd8d515be481b3\transformed\jetified-profileinstaller-1.3.1\AndroidManifest.xml:50:25-92
+100            </intent-filter>
+101        </receiver>
+102    </application>
+103
+104</manifest>

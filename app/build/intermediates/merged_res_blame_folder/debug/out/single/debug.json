@@ -1,0 +1,10 @@
+[
+    {
+        "merged": "com.example.calorietracker.app-merged_res-57:/xml_file_paths.xml.flat",
+        "source": "com.example.calorietracker.app-main-59:/xml/file_paths.xml"
+    },
+    {
+        "merged": "com.example.calorietracker.app-merged_res-57:/drawable_app_icon.png.flat",
+        "source": "com.example.calorietracker.app-main-59:/drawable/app_icon.png"
+    }
+]
