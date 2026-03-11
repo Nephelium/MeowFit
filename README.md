@@ -18,13 +18,12 @@ p.s.欢迎大家提出各种issues！
 
 <img src="images/baca05169d7b1dc22ceaeee16de3b32e.jpg" width="360" />
 
-
 ## 🏠 软件主页
 
 推开主页的门，就是咱们的今日面板。
 在这里可以把一整天的努力都填进去，包括今日体重、咕噜咕噜喝的水、香甜的睡眠时长，还有吃掉的食物和燃烧的卡路里。
 
-<img src="images/Pasted image 20260312004958.png" width="360" />
+`<img src="images/Pasted image 20260312004958.png" width="360" />`
 
 轻轻点击顶部的日期，就能穿梭到过去的任意一天去查看或者修改记录（有些软件必须开通会员才能补录数据或者补充打卡，真可恶呀）。
 
@@ -109,19 +108,21 @@ p.s.欢迎大家提出各种issues！
 ### 📝 提示词设置
 
 您可以根据自己的喜好修改提示词，比如给 AI 设定独特的语气、性格和文风。不过韶子建议最好不要去改动关于数据格式的提示，不然 AI 可能会迷路，就变不出添加记录的小卡片啦。
-<img src="images/f5ba3464a9f061e8b8f3e180decf32e5 1.jpg" width="360" />
+
+
+`<img src="images/f5ba3464a9f061e8b8f3e180decf32e5 1.jpg" width="360" />`
 
 ---
 
 ## 💻 技术栈
 
-* **语言**: Kotlin 
-* **UI**: Jetpack Compose (Material Design 3) 
-* **架构**: MVVM (Model-View-ViewModel) 
-* **数据库**: Room (SQLite) 
-* **网络**: Retrofit (用于召唤 AI) 
-* **异步处理**: Coroutines & Flow 
-* **导航**: Jetpack Navigation Compose 
+* **语言**: Kotlin
+* **UI**: Jetpack Compose (Material Design 3)
+* **架构**: MVVM (Model-View-ViewModel)
+* **数据库**: Room (SQLite)
+* **网络**: Retrofit (用于召唤 AI)
+* **异步处理**: Coroutines & Flow
+* **导航**: Jetpack Navigation Compose
 
 ---
 
@@ -132,7 +133,6 @@ p.s.欢迎大家提出各种issues！
 接着连接上 Android 设备或启动模拟器（p.s.记得系统最低需要支持 Android 8.0 也就是 API 26）。然后您就可以随意修改代码并进行编译了。
 
 最后点击 Run (▶️) 按钮，就能看到属于你自己的专属软件啦！
-
 
 ---
 
