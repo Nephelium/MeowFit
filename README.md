@@ -109,8 +109,7 @@ p.s.欢迎大家提出各种issues！
 
 您可以根据自己的喜好修改提示词，比如给 AI 设定独特的语气、性格和文风。不过韶子建议最好不要去改动关于数据格式的提示，不然 AI 可能会迷路，就变不出添加记录的小卡片啦。
 
-
-`<img src="images/f5ba3464a9f061e8b8f3e180decf32e5 1.jpg" width="360" />`
+<img src="images/f5ba3464a9f061e8b8f3e180decf32e5.jpg" width="360" />
 
 ---
 
