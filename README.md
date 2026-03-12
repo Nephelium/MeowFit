@@ -79,7 +79,7 @@ p.s.欢迎大家提出各种issues！
 
 要是哪天达标了，那天的热力图小方格里就会结出一颗亮晶晶的五角星呢。
 
-![[ed60165fc81284bcdc9095abff79b848.jpg|364]]
+<img src="images/ed60165fc81284bcdc9095abff79b848.jpg" width="360" />
 
 ### 🖼️ 日历分享
 
