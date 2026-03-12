@@ -58,7 +58,7 @@ class BackupManager(
                 file.writeText(json)
                 
                 // Also save to Downloads folder as requested
-                saveToDownloads(json)
+                exportBackupToDownloads(json)
                 
                 true
             } catch (e: Exception) {
@@ -68,16 +68,16 @@ class BackupManager(
         }
     }
     
-    private fun saveToDownloads(json: String) {
+    fun exportBackupToDownloads(json: String) {
         try {
             val timestamp = SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(Date())
-            val filename = "CalorieTracker_Backup_$timestamp.json"
+            val filename = "MeowFit_Backup_$timestamp.json"
             
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
                 val contentValues = android.content.ContentValues().apply {
                     put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, filename)
                     put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "application/json")
-                    put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, android.os.Environment.DIRECTORY_DOWNLOADS + "/CalorieTracker")
+                    put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, android.os.Environment.DIRECTORY_DOWNLOADS + "/MeowFit")
                     put(android.provider.MediaStore.MediaColumns.IS_PENDING, 1)
                 }
                 
@@ -97,7 +97,7 @@ class BackupManager(
                 }
             } else {
                 val downloadsDir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS)
-                val appDir = File(downloadsDir, "CalorieTracker")
+                val appDir = File(downloadsDir, "MeowFit")
                 if (!appDir.exists()) appDir.mkdirs()
                 val file = File(appDir, filename)
                 file.writeText(json)

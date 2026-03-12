@@ -1267,7 +1267,7 @@
                     }
                 },
                 {
-                    "source": "D:\\project\\【个人项目】\\减肥日历\\android\\app\\src\\main\\res\\values\\themes.xml",
+                    "source": "D:\\project\\【个人项目】\\减肥日历\\MeowFit\\app\\src\\main\\res\\values\\themes.xml",
                     "from": {
                         "startLines": "2",
                         "startColumns": "4",
@@ -1283,6 +1283,23 @@
                         "endLines": "218",
                         "endColumns": "12",
                         "endOffsets": "13536"
+                    }
+                },
+                {
+                    "source": "D:\\project\\【个人项目】\\减肥日历\\MeowFit\\app\\src\\main\\res\\values\\colors.xml",
+                    "from": {
+                        "startLines": "7,2,3,4,5,6,8",
+                        "startColumns": "4,4,4,4,4,4,4",
+                        "startOffsets": "278,55,102,147,192,235,320",
+                        "endColumns": "41,46,44,44,42,42,41",
+                        "endOffsets": "315,97,142,187,230,273,357"
+                    },
+                    "to": {
+                        "startLines": "5,10,11,12,13,14,15",
+                        "startColumns": "4,4,4,4,4,4,4",
+                        "startOffsets": "370,675,722,767,812,855,898",
+                        "endColumns": "41,46,44,44,42,42,41",
+                        "endOffsets": "407,717,762,807,850,893,935"
                     }
                 },
                 {
@@ -1319,6 +1336,23 @@
                         "endLines": "82,227,399,402",
                         "endColumns": "52,24,24,24",
                         "endOffsets": "5044,13979,20009,20124"
+                    }
+                },
+                {
+                    "source": "D:\\project\\【个人项目】\\减肥日历\\MeowFit\\app\\src\\main\\res\\values\\strings.xml",
+                    "from": {
+                        "startLines": "2,1",
+                        "startColumns": "4,4",
+                        "startOffsets": "60,16",
+                        "endColumns": "52,43",
+                        "endOffsets": "108,55"
+                    },
+                    "to": {
+                        "startLines": "107,109",
+                        "startColumns": "4,4",
+                        "startOffsets": "6347,6483",
+                        "endColumns": "52,43",
+                        "endOffsets": "6395,6522"
                     }
                 },
                 {
@@ -1372,23 +1406,6 @@
                         "endLines": "41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,75,76,77,78,105,121,122,159,160,162,164,165,167,168,169,170,171,172,174,178,179,180,197,200,204",
                         "endColumns": "58,58,59,59,59,59,59,59,59,59,59,59,58,59,59,59,59,59,59,59,59,59,59,58,59,59,58,58,58,58,58,58,73,57,54,50,54,52,64,53,65,100,57,51,59,61,53,35,33,49,53,45,46,35,89,12,12,12",
                         "endOffsets": "2673,2732,2792,2852,2912,2972,3032,3092,3152,3212,3272,3332,3391,3451,3511,3571,3631,3691,3751,3811,3871,3931,3991,4050,4110,4170,4229,4288,4347,4406,4465,4524,4598,4706,4761,4812,4867,6272,7421,7475,10125,10226,10328,10426,10486,10617,10671,10707,10741,10791,10845,10944,11183,11219,11309,12300,12411,12606"
-                    }
-                },
-                {
-                    "source": "D:\\project\\【个人项目】\\减肥日历\\android\\app\\src\\main\\res\\values\\colors.xml",
-                    "from": {
-                        "startLines": "7,2,3,4,5,6,8",
-                        "startColumns": "4,4,4,4,4,4,4",
-                        "startOffsets": "278,55,102,147,192,235,320",
-                        "endColumns": "41,46,44,44,42,42,41",
-                        "endOffsets": "315,97,142,187,230,273,357"
-                    },
-                    "to": {
-                        "startLines": "5,10,11,12,13,14,15",
-                        "startColumns": "4,4,4,4,4,4,4",
-                        "startOffsets": "370,675,722,767,812,855,898",
-                        "endColumns": "41,46,44,44,42,42,41",
-                        "endOffsets": "407,717,762,807,850,893,935"
                     }
                 },
                 {
@@ -1461,23 +1478,6 @@
                         "startOffsets": "6120",
                         "endColumns": "53",
                         "endOffsets": "6169"
-                    }
-                },
-                {
-                    "source": "D:\\project\\【个人项目】\\减肥日历\\android\\app\\src\\main\\res\\values\\strings.xml",
-                    "from": {
-                        "startLines": "2,1",
-                        "startColumns": "4,4",
-                        "startOffsets": "60,16",
-                        "endColumns": "52,43",
-                        "endOffsets": "108,55"
-                    },
-                    "to": {
-                        "startLines": "107,109",
-                        "startColumns": "4,4",
-                        "startOffsets": "6347,6483",
-                        "endColumns": "52,43",
-                        "endOffsets": "6395,6522"
                     }
                 }
             ]

@@ -800,7 +800,9 @@ fun generateCalendarBitmap(
                 paint.textSize = 28f
                 paint.typeface = android.graphics.Typeface.SANS_SERIF
                 val displayValue = if (metric == HeatmapMetric.Sleep) {
-                    "${value/60}h"
+                    val h = value / 60
+                    val m = value % 60
+                    "${h}h${m}m"
                 } else if (metric == HeatmapMetric.Net) {
                     if (value > 0) "+$value" else "$value"
                 } else {
@@ -1181,7 +1183,7 @@ fun MonthCalendarMini(
                                 }
                             }
                             
-                            val hasRecord = record != null && (record.totalIntake > 0 || record.totalBurned > 0 || record.totalWater > 0)
+                            val hasRecord = record != null && (record.totalIntake > 0 || record.totalBurned > 0 || record.totalWater > 0 || record.sleepDuration > 0)
                             
                             // Use raw value for color calculation now
                             val bgColor = if (!hasRecord) Color.Transparent else getHeatmapColor(value, metric, userProfile)
@@ -1323,7 +1325,7 @@ fun MonthHeatmapView(
                                 }
                             }
                             
-                            val hasRecord = record != null && (record.totalIntake > 0 || record.totalBurned > 0 || record.totalWater > 0)
+                            val hasRecord = record != null && (record.totalIntake > 0 || record.totalBurned > 0 || record.totalWater > 0 || record.sleepDuration > 0)
                             
                             // Use raw value for color
                             val bgColor = if (!hasRecord) Color.Transparent else getHeatmapColor(value, metric, userProfile)
@@ -1387,17 +1389,21 @@ fun MonthHeatmapView(
                                     )
                                     if (hasRecord) {
                                         // Show signed value for Net, absolute for others
-                                        val displayValue = if (metric == HeatmapMetric.Net) {
-                                            if (value > 0) "+$value" else "$value"
-                                        } else {
-                                            "${Math.abs(value)}"
+                                    val displayValue = when (metric) {
+                                        HeatmapMetric.Net -> if (value > 0) "+$value" else "$value"
+                                        HeatmapMetric.Sleep -> {
+                                            val h = value / 60
+                                            val m = value % 60
+                                            "${h}h${m}m"
                                         }
-                                        
-                                        Text(
-                                            text = displayValue,
-                                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp),
-                                            color = contentColor.copy(alpha = 0.9f)
-                                        )
+                                        else -> "${Math.abs(value)}"
+                                    }
+                                    
+                                    Text(
+                                        text = displayValue,
+                                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp),
+                                        color = contentColor.copy(alpha = 0.9f)
+                                    )
                                     }
                                 }
                             }

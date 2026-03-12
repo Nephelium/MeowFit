@@ -125,12 +125,15 @@ fun TodayScreen(
             startTime = timerStartTime,
             onDismiss = { 
                 showTimerDialog = false 
-                // Keep timer running if just dismissed without stop? 
-                // Or maybe this dialog is for STOPPING and saving?
-                // Let's make it the "Save Exercise" dialog after stop.
             },
             onSave = { name, calories, start, end ->
                 onSaveExercise(name, calories, start, end)
+                showTimerDialog = false
+                isTimerRunning = false
+                timerStartTime = null
+                exerciseName = ""
+            },
+            onDiscard = {
                 showTimerDialog = false
                 isTimerRunning = false
                 timerStartTime = null
@@ -931,10 +934,29 @@ fun ExerciseTimerDialog(
     initialName: String,
     startTime: Long?,
     onDismiss: () -> Unit,
-    onSave: (String, Int, String, String) -> Unit
+    onSave: (String, Int, String, String) -> Unit,
+    onDiscard: () -> Unit
 ) {
     var name by remember { mutableStateOf(initialName) }
     var calories by remember { mutableStateOf("") }
+    var showDiscardConfirm by remember { mutableStateOf(false) }
+
+    if (showDiscardConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDiscardConfirm = false },
+            title = { Text("确认放弃") },
+            text = { Text("确定要放弃本次运动记录吗？") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showDiscardConfirm = false
+                    onDiscard()
+                }) { Text("确定") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDiscardConfirm = false }) { Text("取消") }
+            }
+        )
+    }
     
     // Calculate duration
     val endTime = System.currentTimeMillis()
@@ -999,7 +1021,7 @@ fun ExerciseTimerDialog(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.End
                 ) {
-                    TextButton(onClick = onDismiss) {
+                    TextButton(onClick = { showDiscardConfirm = true }) {
                         Text("放弃")
                     }
                     Spacer(modifier = Modifier.width(8.dp))
@@ -1065,7 +1087,7 @@ fun SleepDialog(currentDuration: Int, onDismiss: () -> Unit, onConfirm: (Int) ->
                         val h = hours.toIntOrNull() ?: 0
                         val m = minutes.toIntOrNull() ?: 0
                         val total = h * 60 + m
-                        if (total > 0) {
+                        if (total >= 0) {
                             onConfirm(total)
                         }
                     }) {

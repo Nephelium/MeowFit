@@ -80,6 +80,23 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    fun performQuickBackup() {
+        viewModelScope.launch {
+            _isLoading.value = true
+            _status.value = "正在备份到下载目录..."
+            try {
+                val data = backupManager.performAutoBackup() // Re-use auto backup logic which includes export
+                _status.value = if (data) "备份成功: MeowFit_Backup_..." else "备份失败"
+                // Update last auto backup time since we ran it
+                _lastAutoBackupTime.value = formatTime(backupManager.getAutoBackupTime())
+            } catch (e: Exception) {
+                _status.value = "错误: ${e.localizedMessage}"
+            } finally {
+                _isLoading.value = false
+            }
+        }
+    }
+
     fun restoreBackup(uri: Uri) {
         viewModelScope.launch {
             _isLoading.value = true

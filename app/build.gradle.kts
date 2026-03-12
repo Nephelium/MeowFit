@@ -47,6 +47,11 @@ android {
     }
 }
 
+// Suppress obsolete warning for Java 8
+tasks.withType<JavaCompile>().configureEach {
+    options.compilerArgs.add("-Xlint:-options")
+}
+
 dependencies {
     val room_version = "2.6.1"
 

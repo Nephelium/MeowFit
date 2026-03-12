@@ -62,7 +62,7 @@ class CalorieRepository(private val userDao: UserDao, private val recordDao: Rec
     }
 
     suspend fun updateWater(date: String, amount: Int) {
-        var record = recordDao.getDailyRecord(date).firstOrNull()
+        var record = recordDao.getDailyRecordSync(date)
         if (record == null) {
             record = DailyRecordEntity(date = date, totalWater = amount)
             recordDao.insertDailyRecord(record)
@@ -72,7 +72,7 @@ class CalorieRepository(private val userDao: UserDao, private val recordDao: Rec
     }
 
     suspend fun updateSleep(date: String, duration: Int) {
-        var record = recordDao.getDailyRecord(date).firstOrNull()
+        var record = recordDao.getDailyRecordSync(date)
         if (record == null) {
             record = DailyRecordEntity(date = date, sleepDuration = duration)
             recordDao.insertDailyRecord(record)
@@ -81,7 +81,7 @@ class CalorieRepository(private val userDao: UserDao, private val recordDao: Rec
         }
     }
     suspend fun updateWeight(date: String, weight: Float) {
-        var record = recordDao.getDailyRecord(date).firstOrNull()
+        var record = recordDao.getDailyRecordSync(date)
         if (record == null) {
             record = DailyRecordEntity(date = date, weight = weight)
             recordDao.insertDailyRecord(record)

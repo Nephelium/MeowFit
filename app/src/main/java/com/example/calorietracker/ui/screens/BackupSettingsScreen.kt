@@ -92,13 +92,23 @@ fun BackupSettingsScreen(
 
             Button(
                 onClick = {
+                    viewModel.performQuickBackup()
+                },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !isLoading
+            ) {
+                Text("快速备份到 Downloads/MeowFit")
+            }
+
+            Button(
+                onClick = {
                     val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
                     createDocumentLauncher.launch("calorie_tracker_backup_$timestamp.json")
                 },
                 modifier = Modifier.fillMaxWidth(),
                 enabled = !isLoading
             ) {
-                Text("手动备份 (导出文件)")
+                Text("手动备份 (选择位置)")
             }
             
             OutlinedButton(

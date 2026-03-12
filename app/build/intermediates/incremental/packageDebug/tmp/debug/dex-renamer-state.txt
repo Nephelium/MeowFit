@@ -1,12 +1,12 @@
-#Wed Mar 11 22:20:14 CST 2026
-base.0=D\:\\project\\【个人项目】\\减肥日历\\android\\app\\build\\intermediates\\dex\\debug\\mergeExtDexDebug\\classes.dex
-base.1=D\:\\project\\【个人项目】\\减肥日历\\android\\app\\build\\intermediates\\dex\\debug\\mergeProjectDexDebug\\0\\classes.dex
-base.2=D\:\\project\\【个人项目】\\减肥日历\\android\\app\\build\\intermediates\\dex\\debug\\mergeProjectDexDebug\\13\\classes.dex
-base.3=D\:\\project\\【个人项目】\\减肥日历\\android\\app\\build\\intermediates\\dex\\debug\\mergeProjectDexDebug\\4\\classes.dex
-base.4=D\:\\project\\【个人项目】\\减肥日历\\android\\app\\build\\intermediates\\dex\\debug\\mergeProjectDexDebug\\5\\classes.dex
-base.5=D\:\\project\\【个人项目】\\减肥日历\\android\\app\\build\\intermediates\\dex\\debug\\mergeProjectDexDebug\\6\\classes.dex
-base.6=D\:\\project\\【个人项目】\\减肥日历\\android\\app\\build\\intermediates\\dex\\debug\\mergeProjectDexDebug\\9\\classes.dex
-base.7=D\:\\project\\【个人项目】\\减肥日历\\android\\app\\build\\intermediates\\dex\\debug\\mergeExtDexDebug\\classes2.dex
+#Thu Mar 12 12:29:14 CST 2026
+base.0=D\:\\project\\【个人项目】\\减肥日历\\MeowFit\\app\\build\\intermediates\\dex\\debug\\mergeExtDexDebug\\classes.dex
+base.1=D\:\\project\\【个人项目】\\减肥日历\\MeowFit\\app\\build\\intermediates\\dex\\debug\\mergeProjectDexDebug\\0\\classes.dex
+base.2=D\:\\project\\【个人项目】\\减肥日历\\MeowFit\\app\\build\\intermediates\\dex\\debug\\mergeProjectDexDebug\\13\\classes.dex
+base.3=D\:\\project\\【个人项目】\\减肥日历\\MeowFit\\app\\build\\intermediates\\dex\\debug\\mergeProjectDexDebug\\4\\classes.dex
+base.4=D\:\\project\\【个人项目】\\减肥日历\\MeowFit\\app\\build\\intermediates\\dex\\debug\\mergeProjectDexDebug\\5\\classes.dex
+base.5=D\:\\project\\【个人项目】\\减肥日历\\MeowFit\\app\\build\\intermediates\\dex\\debug\\mergeProjectDexDebug\\6\\classes.dex
+base.6=D\:\\project\\【个人项目】\\减肥日历\\MeowFit\\app\\build\\intermediates\\dex\\debug\\mergeProjectDexDebug\\9\\classes.dex
+base.7=D\:\\project\\【个人项目】\\减肥日历\\MeowFit\\app\\build\\intermediates\\dex\\debug\\mergeExtDexDebug\\classes2.dex
 path.0=classes.dex
 path.1=0/classes.dex
 path.2=13/classes.dex

@@ -1,20 +1,20 @@
 -- Merging decision tree log ---
 provider#androidx.core.content.FileProvider
-INJECTED from D:\project\【个人项目】\减肥日历\android\app\src\main\AndroidManifest.xml:29:9-37:20
+INJECTED from D:\project\【个人项目】\减肥日历\MeowFit\app\src\main\AndroidManifest.xml:29:9-37:20
 	android:grantUriPermissions
-		ADDED from D:\project\【个人项目】\减肥日历\android\app\src\main\AndroidManifest.xml:33:13-47
+		ADDED from D:\project\【个人项目】\减肥日历\MeowFit\app\src\main\AndroidManifest.xml:33:13-47
 	android:authorities
-		INJECTED from D:\project\【个人项目】\减肥日历\android\app\src\main\AndroidManifest.xml
-		ADDED from D:\project\【个人项目】\减肥日历\android\app\src\main\AndroidManifest.xml:31:13-64
+		INJECTED from D:\project\【个人项目】\减肥日历\MeowFit\app\src\main\AndroidManifest.xml
+		ADDED from D:\project\【个人项目】\减肥日历\MeowFit\app\src\main\AndroidManifest.xml:31:13-64
 	android:exported
-		ADDED from D:\project\【个人项目】\减肥日历\android\app\src\main\AndroidManifest.xml:32:13-37
+		ADDED from D:\project\【个人项目】\减肥日历\MeowFit\app\src\main\AndroidManifest.xml:32:13-37
 	android:name
-		ADDED from D:\project\【个人项目】\减肥日历\android\app\src\main\AndroidManifest.xml:30:13-62
+		ADDED from D:\project\【个人项目】\减肥日历\MeowFit\app\src\main\AndroidManifest.xml:30:13-62
 manifest
-ADDED from D:\project\【个人项目】\减肥日历\android\app\src\main\AndroidManifest.xml:2:1-40:12
-INJECTED from D:\project\【个人项目】\减肥日历\android\app\src\main\AndroidManifest.xml:2:1-40:12
-INJECTED from D:\project\【个人项目】\减肥日历\android\app\src\main\AndroidManifest.xml:2:1-40:12
-INJECTED from D:\project\【个人项目】\减肥日历\android\app\src\main\AndroidManifest.xml:2:1-40:12
+ADDED from D:\project\【个人项目】\减肥日历\MeowFit\app\src\main\AndroidManifest.xml:2:1-40:12
+INJECTED from D:\project\【个人项目】\减肥日历\MeowFit\app\src\main\AndroidManifest.xml:2:1-40:12
+INJECTED from D:\project\【个人项目】\减肥日历\MeowFit\app\src\main\AndroidManifest.xml:2:1-40:12
+INJECTED from D:\project\【个人项目】\减肥日历\MeowFit\app\src\main\AndroidManifest.xml:2:1-40:12
 MERGED from [androidx.navigation:navigation-common:2.7.5] C:\Users\13680\.gradle\caches\transforms-3\4702dd7616093c571ee765eac10bd491\transformed\navigation-common-2.7.5\AndroidManifest.xml:17:1-22:12
 MERGED from [androidx.navigation:navigation-runtime:2.7.5] C:\Users\13680\.gradle\caches\transforms-3\07b9d5f43c7a5bb8c84ceb345e15a514\transformed\navigation-runtime-2.7.5\AndroidManifest.xml:17:1-22:12
 MERGED from [androidx.navigation:navigation-common-ktx:2.7.5] C:\Users\13680\.gradle\caches\transforms-3\8bc23721cea31e8074a109eaeeb9c13a\transformed\navigation-common-ktx-2.7.5\AndroidManifest.xml:2:1-7:12
@@ -80,28 +80,28 @@ MERGED from [androidx.startup:startup-runtime:1.1.1] C:\Users\13680\.gradle\cach
 MERGED from [androidx.tracing:tracing:1.0.0] C:\Users\13680\.gradle\caches\transforms-3\d635a164378e923351913b28cdf68af5\transformed\jetified-tracing-1.0.0\AndroidManifest.xml:17:1-24:12
 MERGED from [androidx.exifinterface:exifinterface:1.3.6] C:\Users\13680\.gradle\caches\transforms-3\1306d994998ea36623c44b6f7d52521e\transformed\exifinterface-1.3.6\AndroidManifest.xml:17:1-24:12
 	package
-		INJECTED from D:\project\【个人项目】\减肥日历\android\app\src\main\AndroidManifest.xml
+		INJECTED from D:\project\【个人项目】\减肥日历\MeowFit\app\src\main\AndroidManifest.xml
 	android:versionName
-		INJECTED from D:\project\【个人项目】\减肥日历\android\app\src\main\AndroidManifest.xml
+		INJECTED from D:\project\【个人项目】\减肥日历\MeowFit\app\src\main\AndroidManifest.xml
 	xmlns:tools
-		ADDED from D:\project\【个人项目】\减肥日历\android\app\src\main\AndroidManifest.xml:3:5-51
+		ADDED from D:\project\【个人项目】\减肥日历\MeowFit\app\src\main\AndroidManifest.xml:3:5-51
 	android:versionCode
-		INJECTED from D:\project\【个人项目】\减肥日历\android\app\src\main\AndroidManifest.xml
+		INJECTED from D:\project\【个人项目】\减肥日历\MeowFit\app\src\main\AndroidManifest.xml
 	xmlns:android
-		ADDED from D:\project\【个人项目】\减肥日历\android\app\src\main\AndroidManifest.xml:2:11-69
+		ADDED from D:\project\【个人项目】\减肥日历\MeowFit\app\src\main\AndroidManifest.xml:2:11-69
 uses-permission#android.permission.INTERNET
-ADDED from D:\project\【个人项目】\减肥日历\android\app\src\main\AndroidManifest.xml:5:5-67
+ADDED from D:\project\【个人项目】\减肥日历\MeowFit\app\src\main\AndroidManifest.xml:5:5-67
 	android:name
-		ADDED from D:\project\【个人项目】\减肥日历\android\app\src\main\AndroidManifest.xml:5:22-64
+		ADDED from D:\project\【个人项目】\减肥日历\MeowFit\app\src\main\AndroidManifest.xml:5:22-64
 uses-permission#android.permission.WRITE_EXTERNAL_STORAGE
-ADDED from D:\project\【个人项目】\减肥日历\android\app\src\main\AndroidManifest.xml:6:5-108
+ADDED from D:\project\【个人项目】\减肥日历\MeowFit\app\src\main\AndroidManifest.xml:6:5-108
 	android:maxSdkVersion
-		ADDED from D:\project\【个人项目】\减肥日历\android\app\src\main\AndroidManifest.xml:6:79-105
+		ADDED from D:\project\【个人项目】\减肥日历\MeowFit\app\src\main\AndroidManifest.xml:6:79-105
 	android:name
-		ADDED from D:\project\【个人项目】\减肥日历\android\app\src\main\AndroidManifest.xml:6:22-78
+		ADDED from D:\project\【个人项目】\减肥日历\MeowFit\app\src\main\AndroidManifest.xml:6:22-78
 application
-ADDED from D:\project\【个人项目】\减肥日历\android\app\src\main\AndroidManifest.xml:8:5-38:19
-INJECTED from D:\project\【个人项目】\减肥日历\android\app\src\main\AndroidManifest.xml:8:5-38:19
+ADDED from D:\project\【个人项目】\减肥日历\MeowFit\app\src\main\AndroidManifest.xml:8:5-38:19
+INJECTED from D:\project\【个人项目】\减肥日历\MeowFit\app\src\main\AndroidManifest.xml:8:5-38:19
 MERGED from [androidx.compose.ui:ui-test-manifest:1.5.4] C:\Users\13680\.gradle\caches\transforms-3\f8210cf57e6240ef7353f66f9a962219\transformed\jetified-ui-test-manifest-1.5.4\AndroidManifest.xml:22:5-26:19
 MERGED from [androidx.compose.ui:ui-test-manifest:1.5.4] C:\Users\13680\.gradle\caches\transforms-3\f8210cf57e6240ef7353f66f9a962219\transformed\jetified-ui-test-manifest-1.5.4\AndroidManifest.xml:22:5-26:19
 MERGED from [androidx.emoji2:emoji2:1.4.0] C:\Users\13680\.gradle\caches\transforms-3\6f71be61c45a570c69b12eebe1d23145\transformed\jetified-emoji2-1.4.0\AndroidManifest.xml:23:5-33:19
@@ -121,55 +121,55 @@ MERGED from [androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\13680\.g
 MERGED from [androidx.startup:startup-runtime:1.1.1] C:\Users\13680\.gradle\caches\transforms-3\970bc226284f1a3e9354a0e868140b03\transformed\jetified-startup-runtime-1.1.1\AndroidManifest.xml:25:5-31:19
 MERGED from [androidx.startup:startup-runtime:1.1.1] C:\Users\13680\.gradle\caches\transforms-3\970bc226284f1a3e9354a0e868140b03\transformed\jetified-startup-runtime-1.1.1\AndroidManifest.xml:25:5-31:19
 	android:extractNativeLibs
-		INJECTED from D:\project\【个人项目】\减肥日历\android\app\src\main\AndroidManifest.xml
+		INJECTED from D:\project\【个人项目】\减肥日历\MeowFit\app\src\main\AndroidManifest.xml
 	android:appComponentFactory
 		ADDED from [androidx.core:core:1.12.0] C:\Users\13680\.gradle\caches\transforms-3\0151249b72d6296e643df148676301af\transformed\core-1.12.0\AndroidManifest.xml:28:18-86
 	android:supportsRtl
-		ADDED from D:\project\【个人项目】\减肥日历\android\app\src\main\AndroidManifest.xml:14:9-35
+		ADDED from D:\project\【个人项目】\减肥日历\MeowFit\app\src\main\AndroidManifest.xml:14:9-35
 	android:label
-		ADDED from D:\project\【个人项目】\减肥日历\android\app\src\main\AndroidManifest.xml:13:9-41
+		ADDED from D:\project\【个人项目】\减肥日历\MeowFit\app\src\main\AndroidManifest.xml:13:9-41
 	android:roundIcon
-		ADDED from D:\project\【个人项目】\减肥日历\android\app\src\main\AndroidManifest.xml:12:9-47
+		ADDED from D:\project\【个人项目】\减肥日历\MeowFit\app\src\main\AndroidManifest.xml:12:9-47
 	tools:targetApi
-		ADDED from D:\project\【个人项目】\减肥日历\android\app\src\main\AndroidManifest.xml:16:9-29
+		ADDED from D:\project\【个人项目】\减肥日历\MeowFit\app\src\main\AndroidManifest.xml:16:9-29
 	android:icon
-		ADDED from D:\project\【个人项目】\减肥日历\android\app\src\main\AndroidManifest.xml:11:9-42
+		ADDED from D:\project\【个人项目】\减肥日历\MeowFit\app\src\main\AndroidManifest.xml:11:9-42
 	android:allowBackup
-		ADDED from D:\project\【个人项目】\减肥日历\android\app\src\main\AndroidManifest.xml:10:9-35
+		ADDED from D:\project\【个人项目】\减肥日历\MeowFit\app\src\main\AndroidManifest.xml:10:9-35
 	android:theme
-		ADDED from D:\project\【个人项目】\减肥日历\android\app\src\main\AndroidManifest.xml:15:9-52
+		ADDED from D:\project\【个人项目】\减肥日历\MeowFit\app\src\main\AndroidManifest.xml:15:9-52
 	android:name
-		ADDED from D:\project\【个人项目】\减肥日历\android\app\src\main\AndroidManifest.xml:9:9-42
+		ADDED from D:\project\【个人项目】\减肥日历\MeowFit\app\src\main\AndroidManifest.xml:9:9-42
 activity#com.example.calorietracker.MainActivity
-ADDED from D:\project\【个人项目】\减肥日历\android\app\src\main\AndroidManifest.xml:17:9-27:20
+ADDED from D:\project\【个人项目】\减肥日历\MeowFit\app\src\main\AndroidManifest.xml:17:9-27:20
 	android:label
-		ADDED from D:\project\【个人项目】\减肥日历\android\app\src\main\AndroidManifest.xml:20:13-45
+		ADDED from D:\project\【个人项目】\减肥日历\MeowFit\app\src\main\AndroidManifest.xml:20:13-45
 	android:exported
-		ADDED from D:\project\【个人项目】\减肥日历\android\app\src\main\AndroidManifest.xml:19:13-36
+		ADDED from D:\project\【个人项目】\减肥日历\MeowFit\app\src\main\AndroidManifest.xml:19:13-36
 	android:theme
-		ADDED from D:\project\【个人项目】\减肥日历\android\app\src\main\AndroidManifest.xml:21:13-56
+		ADDED from D:\project\【个人项目】\减肥日历\MeowFit\app\src\main\AndroidManifest.xml:21:13-56
 	android:name
-		ADDED from D:\project\【个人项目】\减肥日历\android\app\src\main\AndroidManifest.xml:18:13-41
+		ADDED from D:\project\【个人项目】\减肥日历\MeowFit\app\src\main\AndroidManifest.xml:18:13-41
 intent-filter#action:name:android.intent.action.MAIN+category:name:android.intent.category.LAUNCHER
-ADDED from D:\project\【个人项目】\减肥日历\android\app\src\main\AndroidManifest.xml:22:13-26:29
+ADDED from D:\project\【个人项目】\减肥日历\MeowFit\app\src\main\AndroidManifest.xml:22:13-26:29
 action#android.intent.action.MAIN
-ADDED from D:\project\【个人项目】\减肥日历\android\app\src\main\AndroidManifest.xml:23:17-69
+ADDED from D:\project\【个人项目】\减肥日历\MeowFit\app\src\main\AndroidManifest.xml:23:17-69
 	android:name
-		ADDED from D:\project\【个人项目】\减肥日历\android\app\src\main\AndroidManifest.xml:23:25-66
+		ADDED from D:\project\【个人项目】\减肥日历\MeowFit\app\src\main\AndroidManifest.xml:23:25-66
 category#android.intent.category.LAUNCHER
-ADDED from D:\project\【个人项目】\减肥日历\android\app\src\main\AndroidManifest.xml:25:17-77
+ADDED from D:\project\【个人项目】\减肥日历\MeowFit\app\src\main\AndroidManifest.xml:25:17-77
 	android:name
-		ADDED from D:\project\【个人项目】\减肥日历\android\app\src\main\AndroidManifest.xml:25:27-74
+		ADDED from D:\project\【个人项目】\减肥日历\MeowFit\app\src\main\AndroidManifest.xml:25:27-74
 meta-data#android.support.FILE_PROVIDER_PATHS
-ADDED from D:\project\【个人项目】\减肥日历\android\app\src\main\AndroidManifest.xml:34:13-36:54
+ADDED from D:\project\【个人项目】\减肥日历\MeowFit\app\src\main\AndroidManifest.xml:34:13-36:54
 	android:resource
-		ADDED from D:\project\【个人项目】\减肥日历\android\app\src\main\AndroidManifest.xml:36:17-51
+		ADDED from D:\project\【个人项目】\减肥日历\MeowFit\app\src\main\AndroidManifest.xml:36:17-51
 	android:name
-		ADDED from D:\project\【个人项目】\减肥日历\android\app\src\main\AndroidManifest.xml:35:17-67
+		ADDED from D:\project\【个人项目】\减肥日历\MeowFit\app\src\main\AndroidManifest.xml:35:17-67
 uses-sdk
-INJECTED from D:\project\【个人项目】\减肥日历\android\app\src\main\AndroidManifest.xml reason: use-sdk injection requested
-INJECTED from D:\project\【个人项目】\减肥日历\android\app\src\main\AndroidManifest.xml
-INJECTED from D:\project\【个人项目】\减肥日历\android\app\src\main\AndroidManifest.xml
+INJECTED from D:\project\【个人项目】\减肥日历\MeowFit\app\src\main\AndroidManifest.xml reason: use-sdk injection requested
+INJECTED from D:\project\【个人项目】\减肥日历\MeowFit\app\src\main\AndroidManifest.xml
+INJECTED from D:\project\【个人项目】\减肥日历\MeowFit\app\src\main\AndroidManifest.xml
 MERGED from [androidx.navigation:navigation-common:2.7.5] C:\Users\13680\.gradle\caches\transforms-3\4702dd7616093c571ee765eac10bd491\transformed\navigation-common-2.7.5\AndroidManifest.xml:20:5-44
 MERGED from [androidx.navigation:navigation-common:2.7.5] C:\Users\13680\.gradle\caches\transforms-3\4702dd7616093c571ee765eac10bd491\transformed\navigation-common-2.7.5\AndroidManifest.xml:20:5-44
 MERGED from [androidx.navigation:navigation-runtime:2.7.5] C:\Users\13680\.gradle\caches\transforms-3\07b9d5f43c7a5bb8c84ceb345e15a514\transformed\navigation-runtime-2.7.5\AndroidManifest.xml:20:5-44
@@ -299,9 +299,9 @@ MERGED from [androidx.tracing:tracing:1.0.0] C:\Users\13680\.gradle\caches\trans
 MERGED from [androidx.exifinterface:exifinterface:1.3.6] C:\Users\13680\.gradle\caches\transforms-3\1306d994998ea36623c44b6f7d52521e\transformed\exifinterface-1.3.6\AndroidManifest.xml:20:5-22:41
 MERGED from [androidx.exifinterface:exifinterface:1.3.6] C:\Users\13680\.gradle\caches\transforms-3\1306d994998ea36623c44b6f7d52521e\transformed\exifinterface-1.3.6\AndroidManifest.xml:20:5-22:41
 	android:targetSdkVersion
-		INJECTED from D:\project\【个人项目】\减肥日历\android\app\src\main\AndroidManifest.xml
+		INJECTED from D:\project\【个人项目】\减肥日历\MeowFit\app\src\main\AndroidManifest.xml
 	android:minSdkVersion
-		INJECTED from D:\project\【个人项目】\减肥日历\android\app\src\main\AndroidManifest.xml
+		INJECTED from D:\project\【个人项目】\减肥日历\MeowFit\app\src\main\AndroidManifest.xml
 activity#androidx.activity.ComponentActivity
 ADDED from [androidx.compose.ui:ui-test-manifest:1.5.4] C:\Users\13680\.gradle\caches\transforms-3\f8210cf57e6240ef7353f66f9a962219\transformed\jetified-ui-test-manifest-1.5.4\AndroidManifest.xml:23:9-25:39
 	android:exported
