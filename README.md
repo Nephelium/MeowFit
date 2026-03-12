@@ -69,7 +69,7 @@ p.s.欢迎大家提出各种issues！
 
 <img src="images/160f0c6eb195ae4cbeb7328c91a83d16.jpg" width="360" />
 
-点击左上角向左的小箭头，还能退一步看到更广阔的年视图。
+点击左上角向左的小箭头，还能退一步看到更广阔的年视图。在年视图里点击月份名称，就会跳转到月视图啦。
 
 <img src="images/265eeed89e0ad5bef1e9506f25f8bee1.jpg" width="360" />
 
