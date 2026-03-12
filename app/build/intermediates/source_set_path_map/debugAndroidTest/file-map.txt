@@ -29,7 +29,7 @@ com.example.calorietracker.test.app-jetified-ui-unit-release-27 C:\Users\13680\.
 com.example.calorietracker.test.app-jetified-core-ktx-1.12.0-28 C:\Users\13680\.gradle\caches\transforms-3\e7584be10a79aa291ea81c3da2488011\transformed\jetified-core-ktx-1.12.0\res
 com.example.calorietracker.test.app-jetified-ui-test-release-29 C:\Users\13680\.gradle\caches\transforms-3\f867ee39f0f6393009d9acbe67ab58bb\transformed\jetified-ui-test-release\res
 com.example.calorietracker.test.app-jetified-customview-poolingcontainer-1.0.0-30 C:\Users\13680\.gradle\caches\transforms-3\f91e3d684b0c278828d7fb1a5f615394\transformed\jetified-customview-poolingcontainer-1.0.0\res
-com.example.calorietracker.test.app-androidTest-31 D:\project\【个人项目】\减肥日历\android\app\build\generated\res\resValues\androidTest\debug
-com.example.calorietracker.test.app-mergeDebugAndroidTestResources-32 D:\project\【个人项目】\减肥日历\android\app\build\intermediates\incremental\debugAndroidTest\mergeDebugAndroidTestResources\merged.dir
-com.example.calorietracker.test.app-mergeDebugAndroidTestResources-33 D:\project\【个人项目】\减肥日历\android\app\build\intermediates\incremental\debugAndroidTest\mergeDebugAndroidTestResources\stripped.dir
-com.example.calorietracker.test.app-merged_res-34 D:\project\【个人项目】\减肥日历\android\app\build\intermediates\merged_res\debugAndroidTest
+com.example.calorietracker.test.app-androidTest-31 D:\project\【个人项目】\减肥日历\MeowFit\app\build\generated\res\resValues\androidTest\debug
+com.example.calorietracker.test.app-mergeDebugAndroidTestResources-32 D:\project\【个人项目】\减肥日历\MeowFit\app\build\intermediates\incremental\debugAndroidTest\mergeDebugAndroidTestResources\merged.dir
+com.example.calorietracker.test.app-mergeDebugAndroidTestResources-33 D:\project\【个人项目】\减肥日历\MeowFit\app\build\intermediates\incremental\debugAndroidTest\mergeDebugAndroidTestResources\stripped.dir
+com.example.calorietracker.test.app-merged_res-34 D:\project\【个人项目】\减肥日历\MeowFit\app\build\intermediates\merged_res\debugAndroidTest

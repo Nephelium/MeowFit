@@ -154,6 +154,11 @@ fun OverviewScreen(
                 selectedMonth = selectedMonth,
                 onYearChange = { selectedYear = it },
                 onBackToYear = { selectedMonth = null },
+                onBackToMonth = {
+                    val cal = Calendar.getInstance()
+                    selectedYear = cal.get(Calendar.YEAR)
+                    selectedMonth = cal.get(Calendar.MONTH)
+                },
                 onShare = { showShareDialog = true }
             )
         }
@@ -274,6 +279,7 @@ fun OverviewTopBar(
     selectedMonth: Int?,
     onYearChange: (Int) -> Unit,
     onBackToYear: () -> Unit,
+    onBackToMonth: () -> Unit, // Add callback for Back to Month View
     onShare: () -> Unit
 ) {
     CenterAlignedTopAppBar(
@@ -294,8 +300,29 @@ fun OverviewTopBar(
         },
         navigationIcon = {
             if (selectedMonth != null) {
-                IconButton(onClick = onBackToYear) {
-                    Icon(Icons.Default.ChevronLeft, "Back")
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = onBackToYear) {
+                        Icon(Icons.Default.ChevronLeft, "Back")
+                    }
+                    Text(
+                        text = "年视图",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.Gray,
+                        modifier = Modifier.clickable { onBackToYear() }
+                    )
+                }
+            } else {
+                // Year View: Show Back to Month View
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = onBackToMonth) {
+                        Icon(Icons.Default.ChevronLeft, "Back")
+                    }
+                    Text(
+                        text = "月视图",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.Gray,
+                        modifier = Modifier.clickable { onBackToMonth() }
+                    )
                 }
             }
         },
@@ -343,11 +370,13 @@ fun generateCalendarBitmap(
             val validRecords = relevantRecords.filter { it.totalIntake > 0 || it.totalBurned > 0 }
             val deficitCount = validRecords.count { (it.totalIntake - (2000 + it.totalBurned)) <= 0 }
             val surplusCount = validRecords.count { (it.totalIntake - (2000 + it.totalBurned)) > 0 }
-            "🔥 燃脂大作战！成功制造缺口 ${deficitCount} 天，只有 ${surplusCount} 天稍微放纵了一下哦~🍰"
+            // Force split into 3 lines for better readability
+            "🔥 燃脂大作战！\n成功制造缺口 ${deficitCount} 天，只有 ${surplusCount} 天稍微放纵了一下哦~🍰"
         }
         HeatmapMetric.Intake -> {
             val count = relevantRecords.count { it.totalIntake > 0 }
-            "🥑 认真吃饭的时光！${periodStr}记录了 ${count} 天的美味！"
+            // Ensure periodStr and count are on the second line
+            "🥑 认真吃饭的时光！\n${periodStr}记录了 ${count} 天的美味！"
         }
         else -> {
              val count = relevantRecords.count { 
@@ -364,7 +393,7 @@ fun generateCalendarBitmap(
     // 2. Configuration & Dimensions
     val width = 1080
     val padding = 60f
-    val headerHeight = 600f // Increased header height for "cute" styling
+    val headerHeight = 450f // Adjusted header height for closer spacing
     val footerHeight = 350f // Footer for branding + legend
     
     // Layout Calculation
@@ -372,7 +401,7 @@ fun generateCalendarBitmap(
     val cols = 2
     val rows = 6
     val colGap = 60f
-    val rowGap = 80f
+    val rowGap = 48f // Reduced by 40% (from 80f)
     val cellGap = 14f // Increased gap slightly
     
     // Calculate month width for Year View
@@ -545,10 +574,33 @@ fun generateCalendarBitmap(
     // Subtitle with Emoji
     val fullSubtitle = "$emoji $subtitle"
     // Adjust text size based on length to prevent clipping
-    paint.textSize = if (fullSubtitle.length > 25) 34f else 48f
+    paint.textSize = if (fullSubtitle.length > 25) 40f else 48f
     paint.typeface = android.graphics.Typeface.create(android.graphics.Typeface.SERIF, android.graphics.Typeface.BOLD) // Use Serif for "cute" look if possible, or stick to Default Bold
     paint.color = android.graphics.Color.parseColor("#555555")
-    canvas.drawText(fullSubtitle, width / 2f, 320f, paint)
+
+    // Use StaticLayout for multiline support
+    val textPaint = android.text.TextPaint(paint)
+    // Force Left alignment for TextPaint, so StaticLayout can handle centering correctly
+    textPaint.textAlign = android.graphics.Paint.Align.LEFT
+    val textWidth = (width - padding * 2).toInt()
+    val alignment = android.text.Layout.Alignment.ALIGN_CENTER
+
+    val staticLayout = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+        android.text.StaticLayout.Builder.obtain(fullSubtitle, 0, fullSubtitle.length, textPaint, textWidth)
+            .setAlignment(alignment)
+            .setLineSpacing(0f, 1.2f)
+            .setIncludePad(false)
+            .build()
+    } else {
+        @Suppress("DEPRECATION")
+        android.text.StaticLayout(fullSubtitle, textPaint, textWidth, alignment, 1.2f, 0f, false)
+    }
+
+    canvas.save()
+    // Move Y up slightly to accommodate multiple lines, centered roughly where the single line was
+    canvas.translate(padding, 260f)
+    staticLayout.draw(canvas)
+    canvas.restore()
     
     // Helper for text color based on brightness
     fun getContrastColor(color: Int): Int {

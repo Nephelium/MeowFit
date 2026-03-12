@@ -1,6 +1,6 @@
-#Wed Mar 11 15:02:38 CST 2026
-base.0=D\:\\project\\【个人项目】\\减肥日历\\android\\app\\build\\intermediates\\dex\\debugAndroidTest\\mergeExtDexDebugAndroidTest\\classes.dex
-base.1=D\:\\project\\【个人项目】\\减肥日历\\android\\app\\build\\intermediates\\dex\\debugAndroidTest\\mergeProjectDexDebugAndroidTest\\0\\classes.dex
+#Thu Mar 12 12:41:08 CST 2026
+base.0=D\:\\project\\【个人项目】\\减肥日历\\MeowFit\\app\\build\\intermediates\\dex\\debugAndroidTest\\mergeExtDexDebugAndroidTest\\classes.dex
+base.1=D\:\\project\\【个人项目】\\减肥日历\\MeowFit\\app\\build\\intermediates\\dex\\debugAndroidTest\\mergeProjectDexDebugAndroidTest\\0\\classes.dex
 path.0=classes.dex
 path.1=0/classes.dex
 renamed.0=classes.dex

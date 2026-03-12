@@ -63,7 +63,7 @@ p.s.欢迎大家提出各种issues！
 
 进入日历界面，映入眼帘的是热量缺口的月度热力图，下方还伴随着体重变化的曲线。只要你每天记录体重，体重趋势模块就会用平滑的曲线地描绘出你的蜕变轨迹。如果没有记录的话，曲线就会自己偷偷藏起来哦。左侧的刻度在截图中被韶子打码隐藏啦，实际是看得到的。
 
-<img src="images/267d54a953c3a9b9c8daf895476d7587.jpg" width="360" />
+<img src="images/Pasted_image_20260312142356.png" width="360" />
 
 点一点日历上的任何一天，就能回顾当天的详细信息，发现漏记了什么也可以在这里补录。如果需要修改某天已有的记录，只需要回到首页的今日面板，把时间拨回那一天进行修改就好啦。
 
@@ -71,7 +71,7 @@ p.s.欢迎大家提出各种issues！
 
 点击左上角向左的小箭头，还能退一步看到更广阔的年视图。在年视图里点击月份名称，就会跳转到月视图啦。
 
-<img src="images/265eeed89e0ad5bef1e9506f25f8bee1.jpg" width="360" />
+<img src="images/d7738a1ff21c09c134673898d2d10c38.jpg" width="360" />
 
 大家可以在设置里给自己定一个小小的睡眠目标。
 
@@ -85,10 +85,9 @@ p.s.欢迎大家提出各种issues！
 
 满载着努力的热力图当然要分享出去呀。点击右上角的分享按钮，就可以把这份记录保存为图片，或者直接发送给微信里的朋友。年视图和月视图都支持热力图保存与分享。
 
-<img src="images/d29c5e14e2f0b857737d1a99f5efe6c4.jpg" width="360" />
-<img src="images/a9a0de8e6ae0b613269852f9dfaf2cca.jpg" width="360" />
+<img src="images/d29c5e14e2f0b857737d1a99f5efe6c4.jpg" width="720" />
+<img src="images/4ca5a68bf009abfb67013f2147ceef65.jpg" width="720" />
 <img src="images/d0fe35102e7824f065a1222378deb2cb 1.jpg" width="360" />
-<img src="images/2b0dbc4c6ec19bd2ef7a2adc9b209154 1.jpg" width="360" />
 <img src="images/f329e62a084a74f65dc0e94cbf387285.png" width="360" />
 
 （p.s.这个页面的设计灵感也来自于**阅读记录**APP）
