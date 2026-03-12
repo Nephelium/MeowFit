@@ -59,7 +59,7 @@ enum class ChartMetric(val label: String) {
 fun StatisticsScreen(
     allItems: List<CalorieItemEntity>
 ) {
-    var selectedTab by remember { mutableStateOf(StatsTab.YEAR) }
+    var selectedTab by remember { mutableStateOf(StatsTab.MONTH) }
     var chartMetric by remember { mutableStateOf(ChartMetric.DURATION) }
     
     // Date navigation state

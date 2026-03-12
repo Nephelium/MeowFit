@@ -68,13 +68,15 @@ enum class HeatmapMetric(val label: String) {
     Water("饮水"),
     Net("热量缺口"),
     Intake("饮食"),
-    Burned("运动")
+    Burned("运动"),
+    Weight("体重")
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun OverviewScreen(
     records: List<DailyRecordEntity>,
+    allItems: List<CalorieItemEntity>,
     userProfile: UserProfileEntity?,
     onAddRecord: (String) -> Unit,
     onUpdateWeight: (Float, String) -> Unit,
@@ -120,7 +122,7 @@ fun OverviewScreen(
                 TextButton(
                     onClick = {
                         showShareDialog = false
-                        val bitmap = generateCalendarBitmap(context, selectedYear, selectedMonth, records, heatmapMetric, userProfile)
+                        val bitmap = generateCalendarBitmap(context, selectedYear, selectedMonth, records, allItems, heatmapMetric, userProfile)
                         saveCalendarToGallery(context, bitmap)
                     }
                 ) {
@@ -132,7 +134,7 @@ fun OverviewScreen(
                     TextButton(
                         onClick = {
                             showShareDialog = false
-                            val bitmap = generateCalendarBitmap(context, selectedYear, selectedMonth, records, heatmapMetric, userProfile)
+                            val bitmap = generateCalendarBitmap(context, selectedYear, selectedMonth, records, allItems, heatmapMetric, userProfile)
                             shareCalendarImage(context, bitmap)
                         }
                     ) {
@@ -183,7 +185,7 @@ fun OverviewScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = if (selectedMonth == null) "统计" else "${selectedMonth!! + 1}月详情",
+                            text = if (selectedMonth == null) "统计" else "${selectedMonth!! + 1}月",
                             style = MaterialTheme.typography.titleMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -221,6 +223,7 @@ fun OverviewScreen(
                         YearHeatmapView(
                             year = selectedYear,
                             records = records,
+                            allItems = allItems,
                             recordMap = recordMap,
                             userProfile = userProfile,
                             metric = heatmapMetric,
@@ -232,6 +235,7 @@ fun OverviewScreen(
                             year = selectedYear,
                             month = selectedMonth!!,
                             records = records,
+                            allItems = allItems,
                             recordMap = recordMap,
                             userProfile = userProfile,
                             metric = heatmapMetric,
@@ -343,6 +347,7 @@ fun generateCalendarBitmap(
     year: Int,
     month: Int?,
     records: List<DailyRecordEntity>,
+    allItems: List<CalorieItemEntity>,
     metric: HeatmapMetric,
     userProfile: UserProfileEntity?
 ): Bitmap {
@@ -355,6 +360,17 @@ fun generateCalendarBitmap(
             if (month == null) rYear == year else rYear == year && rMonth == month
         } else false
     }
+
+    // Weight Stats
+    val validWeights = records.filter { 
+        val parts = it.date.split("-")
+        if (parts.size == 3) {
+            parts[0].toInt() == year
+        } else false
+    }.mapNotNull { it.weight }.filter { it > 0 }
+    val minWeight = if (validWeights.isNotEmpty()) validWeights.minOrNull()!! else 0f
+    val maxWeight = if (validWeights.isNotEmpty()) validWeights.maxOrNull()!! else 100f
+    val weightRange = if (maxWeight > minWeight) maxWeight - minWeight else 1f
 
     val title = "我的${metric.label}日历"
     val periodStr = if (month == null) "${year}年" else "${year}年${month + 1}月"
@@ -377,6 +393,10 @@ fun generateCalendarBitmap(
             val count = relevantRecords.count { it.totalIntake > 0 }
             // Ensure periodStr and count are on the second line
             "🥑 认真吃饭的时光！\n${periodStr}记录了 ${count} 天的美味！"
+        }
+        HeatmapMetric.Weight -> {
+            val count = relevantRecords.count { (it.weight ?: 0f) > 0 }
+             "⚖️ 记录体重，见证蜕变！\n${periodStr}坚持记录${count} 天，遇见更好的自己！"
         }
         else -> {
              val count = relevantRecords.count { 
@@ -475,6 +495,12 @@ fun generateCalendarBitmap(
             primaryColor = android.graphics.Color.parseColor("#C8E6C9"),
             slogan = "今天也是元气满满的一天！"
         )
+        HeatmapMetric.Weight -> CalendarTheme(
+            bgColor = android.graphics.Color.parseColor("#E0F7FA"), // Cyan-ish
+            bgPatternEmoji = listOf("⚖️", "✨", "📉", "💪"),
+            primaryColor = android.graphics.Color.parseColor("#B2EBF2"),
+            slogan = "轻盈生活，从记录开始~"
+        )
     }
 
     // Draw Background Color
@@ -521,6 +547,7 @@ fun generateCalendarBitmap(
         HeatmapMetric.Water -> "💧"
         HeatmapMetric.Sleep -> "🌙"
         HeatmapMetric.Net -> "⚖️"
+        HeatmapMetric.Weight -> "⚖️"
     }
     
     val displayTitle = "我的${metric.label}日历"
@@ -636,25 +663,32 @@ fun generateCalendarBitmap(
                 else lerp(android.graphics.Color.parseColor("#C8E6C9"), android.graphics.Color.parseColor("#2E7D32"), (Math.abs(value)/1000f))
             }
             HeatmapMetric.Sleep -> {
-            val durationHours = value / 60f
-            
-            if (durationHours < 3f) {
-                android.graphics.Color.parseColor("#E57373") // Red
-            } else if (durationHours > 12f) {
-                android.graphics.Color.parseColor("#90A4AE") // Blue Grey
-            } else {
-                 // Linear interpolation between 3h and 12h
-                 val progress = ((durationHours - 3f) / (12f - 3f)).coerceIn(0f, 1f)
-                 lerp(
-                     android.graphics.Color.parseColor("#F3E5F5"), // Light Purple
-                     android.graphics.Color.parseColor("#4A148C"), // Dark Deep Purple
-                     progress
-                 )
+                val durationHours = value / 60f
+                
+                if (durationHours < 3f) {
+                    android.graphics.Color.parseColor("#E57373") // Red
+                } else if (durationHours > 12f) {
+                    android.graphics.Color.parseColor("#90A4AE") // Blue Grey
+                } else {
+                     // Linear interpolation between 3h and 12h
+                     val progress = ((durationHours - 3f) / (12f - 3f)).coerceIn(0f, 1f)
+                     lerp(
+                         android.graphics.Color.parseColor("#F3E5F5"), // Light Purple
+                         android.graphics.Color.parseColor("#4A148C"), // Dark Deep Purple
+                         progress
+                     )
+                }
             }
-        }
             HeatmapMetric.Water -> lerp(android.graphics.Color.parseColor("#B3E5FC"), android.graphics.Color.parseColor("#0277BD"), value/2500f)
             HeatmapMetric.Intake -> lerp(android.graphics.Color.parseColor("#C8E6C9"), android.graphics.Color.parseColor("#2E7D32"), value/3000f)
             HeatmapMetric.Burned -> lerp(android.graphics.Color.parseColor("#F0F8FF"), android.graphics.Color.parseColor("#1565C0"), value/3000f)
+            HeatmapMetric.Weight -> {
+                // value is encoded weight * 10 or just raw weight cast to Int?
+                // Actually getColor takes Int. We'll pass weight * 10
+                val weight = value / 10f
+                val progress = if (weightRange > 0) (weight - minWeight) / weightRange else 0.5f
+                lerp(android.graphics.Color.parseColor("#E0F7FA"), android.graphics.Color.parseColor("#006064"), progress)
+            }
         }
     }
 
@@ -694,6 +728,7 @@ fun generateCalendarBitmap(
     }
 
     val recordMap = records.associateBy { it.date }
+
     
     // --- Draw Content ---
     var currentY = headerHeight
@@ -736,23 +771,40 @@ fun generateCalendarBitmap(
                         HeatmapMetric.Sleep -> record?.sleepDuration ?: 0
                         HeatmapMetric.Water -> record?.totalWater ?: 0
                         HeatmapMetric.Intake -> record?.totalIntake ?: 0
-                        HeatmapMetric.Burned -> record?.totalBurned ?: 0
+                        HeatmapMetric.Burned -> {
+                            // Calculate excluded burned
+                             val excludedList = userProfile?.excludedExercises?.split(",")?.map { it.trim() } ?: emptyList()
+                             val dayItems = allItems.filter { it.date == dateStr && it.type == "exercise" }
+                             val validItems = dayItems.filter { !excludedList.contains(it.name) }
+                             validItems.sumOf { it.calories }
+                        }
                         HeatmapMetric.Net -> {
                             val intake = record?.totalIntake ?: 0
                             val burned = record?.totalBurned ?: 0
                             intake - (2000 + burned)
                         }
+                        HeatmapMetric.Weight -> {
+                            val w = record?.weight ?: 0f
+                            (w * 10).toInt()
+                        }
                     }
                     
-                    val hasRecord = record != null && (record.totalIntake > 0 || record.totalBurned > 0 || record.totalWater > 0 || record.sleepDuration > 0)
-                    // Use a subtle gray for empty days, color for records
-                    val color = if (!hasRecord) getColor(0, metric) else getColor(value, metric)
+                    val hasDataForMetric = when(metric) {
+                        HeatmapMetric.Sleep -> (record?.sleepDuration ?: 0) > 0
+                        HeatmapMetric.Water -> (record?.totalWater ?: 0) > 0
+                        HeatmapMetric.Intake -> (record?.totalIntake ?: 0) > 0
+                        HeatmapMetric.Burned -> value > 0 // Use calculated value
+                        HeatmapMetric.Net -> (record?.totalIntake ?: 0) > 0 || (record?.totalBurned ?: 0) > 0
+                        HeatmapMetric.Weight -> (record?.weight ?: 0f) > 0f
+                    }
+                    
+                    val color = if (!hasDataForMetric) getColor(0, metric) else getColor(value, metric)
                     
                     paint.color = color
                     val rect = android.graphics.RectF(x, y, x + yearViewDaySize, y + yearViewDaySize)
                     canvas.drawRoundRect(rect, 12f, 12f, paint) // More rounded
                     
-                    if (metric == HeatmapMetric.Sleep && hasRecord) {
+                    if (metric == HeatmapMetric.Sleep && hasDataForMetric) {
                          val durationHours = value / 60f
                          val goal = userProfile?.sleepGoal ?: 7.5f
                          if (durationHours in 3f..12f && durationHours >= goal) {
@@ -816,22 +868,40 @@ fun generateCalendarBitmap(
                 HeatmapMetric.Sleep -> record?.sleepDuration ?: 0
                 HeatmapMetric.Water -> record?.totalWater ?: 0
                 HeatmapMetric.Intake -> record?.totalIntake ?: 0
-                HeatmapMetric.Burned -> record?.totalBurned ?: 0
+                HeatmapMetric.Burned -> {
+                    // Calculate excluded burned
+                     val excludedList = userProfile?.excludedExercises?.split(",")?.map { it.trim() } ?: emptyList()
+                     val dayItems = allItems.filter { it.date == dateStr && it.type == "exercise" }
+                     val validItems = dayItems.filter { !excludedList.contains(it.name) }
+                     validItems.sumOf { it.calories }
+                }
                 HeatmapMetric.Net -> {
                     val intake = record?.totalIntake ?: 0
                     val burned = record?.totalBurned ?: 0
                     intake - (2000 + burned)
                 }
+                HeatmapMetric.Weight -> {
+                    val w = record?.weight ?: 0f
+                    (w * 10).toInt()
+                }
             }
             
-            val hasRecord = record != null && (record.totalIntake > 0 || record.totalBurned > 0 || record.totalWater > 0 || record.sleepDuration > 0)
-            val color = if (!hasRecord) getColor(0, metric) else getColor(value, metric)
+            val hasDataForMetric = when(metric) {
+                HeatmapMetric.Sleep -> (record?.sleepDuration ?: 0) > 0
+                HeatmapMetric.Water -> (record?.totalWater ?: 0) > 0
+                HeatmapMetric.Intake -> (record?.totalIntake ?: 0) > 0
+                HeatmapMetric.Burned -> value > 0 // Use calculated value
+                HeatmapMetric.Net -> (record?.totalIntake ?: 0) > 0 || (record?.totalBurned ?: 0) > 0
+                HeatmapMetric.Weight -> (record?.weight ?: 0f) > 0f
+            }
+            
+            val color = if (!hasDataForMetric) getColor(0, metric) else getColor(value, metric)
             
             paint.color = color
             val rect = android.graphics.RectF(x, y, x + monthViewDaySize, y + monthViewDaySize)
             canvas.drawRoundRect(rect, 16f, 16f, paint)
             
-            if (metric == HeatmapMetric.Sleep && hasRecord) {
+            if (metric == HeatmapMetric.Sleep && hasDataForMetric) {
                  val durationHours = value / 60f
                  val goal = userProfile?.sleepGoal ?: 7.5f
                  if (durationHours in 3f..12f && durationHours >= goal) {
@@ -844,7 +914,7 @@ fun generateCalendarBitmap(
             paint.textAlign = android.graphics.Paint.Align.CENTER
             paint.typeface = android.graphics.Typeface.create(android.graphics.Typeface.SANS_SERIF, android.graphics.Typeface.BOLD)
             
-            if (hasRecord) {
+            if (hasDataForMetric) {
                  // Draw day number slightly higher
                 canvas.drawText("$day", x + monthViewDaySize/2, y + monthViewDaySize/2 - 10f, paint)
                 
@@ -857,6 +927,8 @@ fun generateCalendarBitmap(
                     "${h}h${m}m"
                 } else if (metric == HeatmapMetric.Net) {
                     if (value > 0) "+$value" else "$value"
+                } else if (metric == HeatmapMetric.Weight) {
+                    "${value/10f}"
                 } else {
                     "$value"
                 }
@@ -890,6 +962,7 @@ fun generateCalendarBitmap(
         HeatmapMetric.Water -> "饮水量越多，颜色越深"
         HeatmapMetric.Sleep -> "睡眠时间越长，颜色越深"
         HeatmapMetric.Net -> "绿色代表热量缺口，红色代表热量盈余"
+        HeatmapMetric.Weight -> "颜色越深代表体重越接近今年最大值"
     }
     
     if (metric == HeatmapMetric.Net) {
@@ -898,6 +971,23 @@ fun generateCalendarBitmap(
         legendColors.add(android.graphics.Color.parseColor("#C8E6C9"))
         legendColors.add(android.graphics.Color.parseColor("#FFCDD2"))
         legendColors.add(android.graphics.Color.parseColor("#C62828"))
+    } else if (metric == HeatmapMetric.Sleep) {
+        // Correct legend for Sleep (using minutes)
+        // Min: 3h = 180, Max: 12h = 720
+        legendColors.add(getColor(180, metric)) // 3h (Light)
+        legendColors.add(getColor(360, metric)) // 6h
+        legendColors.add(getColor(540, metric)) // 9h
+        legendColors.add(getColor(720, metric)) // 12h (Dark)
+    } else if (metric == HeatmapMetric.Weight) {
+         // Weight legend
+         // We pass normalized values scaled by 10 (since we use int * 10)
+         // minWeight and weightRange are calculated at top of function
+         // We want 4 steps: Min, Min+33%, Min+66%, Max
+         val step = weightRange / 3
+         legendColors.add(getColor(((minWeight) * 10).toInt(), metric))
+         legendColors.add(getColor(((minWeight + step) * 10).toInt(), metric))
+         legendColors.add(getColor(((minWeight + step * 2) * 10).toInt(), metric))
+         legendColors.add(getColor(((minWeight + weightRange) * 10).toInt(), metric))
     } else {
         // Gradient for others
         val baseColor = getColor(3000, metric) // Max value approx
@@ -1045,12 +1135,19 @@ fun shareCalendarImage(context: android.content.Context, bitmap: Bitmap) {
 }
 
 @Composable
-fun getHeatmapColor(value: Int, metric: HeatmapMetric, userProfile: UserProfileEntity? = null): Color {
+fun getHeatmapColor(
+    value: Int, 
+    metric: HeatmapMetric, 
+    userProfile: UserProfileEntity? = null,
+    min: Float = 0f,
+    max: Float = 100f
+): Color {
     if (value == 0) return when(metric) {
         HeatmapMetric.Intake -> Color(0xFFE8F5E9) // Very light green
         HeatmapMetric.Burned -> Color(0xFFF0F8FF) // AliceBlue (Very very light blue)
         HeatmapMetric.Water -> Color(0xFFE1F5FE) // Very light light-blue
         HeatmapMetric.Sleep -> Color(0xFFEDE7F6) // Very light deep-purple
+        HeatmapMetric.Weight -> Color(0xFFE0F7FA) // Very light cyan
         else -> Color.Transparent.copy(alpha = 0.05f)
     }
 
@@ -1123,6 +1220,16 @@ fun getHeatmapColor(value: Int, metric: HeatmapMetric, userProfile: UserProfileE
                 fraction
             )
         }
+        HeatmapMetric.Weight -> {
+             val weight = value / 10f
+             val range = if (max > min) max - min else 1f
+             val progress = if (range > 0) (weight - min) / range else 0.5f
+             androidx.compose.ui.graphics.lerp(
+                 Color(0xFFE0F7FA), // Light Cyan
+                 Color(0xFF006064), // Deep Cyan
+                 progress
+             )
+        }
     }
 }
 
@@ -1147,22 +1254,28 @@ fun getContentColorForBackground(bgColor: Color): Color {
 fun YearHeatmapView(
     year: Int,
     records: List<DailyRecordEntity>,
+    allItems: List<CalorieItemEntity>,
     recordMap: Map<String, DailyRecordEntity>,
     userProfile: UserProfileEntity?,
     metric: HeatmapMetric,
     onMonthClick: (Int) -> Unit,
     onDayClick: (String) -> Unit
 ) {
+    // Calculate year-based min/max for weight
+    val weights = records.filter { it.date.startsWith("$year-") && it.weight != null && it.weight > 0 }.mapNotNull { it.weight }
+    val minWeight = if (weights.isNotEmpty()) weights.minOrNull()!! else 0f
+    val maxWeight = if (weights.isNotEmpty()) weights.maxOrNull()!! else 100f
+
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         for (row in 0 until 6) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 val m1 = row * 2
                 val m2 = row * 2 + 1
                 Box(modifier = Modifier.weight(1f)) {
-                    MonthCalendarMini(year, m1, records, recordMap, userProfile, metric, onMonthClick, onDayClick)
+                    MonthCalendarMini(year, m1, records, allItems, recordMap, userProfile, metric, minWeight, maxWeight, onMonthClick, onDayClick)
                 }
                 Box(modifier = Modifier.weight(1f)) {
-                    MonthCalendarMini(year, m2, records, recordMap, userProfile, metric, onMonthClick, onDayClick)
+                    MonthCalendarMini(year, m2, records, allItems, recordMap, userProfile, metric, minWeight, maxWeight, onMonthClick, onDayClick)
                 }
             }
         }
@@ -1174,9 +1287,12 @@ fun MonthCalendarMini(
     year: Int,
     month: Int,
     records: List<DailyRecordEntity>,
+    allItems: List<CalorieItemEntity>,
     recordMap: Map<String, DailyRecordEntity>,
     userProfile: UserProfileEntity?,
     metric: HeatmapMetric,
+    minWeight: Float,
+    maxWeight: Float,
     onHeaderClick: (Int) -> Unit,
     onDayClick: (String) -> Unit
 ) {
@@ -1214,7 +1330,13 @@ fun MonthCalendarMini(
                                 HeatmapMetric.Sleep -> record?.sleepDuration ?: 0
                                 HeatmapMetric.Water -> record?.totalWater ?: 0
                                 HeatmapMetric.Intake -> record?.totalIntake ?: 0
-                                HeatmapMetric.Burned -> record?.totalBurned ?: 0
+                                HeatmapMetric.Burned -> {
+                                    // Calculate excluded burned
+                                     val excludedList = userProfile?.excludedExercises?.split(",")?.map { it.trim() } ?: emptyList()
+                                     val dayItems = allItems.filter { it.date == dateStr && it.type == "exercise" }
+                                     val validItems = dayItems.filter { !excludedList.contains(it.name) }
+                                     validItems.sumOf { it.calories }
+                                }
                                 HeatmapMetric.Net -> {
                                     // Calculate dynamic net
                                     val target = if (userProfile != null) {
@@ -1233,12 +1355,23 @@ fun MonthCalendarMini(
                                     val burned = record?.totalBurned ?: 0
                                     intake - (target + burned)
                                 }
+                                HeatmapMetric.Weight -> {
+                                    val w = record?.weight ?: 0f
+                                    (w * 10).toInt()
+                                }
                             }
                             
-                            val hasRecord = record != null && (record.totalIntake > 0 || record.totalBurned > 0 || record.totalWater > 0 || record.sleepDuration > 0)
+                            val hasDataForMetric = when(metric) {
+                                HeatmapMetric.Sleep -> (record?.sleepDuration ?: 0) > 0
+                                HeatmapMetric.Water -> (record?.totalWater ?: 0) > 0
+                                HeatmapMetric.Intake -> (record?.totalIntake ?: 0) > 0
+                                HeatmapMetric.Burned -> value > 0 // Use calculated value
+                                HeatmapMetric.Net -> (record?.totalIntake ?: 0) > 0 || (record?.totalBurned ?: 0) > 0
+                                HeatmapMetric.Weight -> (record?.weight ?: 0f) > 0f
+                            }
                             
                             // Use raw value for color calculation now
-                            val bgColor = if (!hasRecord) Color.Transparent else getHeatmapColor(value, metric, userProfile)
+                            val bgColor = if (!hasDataForMetric) Color.Transparent else getHeatmapColor(value, metric, userProfile, minWeight, maxWeight)
                             val contentColor = getContentColorForBackground(bgColor)
 
                             Box(
@@ -1250,7 +1383,7 @@ fun MonthCalendarMini(
                                 contentAlignment = Alignment.Center
                             ) {
                                 // Star Indicator for Sleep Goal Met
-                                if (metric == HeatmapMetric.Sleep && hasRecord) {
+                                if (metric == HeatmapMetric.Sleep && hasDataForMetric) {
                                     val durationHours = value / 60f
                                     val goal = userProfile?.sleepGoal ?: 7.5f
                                     if (durationHours in 3f..12f && durationHours >= goal) {
@@ -1294,7 +1427,7 @@ fun MonthCalendarMini(
                                     text = "$day",
                                     style = MaterialTheme.typography.labelSmall.copy(fontSize = 12.sp),
                                     color = contentColor,
-                                    fontWeight = if (hasRecord) FontWeight.Bold else FontWeight.Normal
+                                    fontWeight = if (hasDataForMetric) FontWeight.Bold else FontWeight.Normal
                                 )
                             }
                         } else {
@@ -1312,6 +1445,7 @@ fun MonthHeatmapView(
     year: Int,
     month: Int,
     records: List<DailyRecordEntity>,
+    allItems: List<CalorieItemEntity>,
     recordMap: Map<String, DailyRecordEntity>,
     userProfile: UserProfileEntity?,
     metric: HeatmapMetric,
@@ -1321,6 +1455,11 @@ fun MonthHeatmapView(
     calendar.set(year, month, 1)
     val daysInMonth = calendar.getActualMaximum(Calendar.DAY_OF_MONTH)
     val firstDayOfWeek = calendar.get(Calendar.DAY_OF_WEEK)
+    
+    // Calculate year-based min/max for weight for consistent coloring
+    val weights = records.filter { it.date.startsWith("$year-") && it.weight != null && it.weight > 0 }.mapNotNull { it.weight }
+    val minWeight = if (weights.isNotEmpty()) weights.minOrNull()!! else 0f
+    val maxWeight = if (weights.isNotEmpty()) weights.maxOrNull()!! else 100f
     
     val weeks = listOf("日", "一", "二", "三", "四", "五", "六")
     
@@ -1356,7 +1495,13 @@ fun MonthHeatmapView(
                                 HeatmapMetric.Sleep -> record?.sleepDuration ?: 0
                                 HeatmapMetric.Water -> record?.totalWater ?: 0
                                 HeatmapMetric.Intake -> record?.totalIntake ?: 0
-                                HeatmapMetric.Burned -> record?.totalBurned ?: 0
+                                HeatmapMetric.Burned -> {
+                                    // Calculate excluded burned
+                                     val excludedList = userProfile?.excludedExercises?.split(",")?.map { it.trim() } ?: emptyList()
+                                     val dayItems = allItems.filter { it.date == dateStr && it.type == "exercise" }
+                                     val validItems = dayItems.filter { !excludedList.contains(it.name) }
+                                     validItems.sumOf { it.calories }
+                                }
                                 HeatmapMetric.Net -> {
                                     // Calculate dynamic net
                                     val target = if (userProfile != null) {
@@ -1375,12 +1520,23 @@ fun MonthHeatmapView(
                                     val burned = record?.totalBurned ?: 0
                                     intake - (target + burned)
                                 }
+                                HeatmapMetric.Weight -> {
+                                    val w = record?.weight ?: 0f
+                                    (w * 10).toInt()
+                                }
                             }
                             
-                            val hasRecord = record != null && (record.totalIntake > 0 || record.totalBurned > 0 || record.totalWater > 0 || record.sleepDuration > 0)
+                            val hasDataForMetric = when(metric) {
+                                HeatmapMetric.Sleep -> (record?.sleepDuration ?: 0) > 0
+                                HeatmapMetric.Water -> (record?.totalWater ?: 0) > 0
+                                HeatmapMetric.Intake -> (record?.totalIntake ?: 0) > 0
+                                HeatmapMetric.Burned -> value > 0 // Use calculated value
+                                HeatmapMetric.Net -> (record?.totalIntake ?: 0) > 0 || (record?.totalBurned ?: 0) > 0
+                                HeatmapMetric.Weight -> (record?.weight ?: 0f) > 0f
+                            }
                             
                             // Use raw value for color
-                            val bgColor = if (!hasRecord) Color.Transparent else getHeatmapColor(value, metric, userProfile)
+                            val bgColor = if (!hasDataForMetric) Color.Transparent else getHeatmapColor(value, metric, userProfile, minWeight, maxWeight)
                             val contentColor = getContentColorForBackground(bgColor)
                             
                             Box(
@@ -1392,7 +1548,7 @@ fun MonthHeatmapView(
                                 contentAlignment = Alignment.Center
                             ) {
                                 // Star Indicator for Sleep Goal Met
-                                if (metric == HeatmapMetric.Sleep && hasRecord) {
+                                if (metric == HeatmapMetric.Sleep && hasDataForMetric) {
                                     val durationHours = value / 60f
                                     val goal = userProfile?.sleepGoal ?: 7.5f
                                     if (durationHours in 3f..12f && durationHours >= goal) {
@@ -1434,29 +1590,30 @@ fun MonthHeatmapView(
 
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                     Text(
-                                        text = "$day",
-                                        style = MaterialTheme.typography.labelMedium.copy(fontSize = 14.sp),
-                                        color = contentColor,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                    if (hasRecord) {
-                                        // Show signed value for Net, absolute for others
-                                    val displayValue = when (metric) {
-                                        HeatmapMetric.Net -> if (value > 0) "+$value" else "$value"
-                                        HeatmapMetric.Sleep -> {
-                                            val h = value / 60
-                                            val m = value % 60
-                                            "${h}h${m}m"
-                                        }
-                                        else -> "${Math.abs(value)}"
+                                    text = "$day",
+                                    style = MaterialTheme.typography.labelMedium.copy(fontSize = 14.sp),
+                                    color = contentColor,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                if (hasDataForMetric) {
+                                    // Show signed value for Net, absolute for others
+                                val displayValue = when (metric) {
+                                    HeatmapMetric.Net -> if (value > 0) "+$value" else "$value"
+                                    HeatmapMetric.Sleep -> {
+                                        val h = value / 60
+                                        val m = value % 60
+                                        "${h}h${m}m"
                                     }
-                                    
-                                    Text(
-                                        text = displayValue,
-                                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp),
-                                        color = contentColor.copy(alpha = 0.9f)
-                                    )
-                                    }
+                                    HeatmapMetric.Weight -> "${value/10f}"
+                                    else -> "${Math.abs(value)}"
+                                }
+                                
+                                Text(
+                                    text = displayValue,
+                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp),
+                                    color = contentColor.copy(alpha = 0.9f)
+                                )
+                                }
                                 }
                             }
                         } else {
