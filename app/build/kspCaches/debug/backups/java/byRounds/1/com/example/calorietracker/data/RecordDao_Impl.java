@@ -52,7 +52,7 @@ public final class RecordDao_Impl implements RecordDao {
       @Override
       @NonNull
       protected String createQuery() {
-        return "INSERT OR IGNORE INTO `daily_records` (`date`,`weight`,`totalIntake`,`totalBurned`,`netCalories`,`totalWater`,`sleepDuration`) VALUES (?,?,?,?,?,?,?)";
+        return "INSERT OR IGNORE INTO `daily_records` (`date`,`weight`,`totalIntake`,`totalBurned`,`netCalories`,`totalCarbs`,`totalProtein`,`totalFat`,`totalWater`,`sleepDuration`) VALUES (?,?,?,?,?,?,?,?,?,?)";
       }
 
       @Override
@@ -67,15 +67,18 @@ public final class RecordDao_Impl implements RecordDao {
         statement.bindLong(3, entity.getTotalIntake());
         statement.bindLong(4, entity.getTotalBurned());
         statement.bindLong(5, entity.getNetCalories());
-        statement.bindLong(6, entity.getTotalWater());
-        statement.bindLong(7, entity.getSleepDuration());
+        statement.bindLong(6, entity.getTotalCarbs());
+        statement.bindLong(7, entity.getTotalProtein());
+        statement.bindLong(8, entity.getTotalFat());
+        statement.bindLong(9, entity.getTotalWater());
+        statement.bindLong(10, entity.getSleepDuration());
       }
     };
     this.__insertionAdapterOfDailyRecordEntity_1 = new EntityInsertionAdapter<DailyRecordEntity>(__db) {
       @Override
       @NonNull
       protected String createQuery() {
-        return "INSERT OR REPLACE INTO `daily_records` (`date`,`weight`,`totalIntake`,`totalBurned`,`netCalories`,`totalWater`,`sleepDuration`) VALUES (?,?,?,?,?,?,?)";
+        return "INSERT OR REPLACE INTO `daily_records` (`date`,`weight`,`totalIntake`,`totalBurned`,`netCalories`,`totalCarbs`,`totalProtein`,`totalFat`,`totalWater`,`sleepDuration`) VALUES (?,?,?,?,?,?,?,?,?,?)";
       }
 
       @Override
@@ -90,15 +93,18 @@ public final class RecordDao_Impl implements RecordDao {
         statement.bindLong(3, entity.getTotalIntake());
         statement.bindLong(4, entity.getTotalBurned());
         statement.bindLong(5, entity.getNetCalories());
-        statement.bindLong(6, entity.getTotalWater());
-        statement.bindLong(7, entity.getSleepDuration());
+        statement.bindLong(6, entity.getTotalCarbs());
+        statement.bindLong(7, entity.getTotalProtein());
+        statement.bindLong(8, entity.getTotalFat());
+        statement.bindLong(9, entity.getTotalWater());
+        statement.bindLong(10, entity.getSleepDuration());
       }
     };
     this.__insertionAdapterOfCalorieItemEntity = new EntityInsertionAdapter<CalorieItemEntity>(__db) {
       @Override
       @NonNull
       protected String createQuery() {
-        return "INSERT OR REPLACE INTO `calorie_items` (`id`,`date`,`type`,`name`,`calories`,`time`,`imageUrl`,`notes`,`createdAt`) VALUES (?,?,?,?,?,?,?,?,?)";
+        return "INSERT OR REPLACE INTO `calorie_items` (`id`,`date`,`type`,`name`,`calories`,`carbs`,`protein`,`fat`,`time`,`imageUrl`,`notes`,`createdAt`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)";
       }
 
       @Override
@@ -109,18 +115,21 @@ public final class RecordDao_Impl implements RecordDao {
         statement.bindString(3, entity.getType());
         statement.bindString(4, entity.getName());
         statement.bindLong(5, entity.getCalories());
-        statement.bindString(6, entity.getTime());
+        statement.bindLong(6, entity.getCarbs());
+        statement.bindLong(7, entity.getProtein());
+        statement.bindLong(8, entity.getFat());
+        statement.bindString(9, entity.getTime());
         if (entity.getImageUrl() == null) {
-          statement.bindNull(7);
+          statement.bindNull(10);
         } else {
-          statement.bindString(7, entity.getImageUrl());
+          statement.bindString(10, entity.getImageUrl());
         }
         if (entity.getNotes() == null) {
-          statement.bindNull(8);
+          statement.bindNull(11);
         } else {
-          statement.bindString(8, entity.getNotes());
+          statement.bindString(11, entity.getNotes());
         }
-        statement.bindString(9, entity.getCreatedAt());
+        statement.bindString(12, entity.getCreatedAt());
       }
     };
     this.__deletionAdapterOfCalorieItemEntity = new EntityDeletionOrUpdateAdapter<CalorieItemEntity>(__db) {
@@ -140,7 +149,7 @@ public final class RecordDao_Impl implements RecordDao {
       @Override
       @NonNull
       protected String createQuery() {
-        return "UPDATE OR ABORT `daily_records` SET `date` = ?,`weight` = ?,`totalIntake` = ?,`totalBurned` = ?,`netCalories` = ?,`totalWater` = ?,`sleepDuration` = ? WHERE `date` = ?";
+        return "UPDATE OR ABORT `daily_records` SET `date` = ?,`weight` = ?,`totalIntake` = ?,`totalBurned` = ?,`netCalories` = ?,`totalCarbs` = ?,`totalProtein` = ?,`totalFat` = ?,`totalWater` = ?,`sleepDuration` = ? WHERE `date` = ?";
       }
 
       @Override
@@ -155,9 +164,12 @@ public final class RecordDao_Impl implements RecordDao {
         statement.bindLong(3, entity.getTotalIntake());
         statement.bindLong(4, entity.getTotalBurned());
         statement.bindLong(5, entity.getNetCalories());
-        statement.bindLong(6, entity.getTotalWater());
-        statement.bindLong(7, entity.getSleepDuration());
-        statement.bindString(8, entity.getDate());
+        statement.bindLong(6, entity.getTotalCarbs());
+        statement.bindLong(7, entity.getTotalProtein());
+        statement.bindLong(8, entity.getTotalFat());
+        statement.bindLong(9, entity.getTotalWater());
+        statement.bindLong(10, entity.getSleepDuration());
+        statement.bindString(11, entity.getDate());
       }
     };
     this.__preparedStmtOfDeleteItemById = new SharedSQLiteStatement(__db) {
@@ -326,6 +338,9 @@ public final class RecordDao_Impl implements RecordDao {
           final int _cursorIndexOfTotalIntake = CursorUtil.getColumnIndexOrThrow(_cursor, "totalIntake");
           final int _cursorIndexOfTotalBurned = CursorUtil.getColumnIndexOrThrow(_cursor, "totalBurned");
           final int _cursorIndexOfNetCalories = CursorUtil.getColumnIndexOrThrow(_cursor, "netCalories");
+          final int _cursorIndexOfTotalCarbs = CursorUtil.getColumnIndexOrThrow(_cursor, "totalCarbs");
+          final int _cursorIndexOfTotalProtein = CursorUtil.getColumnIndexOrThrow(_cursor, "totalProtein");
+          final int _cursorIndexOfTotalFat = CursorUtil.getColumnIndexOrThrow(_cursor, "totalFat");
           final int _cursorIndexOfTotalWater = CursorUtil.getColumnIndexOrThrow(_cursor, "totalWater");
           final int _cursorIndexOfSleepDuration = CursorUtil.getColumnIndexOrThrow(_cursor, "sleepDuration");
           final DailyRecordEntity _result;
@@ -344,11 +359,17 @@ public final class RecordDao_Impl implements RecordDao {
             _tmpTotalBurned = _cursor.getInt(_cursorIndexOfTotalBurned);
             final int _tmpNetCalories;
             _tmpNetCalories = _cursor.getInt(_cursorIndexOfNetCalories);
+            final int _tmpTotalCarbs;
+            _tmpTotalCarbs = _cursor.getInt(_cursorIndexOfTotalCarbs);
+            final int _tmpTotalProtein;
+            _tmpTotalProtein = _cursor.getInt(_cursorIndexOfTotalProtein);
+            final int _tmpTotalFat;
+            _tmpTotalFat = _cursor.getInt(_cursorIndexOfTotalFat);
             final int _tmpTotalWater;
             _tmpTotalWater = _cursor.getInt(_cursorIndexOfTotalWater);
             final int _tmpSleepDuration;
             _tmpSleepDuration = _cursor.getInt(_cursorIndexOfSleepDuration);
-            _result = new DailyRecordEntity(_tmpDate,_tmpWeight,_tmpTotalIntake,_tmpTotalBurned,_tmpNetCalories,_tmpTotalWater,_tmpSleepDuration);
+            _result = new DailyRecordEntity(_tmpDate,_tmpWeight,_tmpTotalIntake,_tmpTotalBurned,_tmpNetCalories,_tmpTotalCarbs,_tmpTotalProtein,_tmpTotalFat,_tmpTotalWater,_tmpSleepDuration);
           } else {
             _result = null;
           }
@@ -384,6 +405,9 @@ public final class RecordDao_Impl implements RecordDao {
           final int _cursorIndexOfTotalIntake = CursorUtil.getColumnIndexOrThrow(_cursor, "totalIntake");
           final int _cursorIndexOfTotalBurned = CursorUtil.getColumnIndexOrThrow(_cursor, "totalBurned");
           final int _cursorIndexOfNetCalories = CursorUtil.getColumnIndexOrThrow(_cursor, "netCalories");
+          final int _cursorIndexOfTotalCarbs = CursorUtil.getColumnIndexOrThrow(_cursor, "totalCarbs");
+          final int _cursorIndexOfTotalProtein = CursorUtil.getColumnIndexOrThrow(_cursor, "totalProtein");
+          final int _cursorIndexOfTotalFat = CursorUtil.getColumnIndexOrThrow(_cursor, "totalFat");
           final int _cursorIndexOfTotalWater = CursorUtil.getColumnIndexOrThrow(_cursor, "totalWater");
           final int _cursorIndexOfSleepDuration = CursorUtil.getColumnIndexOrThrow(_cursor, "sleepDuration");
           final DailyRecordEntity _result;
@@ -402,11 +426,17 @@ public final class RecordDao_Impl implements RecordDao {
             _tmpTotalBurned = _cursor.getInt(_cursorIndexOfTotalBurned);
             final int _tmpNetCalories;
             _tmpNetCalories = _cursor.getInt(_cursorIndexOfNetCalories);
+            final int _tmpTotalCarbs;
+            _tmpTotalCarbs = _cursor.getInt(_cursorIndexOfTotalCarbs);
+            final int _tmpTotalProtein;
+            _tmpTotalProtein = _cursor.getInt(_cursorIndexOfTotalProtein);
+            final int _tmpTotalFat;
+            _tmpTotalFat = _cursor.getInt(_cursorIndexOfTotalFat);
             final int _tmpTotalWater;
             _tmpTotalWater = _cursor.getInt(_cursorIndexOfTotalWater);
             final int _tmpSleepDuration;
             _tmpSleepDuration = _cursor.getInt(_cursorIndexOfSleepDuration);
-            _result = new DailyRecordEntity(_tmpDate,_tmpWeight,_tmpTotalIntake,_tmpTotalBurned,_tmpNetCalories,_tmpTotalWater,_tmpSleepDuration);
+            _result = new DailyRecordEntity(_tmpDate,_tmpWeight,_tmpTotalIntake,_tmpTotalBurned,_tmpNetCalories,_tmpTotalCarbs,_tmpTotalProtein,_tmpTotalFat,_tmpTotalWater,_tmpSleepDuration);
           } else {
             _result = null;
           }
@@ -436,6 +466,9 @@ public final class RecordDao_Impl implements RecordDao {
           final int _cursorIndexOfType = CursorUtil.getColumnIndexOrThrow(_cursor, "type");
           final int _cursorIndexOfName = CursorUtil.getColumnIndexOrThrow(_cursor, "name");
           final int _cursorIndexOfCalories = CursorUtil.getColumnIndexOrThrow(_cursor, "calories");
+          final int _cursorIndexOfCarbs = CursorUtil.getColumnIndexOrThrow(_cursor, "carbs");
+          final int _cursorIndexOfProtein = CursorUtil.getColumnIndexOrThrow(_cursor, "protein");
+          final int _cursorIndexOfFat = CursorUtil.getColumnIndexOrThrow(_cursor, "fat");
           final int _cursorIndexOfTime = CursorUtil.getColumnIndexOrThrow(_cursor, "time");
           final int _cursorIndexOfImageUrl = CursorUtil.getColumnIndexOrThrow(_cursor, "imageUrl");
           final int _cursorIndexOfNotes = CursorUtil.getColumnIndexOrThrow(_cursor, "notes");
@@ -453,6 +486,12 @@ public final class RecordDao_Impl implements RecordDao {
             _tmpName = _cursor.getString(_cursorIndexOfName);
             final int _tmpCalories;
             _tmpCalories = _cursor.getInt(_cursorIndexOfCalories);
+            final int _tmpCarbs;
+            _tmpCarbs = _cursor.getInt(_cursorIndexOfCarbs);
+            final int _tmpProtein;
+            _tmpProtein = _cursor.getInt(_cursorIndexOfProtein);
+            final int _tmpFat;
+            _tmpFat = _cursor.getInt(_cursorIndexOfFat);
             final String _tmpTime;
             _tmpTime = _cursor.getString(_cursorIndexOfTime);
             final String _tmpImageUrl;
@@ -469,7 +508,7 @@ public final class RecordDao_Impl implements RecordDao {
             }
             final String _tmpCreatedAt;
             _tmpCreatedAt = _cursor.getString(_cursorIndexOfCreatedAt);
-            _item = new CalorieItemEntity(_tmpId,_tmpDate,_tmpType,_tmpName,_tmpCalories,_tmpTime,_tmpImageUrl,_tmpNotes,_tmpCreatedAt);
+            _item = new CalorieItemEntity(_tmpId,_tmpDate,_tmpType,_tmpName,_tmpCalories,_tmpCarbs,_tmpProtein,_tmpFat,_tmpTime,_tmpImageUrl,_tmpNotes,_tmpCreatedAt);
             _result.add(_item);
           }
           return _result;
@@ -500,6 +539,9 @@ public final class RecordDao_Impl implements RecordDao {
           final int _cursorIndexOfTotalIntake = CursorUtil.getColumnIndexOrThrow(_cursor, "totalIntake");
           final int _cursorIndexOfTotalBurned = CursorUtil.getColumnIndexOrThrow(_cursor, "totalBurned");
           final int _cursorIndexOfNetCalories = CursorUtil.getColumnIndexOrThrow(_cursor, "netCalories");
+          final int _cursorIndexOfTotalCarbs = CursorUtil.getColumnIndexOrThrow(_cursor, "totalCarbs");
+          final int _cursorIndexOfTotalProtein = CursorUtil.getColumnIndexOrThrow(_cursor, "totalProtein");
+          final int _cursorIndexOfTotalFat = CursorUtil.getColumnIndexOrThrow(_cursor, "totalFat");
           final int _cursorIndexOfTotalWater = CursorUtil.getColumnIndexOrThrow(_cursor, "totalWater");
           final int _cursorIndexOfSleepDuration = CursorUtil.getColumnIndexOrThrow(_cursor, "sleepDuration");
           final List<DailyRecordEntity> _result = new ArrayList<DailyRecordEntity>(_cursor.getCount());
@@ -519,11 +561,17 @@ public final class RecordDao_Impl implements RecordDao {
             _tmpTotalBurned = _cursor.getInt(_cursorIndexOfTotalBurned);
             final int _tmpNetCalories;
             _tmpNetCalories = _cursor.getInt(_cursorIndexOfNetCalories);
+            final int _tmpTotalCarbs;
+            _tmpTotalCarbs = _cursor.getInt(_cursorIndexOfTotalCarbs);
+            final int _tmpTotalProtein;
+            _tmpTotalProtein = _cursor.getInt(_cursorIndexOfTotalProtein);
+            final int _tmpTotalFat;
+            _tmpTotalFat = _cursor.getInt(_cursorIndexOfTotalFat);
             final int _tmpTotalWater;
             _tmpTotalWater = _cursor.getInt(_cursorIndexOfTotalWater);
             final int _tmpSleepDuration;
             _tmpSleepDuration = _cursor.getInt(_cursorIndexOfSleepDuration);
-            _item = new DailyRecordEntity(_tmpDate,_tmpWeight,_tmpTotalIntake,_tmpTotalBurned,_tmpNetCalories,_tmpTotalWater,_tmpSleepDuration);
+            _item = new DailyRecordEntity(_tmpDate,_tmpWeight,_tmpTotalIntake,_tmpTotalBurned,_tmpNetCalories,_tmpTotalCarbs,_tmpTotalProtein,_tmpTotalFat,_tmpTotalWater,_tmpSleepDuration);
             _result.add(_item);
           }
           return _result;
@@ -555,6 +603,9 @@ public final class RecordDao_Impl implements RecordDao {
           final int _cursorIndexOfTotalIntake = CursorUtil.getColumnIndexOrThrow(_cursor, "totalIntake");
           final int _cursorIndexOfTotalBurned = CursorUtil.getColumnIndexOrThrow(_cursor, "totalBurned");
           final int _cursorIndexOfNetCalories = CursorUtil.getColumnIndexOrThrow(_cursor, "netCalories");
+          final int _cursorIndexOfTotalCarbs = CursorUtil.getColumnIndexOrThrow(_cursor, "totalCarbs");
+          final int _cursorIndexOfTotalProtein = CursorUtil.getColumnIndexOrThrow(_cursor, "totalProtein");
+          final int _cursorIndexOfTotalFat = CursorUtil.getColumnIndexOrThrow(_cursor, "totalFat");
           final int _cursorIndexOfTotalWater = CursorUtil.getColumnIndexOrThrow(_cursor, "totalWater");
           final int _cursorIndexOfSleepDuration = CursorUtil.getColumnIndexOrThrow(_cursor, "sleepDuration");
           final List<DailyRecordEntity> _result = new ArrayList<DailyRecordEntity>(_cursor.getCount());
@@ -574,11 +625,17 @@ public final class RecordDao_Impl implements RecordDao {
             _tmpTotalBurned = _cursor.getInt(_cursorIndexOfTotalBurned);
             final int _tmpNetCalories;
             _tmpNetCalories = _cursor.getInt(_cursorIndexOfNetCalories);
+            final int _tmpTotalCarbs;
+            _tmpTotalCarbs = _cursor.getInt(_cursorIndexOfTotalCarbs);
+            final int _tmpTotalProtein;
+            _tmpTotalProtein = _cursor.getInt(_cursorIndexOfTotalProtein);
+            final int _tmpTotalFat;
+            _tmpTotalFat = _cursor.getInt(_cursorIndexOfTotalFat);
             final int _tmpTotalWater;
             _tmpTotalWater = _cursor.getInt(_cursorIndexOfTotalWater);
             final int _tmpSleepDuration;
             _tmpSleepDuration = _cursor.getInt(_cursorIndexOfSleepDuration);
-            _item = new DailyRecordEntity(_tmpDate,_tmpWeight,_tmpTotalIntake,_tmpTotalBurned,_tmpNetCalories,_tmpTotalWater,_tmpSleepDuration);
+            _item = new DailyRecordEntity(_tmpDate,_tmpWeight,_tmpTotalIntake,_tmpTotalBurned,_tmpNetCalories,_tmpTotalCarbs,_tmpTotalProtein,_tmpTotalFat,_tmpTotalWater,_tmpSleepDuration);
             _result.add(_item);
           }
           return _result;
@@ -605,6 +662,9 @@ public final class RecordDao_Impl implements RecordDao {
           final int _cursorIndexOfType = CursorUtil.getColumnIndexOrThrow(_cursor, "type");
           final int _cursorIndexOfName = CursorUtil.getColumnIndexOrThrow(_cursor, "name");
           final int _cursorIndexOfCalories = CursorUtil.getColumnIndexOrThrow(_cursor, "calories");
+          final int _cursorIndexOfCarbs = CursorUtil.getColumnIndexOrThrow(_cursor, "carbs");
+          final int _cursorIndexOfProtein = CursorUtil.getColumnIndexOrThrow(_cursor, "protein");
+          final int _cursorIndexOfFat = CursorUtil.getColumnIndexOrThrow(_cursor, "fat");
           final int _cursorIndexOfTime = CursorUtil.getColumnIndexOrThrow(_cursor, "time");
           final int _cursorIndexOfImageUrl = CursorUtil.getColumnIndexOrThrow(_cursor, "imageUrl");
           final int _cursorIndexOfNotes = CursorUtil.getColumnIndexOrThrow(_cursor, "notes");
@@ -622,6 +682,12 @@ public final class RecordDao_Impl implements RecordDao {
             _tmpName = _cursor.getString(_cursorIndexOfName);
             final int _tmpCalories;
             _tmpCalories = _cursor.getInt(_cursorIndexOfCalories);
+            final int _tmpCarbs;
+            _tmpCarbs = _cursor.getInt(_cursorIndexOfCarbs);
+            final int _tmpProtein;
+            _tmpProtein = _cursor.getInt(_cursorIndexOfProtein);
+            final int _tmpFat;
+            _tmpFat = _cursor.getInt(_cursorIndexOfFat);
             final String _tmpTime;
             _tmpTime = _cursor.getString(_cursorIndexOfTime);
             final String _tmpImageUrl;
@@ -638,7 +704,7 @@ public final class RecordDao_Impl implements RecordDao {
             }
             final String _tmpCreatedAt;
             _tmpCreatedAt = _cursor.getString(_cursorIndexOfCreatedAt);
-            _item = new CalorieItemEntity(_tmpId,_tmpDate,_tmpType,_tmpName,_tmpCalories,_tmpTime,_tmpImageUrl,_tmpNotes,_tmpCreatedAt);
+            _item = new CalorieItemEntity(_tmpId,_tmpDate,_tmpType,_tmpName,_tmpCalories,_tmpCarbs,_tmpProtein,_tmpFat,_tmpTime,_tmpImageUrl,_tmpNotes,_tmpCreatedAt);
             _result.add(_item);
           }
           return _result;
@@ -671,6 +737,9 @@ public final class RecordDao_Impl implements RecordDao {
           final int _cursorIndexOfType = CursorUtil.getColumnIndexOrThrow(_cursor, "type");
           final int _cursorIndexOfName = CursorUtil.getColumnIndexOrThrow(_cursor, "name");
           final int _cursorIndexOfCalories = CursorUtil.getColumnIndexOrThrow(_cursor, "calories");
+          final int _cursorIndexOfCarbs = CursorUtil.getColumnIndexOrThrow(_cursor, "carbs");
+          final int _cursorIndexOfProtein = CursorUtil.getColumnIndexOrThrow(_cursor, "protein");
+          final int _cursorIndexOfFat = CursorUtil.getColumnIndexOrThrow(_cursor, "fat");
           final int _cursorIndexOfTime = CursorUtil.getColumnIndexOrThrow(_cursor, "time");
           final int _cursorIndexOfImageUrl = CursorUtil.getColumnIndexOrThrow(_cursor, "imageUrl");
           final int _cursorIndexOfNotes = CursorUtil.getColumnIndexOrThrow(_cursor, "notes");
@@ -688,6 +757,12 @@ public final class RecordDao_Impl implements RecordDao {
             _tmpName = _cursor.getString(_cursorIndexOfName);
             final int _tmpCalories;
             _tmpCalories = _cursor.getInt(_cursorIndexOfCalories);
+            final int _tmpCarbs;
+            _tmpCarbs = _cursor.getInt(_cursorIndexOfCarbs);
+            final int _tmpProtein;
+            _tmpProtein = _cursor.getInt(_cursorIndexOfProtein);
+            final int _tmpFat;
+            _tmpFat = _cursor.getInt(_cursorIndexOfFat);
             final String _tmpTime;
             _tmpTime = _cursor.getString(_cursorIndexOfTime);
             final String _tmpImageUrl;
@@ -704,7 +779,7 @@ public final class RecordDao_Impl implements RecordDao {
             }
             final String _tmpCreatedAt;
             _tmpCreatedAt = _cursor.getString(_cursorIndexOfCreatedAt);
-            _item = new CalorieItemEntity(_tmpId,_tmpDate,_tmpType,_tmpName,_tmpCalories,_tmpTime,_tmpImageUrl,_tmpNotes,_tmpCreatedAt);
+            _item = new CalorieItemEntity(_tmpId,_tmpDate,_tmpType,_tmpName,_tmpCalories,_tmpCarbs,_tmpProtein,_tmpFat,_tmpTime,_tmpImageUrl,_tmpNotes,_tmpCreatedAt);
             _result.add(_item);
           }
           return _result;

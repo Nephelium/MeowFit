@@ -17,6 +17,26 @@ object CalorieUtils {
         return sdf.format(Date())
     }
 
+    fun calculateAge(birthDateStr: String): Int {
+        if (birthDateStr.isBlank()) return 0
+        try {
+            val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+            val birthDate = sdf.parse(birthDateStr) ?: return 0
+            val today = java.util.Calendar.getInstance()
+            val dob = java.util.Calendar.getInstance().apply { time = birthDate }
+            
+            var age = today.get(java.util.Calendar.YEAR) - dob.get(java.util.Calendar.YEAR)
+            
+            if (today.get(java.util.Calendar.DAY_OF_YEAR) < dob.get(java.util.Calendar.DAY_OF_YEAR)) {
+                age--
+            }
+            
+            return age
+        } catch (e: Exception) {
+            return 0
+        }
+    }
+
     fun formatDate(dateStr: String): String {
         try {
             val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
@@ -100,5 +120,49 @@ object CalorieUtils {
 
         // 3. Fallback to user profile weight
         return userProfile?.weight ?: 70f
+    }
+
+    // Calculate Macro Targets (Carbs, Protein, Fat) in grams
+    // Returns Triple(Carbs, Protein, Fat)
+    fun calculateMacroTargets(
+        weight: Float, // kg
+        goal: String, // "loss" (减重), "maintain" (保持), "gain" (增重)
+        dailyCalorieTarget: Int
+    ): Triple<Int, Int, Int> {
+        // Strategy: Protein & Fat based on body weight, Carbs is remainder
+        // Protein: Loss=2.0, Maintain=1.5, Gain=1.8 (g/kg)
+        // Fat: Loss=0.8, Maintain=1.0, Gain=1.0 (g/kg)
+        
+        val proteinPerKg = when(goal) {
+            "loss", "减重" -> 2.0f
+            "gain", "增重" -> 1.8f
+            else -> 1.5f
+        }
+        
+        val fatPerKg = when(goal) {
+            "loss", "减重" -> 0.8f
+            else -> 1.0f
+        }
+        
+        var protein = (weight * proteinPerKg).toInt()
+        var fat = (weight * fatPerKg).toInt()
+        
+        // Calories from P & F
+        val proteinCals = protein * 4
+        val fatCals = fat * 9
+        
+        // Remaining for Carbs
+        val remainingCals = dailyCalorieTarget - proteinCals - fatCals
+        var carbs = (remainingCals / 4).coerceAtLeast(0) // Ensure not negative
+        
+        // Safety check: if calculation is weird, fallback to percentages
+        if (carbs == 0 && dailyCalorieTarget > 0) {
+             // Fallback: 50/30/20 ratio
+             carbs = (dailyCalorieTarget * 0.5 / 4).toInt()
+             protein = (dailyCalorieTarget * 0.3 / 4).toInt()
+             fat = (dailyCalorieTarget * 0.2 / 9).toInt()
+        }
+        
+        return Triple(carbs, protein, fat)
     }
 }

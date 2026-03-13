@@ -29,6 +29,9 @@ data class AiConfig(
 data class AiResponseItem(
     val name: String,
     val calories: Int,
+    val carbs: Int = 0,
+    val protein: Int = 0,
+    val fat: Int = 0,
     val type: String, // "food" or "exercise"
     val time: String? = null,
     val notes: String? = null
@@ -42,9 +45,9 @@ data class AiResponse(
 class AiService(context: Context) {
     private val prefs = context.getSharedPreferences("ai_prefs", Context.MODE_PRIVATE)
     private val client = OkHttpClient.Builder()
-        .connectTimeout(60, TimeUnit.SECONDS)
-        .readTimeout(60, TimeUnit.SECONDS)
-        .writeTimeout(60, TimeUnit.SECONDS)
+        .connectTimeout(120, TimeUnit.SECONDS)
+        .readTimeout(120, TimeUnit.SECONDS)
+        .writeTimeout(120, TimeUnit.SECONDS)
         .build()
     private val gson = Gson()
     private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
@@ -57,6 +60,7 @@ class AiService(context: Context) {
 1. 如果用户的描述模糊（例如只说“吃了牛肉”没有重量，或“跑步”没有时长），**请不要猜测**。请在 "message" 字段中询问用户具体的重量、数量或时长。此时 "items" 返回空数组 []。
 2. 只有当用户提供了足够的信息（如“吃了200克牛肉”或“跑步30分钟”），或者用户明确要求你估算时，才进行记录。
 3. 对于用户上传的图片，如果能看清营养成分表，请根据成分表和估计的重量计算；如果没有，请根据视觉估算。
+4. **必须估算食物的碳水化合物、蛋白质和脂肪含量（克）**。如果用户未提供，请根据常见营养数据进行估算。
 
 请返回一个 JSON 对象，包含两个字段：
 1. "message": (字符串) 你对用户的回复。如果需要确认信息，请在这里提问。如果识别成功，请简要确认。
@@ -65,6 +69,9 @@ class AiService(context: Context) {
 "items" 数组中的每个对象应包含以下字段：
 - "name": (字符串) 食物或运动的名称（尽量具体）。
 - "calories": (整数) 估算的卡路里数值（食物为正数，运动消耗也为正数）。
+- "carbs": (整数) 碳水化合物（克），运动为0。
+- "protein": (整数) 蛋白质（克），运动为0。
+- "fat": (整数) 脂肪（克），运动为0。
 - "type": (字符串) "food" 或 "exercise"。
 - "time": (字符串) 可选，时间（格式 HH:mm）。
 - "notes": (字符串) 可选，备注信息（份量、强度等）。
@@ -74,8 +81,8 @@ class AiService(context: Context) {
 你是一个专业的营养师和运动教练。请分析用户上传的图片（可能有多张），判断是食物还是运动场景。
 
 1. 如果是食物：
-   - 如果包含营养成分表，请优先根据成分表和食物的大致重量计算热量。
-   - 如果没有成分表，请根据视觉估算份量和热量。
+   - 如果包含营养成分表，请优先根据成分表和食物的大致重量计算热量及三大营养素。
+   - 如果没有成分表，请根据视觉估算份量、热量及三大营养素。
    - 识别食物名称（尽量具体）。
 
 2. 如果是运动：
@@ -85,7 +92,15 @@ class AiService(context: Context) {
 3. 返回格式（纯JSON）：
 {
   "items": [
-    {"type": "food", "name": "...", "calories": 0, "notes": "..."}
+    {
+      "type": "food", 
+      "name": "...", 
+      "calories": 0, 
+      "carbs": 0,
+      "protein": 0,
+      "fat": 0,
+      "notes": "..."
+    }
   ],
   "summary": "简要说明识别结果，如果有多张图片请综合说明。"
 }
@@ -172,12 +187,17 @@ class AiService(context: Context) {
         }
     }
 
-    suspend fun analyzeImage(bitmaps: List<Bitmap>, userWeight: Float): AiResponse {
+    suspend fun analyzeImage(bitmaps: List<Bitmap>, userWeight: Float, notes: String? = null): AiResponse {
         val config = getConfig()
         if (config.apiKey.isBlank()) throw Exception("API Key is missing")
 
         val basePrompt = config.customImagePrompt?.takeIf { it.isNotBlank() } ?: DEFAULT_IMAGE_PROMPT
-        val prompt = "$basePrompt\n\n当前用户体重: ${userWeight}kg。"
+        
+        var prompt = "$basePrompt\n\n当前用户信息:"
+        prompt += "\n- 体重: ${userWeight}kg"
+        if (!notes.isNullOrBlank()) {
+            prompt += "\n- 用户备注: $notes (请重点参考备注内容)"
+        }
 
         return callLlmApiWithImages(config, prompt, bitmaps)
     }

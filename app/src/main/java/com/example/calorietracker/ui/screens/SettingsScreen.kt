@@ -33,24 +33,33 @@ import android.content.Intent
 import android.net.Uri
 import androidx.compose.ui.platform.LocalContext
 
+import com.example.calorietracker.data.update.UpdateStatus
+
 @Composable
 fun SettingsScreen(
     userProfile: UserProfileEntity?,
     availableExercises: List<String>,
+    updateStatus: UpdateStatus = UpdateStatus.Idle,
     onEditProfile: () -> Unit,
     onBackupSettings: () -> Unit,
     onAiSettings: () -> Unit,
     onSystemPromptSettings: () -> Unit,
     onUpdateSleepGoal: (Float) -> Unit,
     onUpdateExcludedExercises: (String) -> Unit,
-    onUpdateShowMacros: (Boolean) -> Unit
+    onUpdateShowMacros: (Boolean) -> Unit,
+    onCheckUpdate: (String) -> Unit = {},
+    onDismissUpdateDialog: () -> Unit = {}
 ) {
     var showSleepDialog by remember { mutableStateOf(false) }
     var showExcludedDialog by remember { mutableStateOf(false) }
-    var showUpdateDialog by remember { mutableStateOf(false) }
-
-    if (showUpdateDialog) {
-        CheckUpdateDialog(onDismiss = { showUpdateDialog = false })
+    
+    // Auto-show dialog if status changes to something relevant
+    if (updateStatus !is UpdateStatus.Idle) {
+        CheckUpdateDialog(
+            status = updateStatus,
+            onDismiss = onDismissUpdateDialog,
+            onCheck = { onCheckUpdate("1.3.3") } // Hardcoded current version for now, should ideally come from BuildConfig
+        )
     }
 
     if (showSleepDialog && userProfile != null) {
@@ -201,48 +210,101 @@ fun SettingsScreen(
         SettingsItem(
             icon = Icons.Default.Update,
             title = "检查更新",
-            subtitle = "当前版本: 1.3.2",
-            onClick = { showUpdateDialog = true }
+            subtitle = "当前版本: 1.3.3",
+            onClick = { onCheckUpdate("1.3.3") }
         )
     }
 }
 
 @Composable
-fun CheckUpdateDialog(onDismiss: () -> Unit) {
+fun CheckUpdateDialog(
+    status: UpdateStatus,
+    onDismiss: () -> Unit,
+    onCheck: () -> Unit
+) {
     val context = LocalContext.current
+    
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("检查更新") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                Text("当前版本: 1.3.2")
-                Text("请前往 GitHub 查看是否有新版本。")
+                Text("当前版本: 1.3.3")
                 
-                Button(
-                    onClick = {
-                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/Nephelium/MeowFit/releases/latest"))
-                        context.startActivity(intent)
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("去 GitHub 下载")
+                when (status) {
+                    is UpdateStatus.Idle -> {
+                         LaunchedEffect(Unit) {
+                             onCheck()
+                         }
+                         Row(verticalAlignment = Alignment.CenterVertically) {
+                             CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                             Spacer(modifier = Modifier.width(16.dp))
+                             Text("正在连接服务器...")
+                         }
+                    }
+                    is UpdateStatus.Checking -> {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                             CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                             Spacer(modifier = Modifier.width(16.dp))
+                             Text("正在检查更新...")
+                         }
+                    }
+                    is UpdateStatus.UpdateAvailable -> {
+                        Text(
+                            "发现新版本: ${status.release.tagName}",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        if (status.release.body.isNotBlank()) {
+                            Text(
+                                status.release.body,
+                                style = MaterialTheme.typography.bodySmall,
+                                maxLines = 10,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                            )
+                        }
+                        Button(
+                            onClick = {
+                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(status.release.htmlUrl))
+                                context.startActivity(intent)
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("去 GitHub 下载")
+                        }
+                    }
+                    is UpdateStatus.NoUpdate -> {
+                        Text("当前已是最新版本。", color = MaterialTheme.colorScheme.primary)
+                    }
+                    is UpdateStatus.Error -> {
+                        Text(
+                            "检查失败: ${status.message}",
+                            color = MaterialTheme.colorScheme.error
+                        )
+                        Button(onClick = onCheck) {
+                            Text("重试")
+                        }
+                    }
                 }
                 
-                OutlinedButton(
-                    onClick = {
-                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://zhuanlan.zhihu.com/p/2015441841684766800")) 
-                        context.startActivity(intent)
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("下载慢？跳转文章查看")
+                if (status !is UpdateStatus.UpdateAvailable) {
+                    Divider()
+                    OutlinedButton(
+                        onClick = {
+                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://zhuanlan.zhihu.com/p/2015441841684766800")) 
+                            context.startActivity(intent)
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("下载慢？跳转文章查看")
+                    }
+                    
+                    Text(
+                        "注意: 作者手动上传至百度网盘的时间可能会有一定的延迟，请耐心等待。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
-                
-                Text(
-                    "注意: 作者手动上传至百度网盘的时间可能会有一定的延迟，请耐心等待。",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
             }
         },
         confirmButton = {

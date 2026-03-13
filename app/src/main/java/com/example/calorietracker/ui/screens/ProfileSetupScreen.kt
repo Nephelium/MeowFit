@@ -21,7 +21,33 @@ fun ProfileSetupScreen(
 ) {
     var name by remember { mutableStateOf(userProfile?.name ?: "") }
     var gender by remember { mutableStateOf(userProfile?.gender ?: "male") }
-    var age by remember { mutableStateOf(userProfile?.age?.toString() ?: "25") }
+    
+    // Parse existing birthDate or fallback to age-based estimation or default
+    val initialDate = remember(userProfile) {
+        if (userProfile?.birthDate?.isNotBlank() == true) {
+            userProfile.birthDate
+        } else if (userProfile != null && userProfile.age > 0) {
+            val estimatedYear = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR) - userProfile.age
+            "$estimatedYear-01-01"
+        } else {
+            "2000-01-01"
+        }
+    }
+
+    val initialParts = initialDate.split("-")
+    var birthYear by remember { mutableStateOf(if (initialParts.size == 3) initialParts[0] else "2000") }
+    var birthMonth by remember { mutableStateOf(if (initialParts.size == 3) initialParts[1] else "01") }
+    var birthDay by remember { mutableStateOf(if (initialParts.size == 3) initialParts[2] else "01") }
+
+    // Calculate age dynamically
+    val ageInt = remember(birthYear, birthMonth, birthDay) {
+        val y = birthYear.toIntOrNull() ?: 2000
+        val m = birthMonth.toIntOrNull() ?: 1
+        val d = birthDay.toIntOrNull() ?: 1
+        val dateStr = String.format("%04d-%02d-%02d", y, m, d)
+        CalorieUtils.calculateAge(dateStr)
+    }
+
     var height by remember { mutableStateOf(userProfile?.height?.toString() ?: "170") }
     var weight by remember { mutableStateOf(userProfile?.weight?.toString() ?: "60") }
     var targetWeight by remember { mutableStateOf(userProfile?.targetWeight?.toString() ?: "55") }
@@ -59,12 +85,36 @@ fun ProfileSetupScreen(
                 Text("女", modifier = Modifier.padding(top = 12.dp))
             }
 
-            OutlinedTextField(
-                value = age,
-                onValueChange = { age = it },
-                label = { Text("年龄") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                modifier = Modifier.fillMaxWidth()
+            // Birth Date Input
+            Text("出生日期")
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = birthYear,
+                    onValueChange = { if (it.length <= 4 && it.all { c -> c.isDigit() }) birthYear = it },
+                    label = { Text("年") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.weight(1.5f)
+                )
+                OutlinedTextField(
+                    value = birthMonth,
+                    onValueChange = { if (it.length <= 2 && it.all { c -> c.isDigit() }) birthMonth = it },
+                    label = { Text("月") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.weight(1f)
+                )
+                OutlinedTextField(
+                    value = birthDay,
+                    onValueChange = { if (it.length <= 2 && it.all { c -> c.isDigit() }) birthDay = it },
+                    label = { Text("日") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.weight(1f)
+                )
+            }
+            Text(
+                text = "年龄: $ageInt 岁",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)
             )
 
             OutlinedTextField(
@@ -140,7 +190,11 @@ fun ProfileSetupScreen(
 
             Button(
                 onClick = {
-                    val ageInt = age.toIntOrNull() ?: 25
+                    val y = birthYear.toIntOrNull() ?: 2000
+                    val m = birthMonth.toIntOrNull() ?: 1
+                    val d = birthDay.toIntOrNull() ?: 1
+                    val dateStr = String.format("%04d-%02d-%02d", y, m, d)
+
                     val heightFloat = height.toFloatOrNull() ?: 170f
                     val weightFloat = weight.toFloatOrNull() ?: 60f
                     val targetWeightFloat = targetWeight.toFloatOrNull() ?: 55f
@@ -153,6 +207,7 @@ fun ProfileSetupScreen(
                         name = name.ifEmpty { "用户" },
                         gender = gender,
                         age = ageInt,
+                        birthDate = dateStr,
                         height = heightFloat,
                         weight = weightFloat,
                         targetWeight = targetWeightFloat,

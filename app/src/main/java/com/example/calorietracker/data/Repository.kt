@@ -80,23 +80,44 @@ class CalorieRepository(private val userDao: UserDao, private val recordDao: Rec
             recordDao.updateDailyRecord(record.copy(sleepDuration = duration))
         }
     }
-    suspend fun updateWeight(date: String, weight: Float) {
+    suspend fun updateWeight(date: String, weight: Float?) {
         var record = recordDao.getDailyRecordSync(date)
         if (record == null) {
-            record = DailyRecordEntity(date = date, weight = weight)
-            recordDao.insertDailyRecord(record)
+            // If weight is null, don't create record just for that
+            if (weight != null && weight > 0) {
+                record = DailyRecordEntity(date = date, weight = weight)
+                recordDao.insertDailyRecord(record)
+            }
         } else {
-            recordDao.updateDailyRecord(record.copy(weight = weight))
+            // If weight is <= 0, set to null
+            val w = if (weight != null && weight > 0) weight else null
+            recordDao.updateDailyRecord(record.copy(weight = w))
         }
         
         // Also update user profile weight if it's today or latest
         val profile = userDao.getUserProfile().firstOrNull()
-        if (profile != null && date == CalorieUtils.getTodayString()) {
+        if (profile != null && date == CalorieUtils.getTodayString() && weight != null && weight > 0) {
              // Recalculate target
+             val currentAge = if (profile.birthDate.isNotBlank()) CalorieUtils.calculateAge(profile.birthDate) else profile.age
+             
              val newTarget = CalorieUtils.calculateDailyTarget(
-                 profile.gender, weight, profile.height, profile.age, profile.activityLevel, profile.goal
+                 profile.gender, weight, profile.height, currentAge, profile.activityLevel, profile.goal
              )
-             userDao.insertUserProfile(profile.copy(weight = weight, dailyCalorieTarget = newTarget))
+             userDao.insertUserProfile(profile.copy(weight = weight, dailyCalorieTarget = newTarget, age = currentAge))
+        }
+    }
+
+    suspend fun updateExcludedExercises(exercises: String) {
+        val profile = userDao.getUserProfile().firstOrNull()
+        if (profile != null) {
+            userDao.insertUserProfile(profile.copy(excludedExercises = exercises))
+        }
+    }
+
+    suspend fun updateShowMacros(show: Boolean) {
+        val profile = userDao.getUserProfile().firstOrNull()
+        if (profile != null) {
+            userDao.insertUserProfile(profile.copy(showMacros = show))
         }
     }
 
@@ -104,15 +125,27 @@ class CalorieRepository(private val userDao: UserDao, private val recordDao: Rec
         val items = recordDao.getItemsForDate(date).first()
         val totalIntake = items.filter { it.type == "food" }.sumOf { it.calories }
         val totalBurned = items.filter { it.type == "exercise" }.sumOf { it.calories }
+        
+        // Calculate Macros
+        val totalCarbs = items.filter { it.type == "food" }.sumOf { it.carbs }
+        val totalProtein = items.filter { it.type == "food" }.sumOf { it.protein }
+        val totalFat = items.filter { it.type == "food" }.sumOf { it.fat }
+        
         val net = totalIntake - totalBurned
 
-        val record = recordDao.getDailyRecordSync(date)
-        if (record != null) {
-            recordDao.updateDailyRecord(record.copy(
-                totalIntake = totalIntake,
-                totalBurned = totalBurned,
-                netCalories = net
-            ))
+        var record = recordDao.getDailyRecordSync(date)
+        if (record == null) {
+            record = DailyRecordEntity(date = date)
+            recordDao.insertDailyRecord(record)
         }
+        
+        recordDao.updateDailyRecord(record.copy(
+            totalIntake = totalIntake,
+            totalBurned = totalBurned,
+            netCalories = net,
+            totalCarbs = totalCarbs,
+            totalProtein = totalProtein,
+            totalFat = totalFat
+        ))
     }
 }

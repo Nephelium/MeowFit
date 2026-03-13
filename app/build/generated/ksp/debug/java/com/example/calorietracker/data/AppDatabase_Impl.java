@@ -36,16 +36,16 @@ public final class AppDatabase_Impl extends AppDatabase {
   @Override
   @NonNull
   protected SupportSQLiteOpenHelper createOpenHelper(@NonNull final DatabaseConfiguration config) {
-    final SupportSQLiteOpenHelper.Callback _openCallback = new RoomOpenHelper(config, new RoomOpenHelper.Delegate(5) {
+    final SupportSQLiteOpenHelper.Callback _openCallback = new RoomOpenHelper(config, new RoomOpenHelper.Delegate(8) {
       @Override
       public void createAllTables(@NonNull final SupportSQLiteDatabase db) {
-        db.execSQL("CREATE TABLE IF NOT EXISTS `user_profile` (`id` INTEGER NOT NULL, `name` TEXT NOT NULL, `gender` TEXT NOT NULL, `age` INTEGER NOT NULL, `height` REAL NOT NULL, `weight` REAL NOT NULL, `targetWeight` REAL NOT NULL, `activityLevel` TEXT NOT NULL, `goal` TEXT NOT NULL, `dailyCalorieTarget` INTEGER NOT NULL, `sleepGoal` REAL NOT NULL, `createdAt` TEXT NOT NULL, PRIMARY KEY(`id`))");
-        db.execSQL("CREATE TABLE IF NOT EXISTS `daily_records` (`date` TEXT NOT NULL, `weight` REAL, `totalIntake` INTEGER NOT NULL, `totalBurned` INTEGER NOT NULL, `netCalories` INTEGER NOT NULL, `totalWater` INTEGER NOT NULL, `sleepDuration` INTEGER NOT NULL, PRIMARY KEY(`date`))");
-        db.execSQL("CREATE TABLE IF NOT EXISTS `calorie_items` (`id` TEXT NOT NULL, `date` TEXT NOT NULL, `type` TEXT NOT NULL, `name` TEXT NOT NULL, `calories` INTEGER NOT NULL, `time` TEXT NOT NULL, `imageUrl` TEXT, `notes` TEXT, `createdAt` TEXT NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`date`) REFERENCES `daily_records`(`date`) ON UPDATE NO ACTION ON DELETE CASCADE )");
+        db.execSQL("CREATE TABLE IF NOT EXISTS `user_profile` (`id` INTEGER NOT NULL, `name` TEXT NOT NULL, `gender` TEXT NOT NULL, `age` INTEGER NOT NULL, `birthDate` TEXT NOT NULL, `height` REAL NOT NULL, `weight` REAL NOT NULL, `targetWeight` REAL NOT NULL, `activityLevel` TEXT NOT NULL, `goal` TEXT NOT NULL, `dailyCalorieTarget` INTEGER NOT NULL, `sleepGoal` REAL NOT NULL, `showMacros` INTEGER NOT NULL, `excludedExercises` TEXT NOT NULL, `createdAt` TEXT NOT NULL, PRIMARY KEY(`id`))");
+        db.execSQL("CREATE TABLE IF NOT EXISTS `daily_records` (`date` TEXT NOT NULL, `weight` REAL, `totalIntake` INTEGER NOT NULL, `totalBurned` INTEGER NOT NULL, `netCalories` INTEGER NOT NULL, `totalCarbs` INTEGER NOT NULL, `totalProtein` INTEGER NOT NULL, `totalFat` INTEGER NOT NULL, `totalWater` INTEGER NOT NULL, `sleepDuration` INTEGER NOT NULL, PRIMARY KEY(`date`))");
+        db.execSQL("CREATE TABLE IF NOT EXISTS `calorie_items` (`id` TEXT NOT NULL, `date` TEXT NOT NULL, `type` TEXT NOT NULL, `name` TEXT NOT NULL, `calories` INTEGER NOT NULL, `carbs` INTEGER NOT NULL, `protein` INTEGER NOT NULL, `fat` INTEGER NOT NULL, `time` TEXT NOT NULL, `imageUrl` TEXT, `notes` TEXT, `createdAt` TEXT NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`date`) REFERENCES `daily_records`(`date`) ON UPDATE NO ACTION ON DELETE CASCADE )");
         db.execSQL("CREATE INDEX IF NOT EXISTS `index_calorie_items_date` ON `calorie_items` (`date`)");
         db.execSQL("CREATE TABLE IF NOT EXISTS `ai_chat_messages` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `role` TEXT NOT NULL, `content` TEXT NOT NULL, `imageUrl` TEXT, `timestamp` INTEGER NOT NULL)");
         db.execSQL("CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)");
-        db.execSQL("INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'e9c2f64e3180decc7cc70eca66fcccbf')");
+        db.execSQL("INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'ae96c2c32a806fc77b121b918133a16d')");
       }
 
       @Override
@@ -98,11 +98,12 @@ public final class AppDatabase_Impl extends AppDatabase {
       @NonNull
       public RoomOpenHelper.ValidationResult onValidateSchema(
           @NonNull final SupportSQLiteDatabase db) {
-        final HashMap<String, TableInfo.Column> _columnsUserProfile = new HashMap<String, TableInfo.Column>(12);
+        final HashMap<String, TableInfo.Column> _columnsUserProfile = new HashMap<String, TableInfo.Column>(15);
         _columnsUserProfile.put("id", new TableInfo.Column("id", "INTEGER", true, 1, null, TableInfo.CREATED_FROM_ENTITY));
         _columnsUserProfile.put("name", new TableInfo.Column("name", "TEXT", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
         _columnsUserProfile.put("gender", new TableInfo.Column("gender", "TEXT", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
         _columnsUserProfile.put("age", new TableInfo.Column("age", "INTEGER", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
+        _columnsUserProfile.put("birthDate", new TableInfo.Column("birthDate", "TEXT", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
         _columnsUserProfile.put("height", new TableInfo.Column("height", "REAL", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
         _columnsUserProfile.put("weight", new TableInfo.Column("weight", "REAL", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
         _columnsUserProfile.put("targetWeight", new TableInfo.Column("targetWeight", "REAL", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
@@ -110,6 +111,8 @@ public final class AppDatabase_Impl extends AppDatabase {
         _columnsUserProfile.put("goal", new TableInfo.Column("goal", "TEXT", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
         _columnsUserProfile.put("dailyCalorieTarget", new TableInfo.Column("dailyCalorieTarget", "INTEGER", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
         _columnsUserProfile.put("sleepGoal", new TableInfo.Column("sleepGoal", "REAL", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
+        _columnsUserProfile.put("showMacros", new TableInfo.Column("showMacros", "INTEGER", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
+        _columnsUserProfile.put("excludedExercises", new TableInfo.Column("excludedExercises", "TEXT", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
         _columnsUserProfile.put("createdAt", new TableInfo.Column("createdAt", "TEXT", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
         final HashSet<TableInfo.ForeignKey> _foreignKeysUserProfile = new HashSet<TableInfo.ForeignKey>(0);
         final HashSet<TableInfo.Index> _indicesUserProfile = new HashSet<TableInfo.Index>(0);
@@ -120,12 +123,15 @@ public final class AppDatabase_Impl extends AppDatabase {
                   + " Expected:\n" + _infoUserProfile + "\n"
                   + " Found:\n" + _existingUserProfile);
         }
-        final HashMap<String, TableInfo.Column> _columnsDailyRecords = new HashMap<String, TableInfo.Column>(7);
+        final HashMap<String, TableInfo.Column> _columnsDailyRecords = new HashMap<String, TableInfo.Column>(10);
         _columnsDailyRecords.put("date", new TableInfo.Column("date", "TEXT", true, 1, null, TableInfo.CREATED_FROM_ENTITY));
         _columnsDailyRecords.put("weight", new TableInfo.Column("weight", "REAL", false, 0, null, TableInfo.CREATED_FROM_ENTITY));
         _columnsDailyRecords.put("totalIntake", new TableInfo.Column("totalIntake", "INTEGER", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
         _columnsDailyRecords.put("totalBurned", new TableInfo.Column("totalBurned", "INTEGER", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
         _columnsDailyRecords.put("netCalories", new TableInfo.Column("netCalories", "INTEGER", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
+        _columnsDailyRecords.put("totalCarbs", new TableInfo.Column("totalCarbs", "INTEGER", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
+        _columnsDailyRecords.put("totalProtein", new TableInfo.Column("totalProtein", "INTEGER", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
+        _columnsDailyRecords.put("totalFat", new TableInfo.Column("totalFat", "INTEGER", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
         _columnsDailyRecords.put("totalWater", new TableInfo.Column("totalWater", "INTEGER", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
         _columnsDailyRecords.put("sleepDuration", new TableInfo.Column("sleepDuration", "INTEGER", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
         final HashSet<TableInfo.ForeignKey> _foreignKeysDailyRecords = new HashSet<TableInfo.ForeignKey>(0);
@@ -137,12 +143,15 @@ public final class AppDatabase_Impl extends AppDatabase {
                   + " Expected:\n" + _infoDailyRecords + "\n"
                   + " Found:\n" + _existingDailyRecords);
         }
-        final HashMap<String, TableInfo.Column> _columnsCalorieItems = new HashMap<String, TableInfo.Column>(9);
+        final HashMap<String, TableInfo.Column> _columnsCalorieItems = new HashMap<String, TableInfo.Column>(12);
         _columnsCalorieItems.put("id", new TableInfo.Column("id", "TEXT", true, 1, null, TableInfo.CREATED_FROM_ENTITY));
         _columnsCalorieItems.put("date", new TableInfo.Column("date", "TEXT", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
         _columnsCalorieItems.put("type", new TableInfo.Column("type", "TEXT", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
         _columnsCalorieItems.put("name", new TableInfo.Column("name", "TEXT", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
         _columnsCalorieItems.put("calories", new TableInfo.Column("calories", "INTEGER", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
+        _columnsCalorieItems.put("carbs", new TableInfo.Column("carbs", "INTEGER", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
+        _columnsCalorieItems.put("protein", new TableInfo.Column("protein", "INTEGER", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
+        _columnsCalorieItems.put("fat", new TableInfo.Column("fat", "INTEGER", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
         _columnsCalorieItems.put("time", new TableInfo.Column("time", "TEXT", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
         _columnsCalorieItems.put("imageUrl", new TableInfo.Column("imageUrl", "TEXT", false, 0, null, TableInfo.CREATED_FROM_ENTITY));
         _columnsCalorieItems.put("notes", new TableInfo.Column("notes", "TEXT", false, 0, null, TableInfo.CREATED_FROM_ENTITY));
@@ -175,7 +184,7 @@ public final class AppDatabase_Impl extends AppDatabase {
         }
         return new RoomOpenHelper.ValidationResult(true, null);
       }
-    }, "e9c2f64e3180decc7cc70eca66fcccbf", "de29eac877d36b47ce2f5f8f47065f85");
+    }, "ae96c2c32a806fc77b121b918133a16d", "d8010429171e4980779af2964db56723");
     final SupportSQLiteOpenHelper.Configuration _sqliteConfig = SupportSQLiteOpenHelper.Configuration.builder(config.context).name(config.name).callback(_openCallback).build();
     final SupportSQLiteOpenHelper _helper = config.sqliteOpenHelperFactory.create(_sqliteConfig);
     return _helper;

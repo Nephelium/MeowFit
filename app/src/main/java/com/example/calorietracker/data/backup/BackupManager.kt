@@ -18,8 +18,69 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+// DTO for UserProfile to handle version compatibility (missing fields in JSON)
+data class BackupUserProfile(
+    val id: Int = 1,
+    val name: String? = null,
+    val gender: String? = null,
+    val age: Int? = null,
+    val birthDate: String? = null,
+    val height: Float? = null,
+    val weight: Float? = null,
+    val targetWeight: Float? = null,
+    val activityLevel: String? = null,
+    val goal: String? = null,
+    val dailyCalorieTarget: Int? = null,
+    val sleepGoal: Float? = null,
+    val showMacros: Boolean? = null,
+    val excludedExercises: String? = null,
+    val createdAt: String? = null
+) {
+    fun toEntity(): UserProfileEntity {
+        return UserProfileEntity(
+            id = id,
+            name = name ?: "User",
+            gender = gender ?: "male",
+            age = age ?: 25,
+            birthDate = birthDate ?: "",
+            height = height ?: 170f,
+            weight = weight ?: 60f,
+            targetWeight = targetWeight ?: 55f,
+            activityLevel = activityLevel ?: "sedentary",
+            goal = goal ?: "lose",
+            dailyCalorieTarget = dailyCalorieTarget ?: 2000,
+            sleepGoal = sleepGoal ?: 7.5f,
+            showMacros = showMacros ?: false,
+            excludedExercises = excludedExercises ?: "",
+            createdAt = createdAt ?: java.util.Date().toString()
+        )
+    }
+
+    companion object {
+        fun fromEntity(entity: UserProfileEntity): BackupUserProfile {
+            return BackupUserProfile(
+                id = entity.id,
+                name = entity.name,
+                gender = entity.gender,
+                age = entity.age,
+                birthDate = entity.birthDate,
+                height = entity.height,
+                weight = entity.weight,
+                targetWeight = entity.targetWeight,
+                activityLevel = entity.activityLevel,
+                goal = entity.goal,
+                dailyCalorieTarget = entity.dailyCalorieTarget,
+                sleepGoal = entity.sleepGoal,
+                showMacros = entity.showMacros,
+                excludedExercises = entity.excludedExercises,
+                createdAt = entity.createdAt
+            )
+        }
+    }
+}
+
 data class BackupData(
-    val userProfile: UserProfileEntity?,
+    val userProfile: BackupUserProfile?,
     val dailyRecords: List<DailyRecordEntity>,
     val calorieItems: List<CalorieItemEntity>,
     val version: Int = 1,
@@ -45,7 +106,11 @@ class BackupManager(
             val userProfile = userDao.getUserProfileSync()
             val dailyRecords = recordDao.getAllRecordsSync()
             val calorieItems = recordDao.getAllCalorieItemsSync()
-            BackupData(userProfile, dailyRecords, calorieItems)
+            BackupData(
+                userProfile?.let { BackupUserProfile.fromEntity(it) }, 
+                dailyRecords, 
+                calorieItems
+            )
         }
     }
 
@@ -143,7 +208,7 @@ class BackupManager(
     private suspend fun restoreData(backupData: BackupData) {
         // Restore User Profile
         backupData.userProfile?.let {
-            userDao.insertUserProfile(it)
+            userDao.insertUserProfile(it.toEntity())
         }
         
         // Restore Records

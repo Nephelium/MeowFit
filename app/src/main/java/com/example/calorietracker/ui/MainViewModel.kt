@@ -12,7 +12,14 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
+import com.example.calorietracker.data.update.UpdateManager
+import com.example.calorietracker.data.update.UpdateStatus
+
 class MainViewModel(private val repository: CalorieRepository) : ViewModel() {
+
+    private val updateManager = UpdateManager()
+    private val _updateStatus = MutableStateFlow<UpdateStatus>(UpdateStatus.Idle)
+    val updateStatus: StateFlow<UpdateStatus> = _updateStatus.asStateFlow()
 
     private val _selectedDate = MutableStateFlow(CalorieUtils.getTodayString())
     val selectedDate: StateFlow<String> = _selectedDate.asStateFlow()
@@ -46,7 +53,17 @@ class MainViewModel(private val repository: CalorieRepository) : ViewModel() {
         }
     }
 
-    fun addRecordItem(type: String, name: String, calories: Int, time: String = "", notes: String? = null, targetDate: String? = null) {
+    fun addRecordItem(
+        type: String, 
+        name: String, 
+        calories: Int, 
+        carbs: Int = 0, 
+        protein: Int = 0, 
+        fat: Int = 0, 
+        time: String = "", 
+        notes: String? = null, 
+        targetDate: String? = null
+    ) {
         viewModelScope.launch {
             val item = CalorieItemEntity(
                 id = CalorieUtils.generateId(),
@@ -54,6 +71,9 @@ class MainViewModel(private val repository: CalorieRepository) : ViewModel() {
                 type = type,
                 name = name,
                 calories = calories,
+                carbs = carbs,
+                protein = protein,
+                fat = fat,
                 time = time.ifEmpty { 
                     java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date()) 
                 },
@@ -78,7 +98,20 @@ class MainViewModel(private val repository: CalorieRepository) : ViewModel() {
 
     fun updateWeight(weight: Float, targetDate: String? = null) {
         viewModelScope.launch {
-            repository.updateWeight(targetDate ?: _selectedDate.value, weight)
+            val w = if (weight <= 0f) null else weight
+            repository.updateWeight(targetDate ?: _selectedDate.value, w)
+        }
+    }
+
+    fun updateExcludedExercises(exercises: String) {
+        viewModelScope.launch {
+            repository.updateExcludedExercises(exercises)
+        }
+    }
+
+    fun updateShowMacros(show: Boolean) {
+        viewModelScope.launch {
+            repository.updateShowMacros(show)
         }
     }
 
@@ -92,6 +125,17 @@ class MainViewModel(private val repository: CalorieRepository) : ViewModel() {
         viewModelScope.launch {
             repository.updateSleep(targetDate ?: _selectedDate.value, duration)
         }
+    }
+
+    fun checkForUpdate(currentVersion: String) {
+        viewModelScope.launch {
+            _updateStatus.value = UpdateStatus.Checking
+            _updateStatus.value = updateManager.checkForUpdate(currentVersion)
+        }
+    }
+    
+    fun resetUpdateStatus() {
+        _updateStatus.value = UpdateStatus.Idle
     }
 }
 

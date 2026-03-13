@@ -61,6 +61,9 @@ data class EntryItem(
     val type: String, // "food" or "exercise"
     val name: String,
     val calories: Int,
+    val carbs: Int = 0,
+    val protein: Int = 0,
+    val fat: Int = 0,
     val time: String = "",
     val notes: String = ""
 )
@@ -71,17 +74,17 @@ fun AddEntryScreen(
     targetDate: String = CalorieUtils.getTodayString(),
     aiViewModel: AiViewModel,
     userWeight: Float = 70f,
+    showMacros: Boolean = false,
     onSave: (List<EntryItem>) -> Unit,
     onCancel: () -> Unit
 ) {
     var selectedTab by remember { mutableIntStateOf(2) } // Default to Manual for safety
     val tabs = listOf("AI 对话", "拍照识别", "手动输入")
 
-    // Clear AI state when leaving screen or switching tabs? 
-    // Ideally clear on entry.
-    LaunchedEffect(Unit) {
-        aiViewModel.clearState()
-    }
+    // Remove automatic state clearing to persist chat/results across navigation
+    // LaunchedEffect(Unit) {
+    //    aiViewModel.clearState()
+    // }
 
     Scaffold(
         topBar = {
@@ -142,9 +145,9 @@ fun AddEntryScreen(
                     .background(MaterialTheme.colorScheme.surface) // Light background for content area
             ) {
                 when (selectedTab) {
-                    0 -> AiDialogueTab(aiViewModel, userWeight, onSave)
-                    1 -> PhotoRecognitionTab(aiViewModel, userWeight, onSave)
-                    2 -> ManualInputTab(onSave = { item -> onSave(listOf(item)) }, onCancel = onCancel)
+                    0 -> AiDialogueTab(aiViewModel, userWeight, showMacros, onSave)
+                    1 -> PhotoRecognitionTab(aiViewModel, userWeight, showMacros, onSave)
+                    2 -> ManualInputTab(showMacros, onSave = { item -> onSave(listOf(item)) }, onCancel = onCancel)
                 }
             }
         }
@@ -153,12 +156,16 @@ fun AddEntryScreen(
 
 @Composable
 fun ManualInputTab(
+    showMacros: Boolean,
     onSave: (EntryItem) -> Unit,
     onCancel: () -> Unit
 ) {
     var type by remember { mutableStateOf("food") }
     var name by remember { mutableStateOf("") }
     var calories by remember { mutableStateOf("") }
+    var carbs by remember { mutableStateOf("") }
+    var protein by remember { mutableStateOf("") }
+    var fat by remember { mutableStateOf("") }
     var time by remember { mutableStateOf("") }
     var startTime by remember { mutableStateOf("") }
     var endTime by remember { mutableStateOf("") }
@@ -278,6 +285,38 @@ fun ManualInputTab(
                         singleLine = true
                     )
                     
+                    if (showMacros && type == "food") {
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedTextField(
+                                value = carbs,
+                                onValueChange = { if (it.all { char -> char.isDigit() }) carbs = it },
+                                label = { Text("碳水") },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(12.dp),
+                                singleLine = true
+                            )
+                            OutlinedTextField(
+                                value = protein,
+                                onValueChange = { if (it.all { char -> char.isDigit() }) protein = it },
+                                label = { Text("蛋白质") },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(12.dp),
+                                singleLine = true
+                            )
+                            OutlinedTextField(
+                                value = fat,
+                                onValueChange = { if (it.all { char -> char.isDigit() }) fat = it },
+                                label = { Text("脂肪") },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(12.dp),
+                                singleLine = true
+                            )
+                        }
+                    }
+                    
                     if (type == "food") {
                         Box {
                             OutlinedTextField(
@@ -365,6 +404,10 @@ fun ManualInputTab(
             Button(
                 onClick = {
                     val calInt = calories.toIntOrNull() ?: 0
+                    val carbsInt = carbs.toIntOrNull() ?: 0
+                    val proteinInt = protein.toIntOrNull() ?: 0
+                    val fatInt = fat.toIntOrNull() ?: 0
+                    
                     if (name.isNotEmpty() && calInt > 0) {
                         if (type == "exercise") {
                             val duration = calculateDuration()
@@ -373,9 +416,9 @@ fun ManualInputTab(
                             val durationNote = if (duration > 0) "时长: $duration 分钟" else ""
                             val finalNotes = if (notes.isNotBlank()) "$notes${if(durationNote.isNotBlank()) ", $durationNote" else ""}" else durationNote
                             
-                            onSave(EntryItem(type, name, calInt, recordTime, finalNotes))
+                            onSave(EntryItem(type = type, name = name, calories = calInt, time = recordTime, notes = finalNotes))
                         } else {
-                            onSave(EntryItem(type, name, calInt, time, notes))
+                            onSave(EntryItem(type = type, name = name, calories = calInt, carbs = carbsInt, protein = proteinInt, fat = fatInt, time = time, notes = notes))
                         }
                     }
                 },
@@ -393,6 +436,7 @@ fun ManualInputTab(
 fun AiDialogueTab(
     viewModel: AiViewModel,
     userWeight: Float,
+    showMacros: Boolean,
     onSave: (List<EntryItem>) -> Unit
 ) {
     var inputText by remember { mutableStateOf("") }
@@ -409,7 +453,8 @@ fun AiDialogueTab(
     )
     val displayMessages = if (dbMessages.isEmpty()) listOf(welcomeMessage) else dbMessages
 
-    val recognizedItems = remember { mutableStateListOf<EntryItem>() }
+    // Use ViewModel state for recognized items
+    val recognizedItems by viewModel.chatItemsFlow.collectAsState()
     
     // Image selection
     var selectedImageUris by remember { mutableStateOf<List<Uri>>(emptyList()) }
@@ -441,22 +486,6 @@ fun AiDialogueTab(
         )
     }
 
-    // Handle UI State (Success -> Add items to list)
-    LaunchedEffect(uiState) {
-        if (uiState is AiUiState.Success) {
-            val state = uiState as AiUiState.Success
-            val newItems = state.items.map { 
-                EntryItem(it.type, it.name, it.calories, it.time ?: "", it.notes ?: "") 
-            }
-            if (newItems.isNotEmpty()) {
-                recognizedItems.addAll(newItems)
-            }
-            viewModel.clearState()
-        } else if (uiState is AiUiState.Error) {
-             viewModel.clearState()
-        }
-    }
-    
     // Auto scroll
     LaunchedEffect(displayMessages.size, uiState) {
         if (displayMessages.isNotEmpty()) {
@@ -473,9 +502,10 @@ fun AiDialogueTab(
     if (editingIndex != -1 && editingIndex < recognizedItems.size) {
         EditEntryDialog(
             item = recognizedItems[editingIndex],
+            showMacros = showMacros,
             onDismiss = { editingIndex = -1 },
             onConfirm = { newItem ->
-                recognizedItems[editingIndex] = newItem
+                viewModel.updateChatItem(editingIndex, newItem)
                 editingIndex = -1
             }
         )
@@ -568,7 +598,8 @@ fun AiDialogueTab(
                         itemsIndexed(recognizedItems) { index, item ->
                             RecognizedItemCard(
                                 item = item,
-                                onDelete = { recognizedItems.removeAt(index) },
+                                showMacros = showMacros,
+                                onDelete = { viewModel.removeChatItem(index) },
                                 onEdit = { editingIndex = index }
                             )
                         }
@@ -577,7 +608,10 @@ fun AiDialogueTab(
                     Spacer(modifier = Modifier.height(8.dp))
                     
                     Button(
-                        onClick = { onSave(recognizedItems.toList()) },
+                        onClick = { 
+                            onSave(recognizedItems.toList())
+                            viewModel.clearChatItems()
+                        },
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(12.dp)
                     ) {
@@ -644,7 +678,7 @@ fun AiDialogueTab(
                         )
                     )
                     IconButton(onClick = {
-                        if (inputText.isNotBlank()) {
+                        if (inputText.isNotBlank() || selectedImageUris.isNotEmpty()) {
                             if (selectedImageUris.isNotEmpty()) {
                                 val bitmaps = selectedImageUris.mapNotNull { uri ->
                                     try {
@@ -652,14 +686,15 @@ fun AiDialogueTab(
                                         BitmapFactory.decodeStream(stream)
                                     } catch (e: Exception) { null }
                                 }
-                                viewModel.sendMessageWithImage(inputText, bitmaps, userWeight)
+                                val uriStrings = selectedImageUris.map { it.toString() }
+                                viewModel.sendMessageWithImage(inputText, bitmaps, uriStrings, userWeight)
                                 selectedImageUris = emptyList()
                             } else {
                                 viewModel.sendMessage(inputText, userWeight)
                             }
                             inputText = ""
                         }
-                    }, enabled = inputText.isNotBlank() && uiState !is AiUiState.Loading) {
+                    }, enabled = (inputText.isNotBlank() || selectedImageUris.isNotEmpty()) && uiState !is AiUiState.Loading) {
                         if (uiState is AiUiState.Loading) {
                             CircularProgressIndicator(modifier = Modifier.size(24.dp))
                         } else {
@@ -688,6 +723,9 @@ fun AiDialogueTab(
 @Composable
 fun ChatBubble(message: ChatMessage) {
     val isUser = message.role == "user"
+    val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
+    val context = LocalContext.current
+
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start
@@ -701,21 +739,65 @@ fun ChatBubble(message: ChatMessage) {
              )
         }
         
-        Surface(
-            shape = MaterialTheme.shapes.medium.copy(
-                bottomStart = if (!isUser) androidx.compose.foundation.shape.CornerSize(0.dp) else MaterialTheme.shapes.medium.bottomStart,
-                bottomEnd = if (isUser) androidx.compose.foundation.shape.CornerSize(0.dp) else MaterialTheme.shapes.medium.bottomEnd
-            ),
-            color = if (isUser) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-            shadowElevation = 1.dp,
-            modifier = Modifier.widthIn(max = 280.dp)
-        ) {
-            Text(
-                text = message.content,
-                modifier = Modifier.padding(12.dp),
-                color = if (isUser) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodyMedium
-            )
+        Column(horizontalAlignment = if (isUser) Alignment.End else Alignment.Start) {
+            // Display Image if present
+            if (!message.imageUrl.isNullOrBlank()) {
+                val uris = message.imageUrl.split("|")
+                if (uris.size > 1) {
+                    // Multiple images - use a row or grid
+                     androidx.compose.foundation.lazy.LazyRow(
+                         horizontalArrangement = Arrangement.spacedBy(8.dp),
+                         modifier = Modifier.padding(bottom = 4.dp)
+                     ) {
+                         items(uris) { uriStr ->
+                             AsyncImage(
+                                 model = Uri.parse(uriStr),
+                                 contentDescription = "User Image",
+                                 modifier = Modifier
+                                     .size(150.dp)
+                                     .clip(RoundedCornerShape(12.dp))
+                                     .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(12.dp))
+                             )
+                         }
+                     }
+                } else {
+                    // Single image
+                    AsyncImage(
+                        model = Uri.parse(uris[0]),
+                        contentDescription = "User Image",
+                        modifier = Modifier
+                            .padding(bottom = 4.dp)
+                            .widthIn(max = 200.dp)
+                            .heightIn(max = 200.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(12.dp))
+                    )
+                }
+            }
+
+            if (message.content.isNotBlank()) {
+                Surface(
+                    shape = MaterialTheme.shapes.medium.copy(
+                        bottomStart = if (!isUser) androidx.compose.foundation.shape.CornerSize(0.dp) else MaterialTheme.shapes.medium.bottomStart,
+                        bottomEnd = if (isUser) androidx.compose.foundation.shape.CornerSize(0.dp) else MaterialTheme.shapes.medium.bottomEnd
+                    ),
+                    color = if (isUser) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                    shadowElevation = 1.dp,
+                    modifier = Modifier
+                        .widthIn(max = 280.dp)
+                        .clickable {
+                            clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(message.content))
+                            android.widget.Toast.makeText(context, "已复制", android.widget.Toast.LENGTH_SHORT).show()
+                        }
+                ) {
+                    Text(
+                        text = message.content,
+                        modifier = Modifier.padding(12.dp),
+                        color = if (isUser) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+            }
         }
         
         if (isUser) {
@@ -733,6 +815,7 @@ data class ChatMessage(
     val id: String = java.util.UUID.randomUUID().toString(),
     val role: String, // "user", "assistant"
     val content: String,
+    val imageUrl: String? = null,
     val items: List<EntryItem> = emptyList()
 )
 
@@ -740,13 +823,14 @@ data class ChatMessage(
 fun PhotoRecognitionTab(
     viewModel: AiViewModel,
     userWeight: Float,
+    showMacros: Boolean,
     onSave: (List<EntryItem>) -> Unit
 ) {
     val context = LocalContext.current
     var selectedImageUris by remember { mutableStateOf<List<Uri>>(emptyList()) }
-    val uiState by viewModel.uiState.collectAsState()
+    val uiState by viewModel.photoUiState.collectAsState()
     
-    val recognizedItems = remember { mutableStateListOf<EntryItem>() }
+    val recognizedItems by viewModel.photoItemsFlow.collectAsState()
     var notes by remember { mutableStateOf("") }
     
     val launcher = rememberLauncherForActivityResult(
@@ -755,19 +839,8 @@ fun PhotoRecognitionTab(
         if (uris.isNotEmpty()) {
             selectedImageUris = uris
             // Auto reset state on new image
-            viewModel.clearState()
-        }
-    }
-
-    LaunchedEffect(uiState) {
-        if (uiState is AiUiState.Success) {
-            val items = (uiState as AiUiState.Success).items
-            items.forEach { 
-                recognizedItems.add(EntryItem(it.type, it.name, it.calories, it.time ?: "", it.notes ?: ""))
-            }
-            // Do NOT clear state immediately, we want to show summary
-        } else if (uiState is AiUiState.Error) {
-            // Error is handled in UI below
+            viewModel.clearPhotoState()
+            viewModel.clearPhotoItems() // Clear previous results when selecting new images
         }
     }
 
@@ -777,171 +850,199 @@ fun PhotoRecognitionTab(
     if (editingIndex != -1 && editingIndex < recognizedItems.size) {
         EditEntryDialog(
             item = recognizedItems[editingIndex],
+            showMacros = showMacros,
             onDismiss = { editingIndex = -1 },
             onConfirm = { newItem ->
-                recognizedItems[editingIndex] = newItem
+                viewModel.updatePhotoItem(editingIndex, newItem)
                 editingIndex = -1
             }
         )
     }
 
-    Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(200.dp)
-                .clip(RoundedCornerShape(16.dp))
-                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                .clickable { launcher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
-            contentAlignment = Alignment.Center
-        ) {
-            if (selectedImageUris.isNotEmpty()) {
-                androidx.compose.foundation.lazy.LazyRow(
-                    modifier = Modifier.fillMaxSize(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    contentPadding = PaddingValues(8.dp)
-                ) {
-                    items(selectedImageUris) { uri ->
-                         AsyncImage(
-                            model = uri,
-                            contentDescription = null,
-                            modifier = Modifier
-                                .fillMaxHeight()
-                                .aspectRatio(1f)
-                                .clip(RoundedCornerShape(8.dp))
-                        )
-                    }
-                }
-            } else {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(
-                        Icons.Default.AddPhotoAlternate,
-                        contentDescription = null,
-                        modifier = Modifier.size(48.dp),
-                        tint = MaterialTheme.colorScheme.primary
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text("点击选择图片 (支持多张)", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
-        }
-        
-        Spacer(modifier = Modifier.height(16.dp))
-        
-        OutlinedTextField(
-            value = notes,
-            onValueChange = { notes = it },
-            label = { Text("备注 (可选)") },
-            placeholder = { Text("例如：这碗面大概多少卡？") },
-            modifier = Modifier.fillMaxWidth(),
-            maxLines = 3
-        )
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            Button(
-                onClick = { 
-                    launcher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-                },
-                modifier = Modifier.weight(1f),
-                shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondaryContainer, contentColor = MaterialTheme.colorScheme.onSecondaryContainer)
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        // 1. Image Picker Area
+        item {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(200.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                    .clickable { launcher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                contentAlignment = Alignment.Center
             ) {
-                Icon(Icons.Default.CameraAlt, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("重选")
-            }
-            
-            Button(
-                onClick = {
-                    if (selectedImageUris.isNotEmpty()) {
-                        val bitmaps = selectedImageUris.mapNotNull { uri ->
-                            try {
-                                val inputStream = context.contentResolver.openInputStream(uri)
-                                BitmapFactory.decodeStream(inputStream)
-                            } catch (e: Exception) {
-                                null
-                            }
-                        }
-                        if (bitmaps.isNotEmpty()) {
-                            viewModel.analyzeImage(bitmaps, userWeight)
+                if (selectedImageUris.isNotEmpty()) {
+                    androidx.compose.foundation.lazy.LazyRow(
+                        modifier = Modifier.fillMaxSize(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        contentPadding = PaddingValues(8.dp)
+                    ) {
+                        items(selectedImageUris) { uri ->
+                             AsyncImage(
+                                model = uri,
+                                contentDescription = null,
+                                modifier = Modifier
+                                    .fillMaxHeight()
+                                    .aspectRatio(1f)
+                                    .clip(RoundedCornerShape(8.dp))
+                            )
                         }
                     }
-                },
-                enabled = selectedImageUris.isNotEmpty() && uiState !is AiUiState.Loading,
-                modifier = Modifier.weight(1f),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                if (uiState is AiUiState.Loading) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(18.dp),
-                        color = MaterialTheme.colorScheme.onPrimary,
-                        strokeWidth = 2.dp
-                    )
                 } else {
-                    Text("开始识别")
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(
+                            Icons.Default.AddPhotoAlternate,
+                            contentDescription = null,
+                            modifier = Modifier.size(48.dp),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text("点击选择图片 (支持多张)", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 }
             }
         }
         
-        if (uiState is AiUiState.Error) {
-            Text(
-                text = (uiState as AiUiState.Error).message,
-                color = MaterialTheme.colorScheme.error,
-                modifier = Modifier.padding(vertical = 8.dp)
+        // 2. Notes Input
+        item {
+            OutlinedTextField(
+                value = notes,
+                onValueChange = { notes = it },
+                label = { Text("备注 (可选)") },
+                placeholder = { Text("例如：这碗面大概多少卡？") },
+                modifier = Modifier.fillMaxWidth(),
+                maxLines = 3
             )
         }
+
+        // 3. Action Buttons
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Button(
+                    onClick = { 
+                        launcher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                    },
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondaryContainer, contentColor = MaterialTheme.colorScheme.onSecondaryContainer)
+                ) {
+                    Icon(Icons.Default.CameraAlt, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("重选")
+                }
+                
+                Button(
+                    onClick = {
+                        if (selectedImageUris.isNotEmpty()) {
+                            val bitmaps = selectedImageUris.mapNotNull { uri ->
+                                try {
+                                    val inputStream = context.contentResolver.openInputStream(uri)
+                                    BitmapFactory.decodeStream(inputStream)
+                                } catch (e: Exception) {
+                                    null
+                                }
+                            }
+                            if (bitmaps.isNotEmpty()) {
+                                viewModel.analyzeImage(bitmaps, userWeight, notes)
+                            }
+                        }
+                    },
+                    enabled = selectedImageUris.isNotEmpty() && uiState !is AiUiState.Loading,
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    if (uiState is AiUiState.Loading) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            color = MaterialTheme.colorScheme.onPrimary,
+                            strokeWidth = 2.dp
+                        )
+                    } else {
+                        Text("开始识别")
+                    }
+                }
+            }
+        }
         
+        // 4. Error Message
+        if (uiState is AiUiState.Error) {
+            item {
+                Text(
+                    text = (uiState as AiUiState.Error).message,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(vertical = 8.dp)
+                )
+            }
+        }
+        
+        // 5. Success Summary
         if (uiState is AiUiState.Success) {
             val summary = (uiState as AiUiState.Success).summary
             if (!summary.isNullOrBlank()) {
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
-                ) {
-                    Text(
-                        text = summary,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(12.dp)
-                    )
+                item {
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
+                    ) {
+                        Text(
+                            text = summary,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(12.dp)
+                        )
+                    }
                 }
             }
         }
 
-        Spacer(modifier = Modifier.height(8.dp))
-
-        // Recognized Items List
+        // 6. Recognized Items List Header
         if (recognizedItems.isNotEmpty()) {
-            Text("识别结果", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Spacer(modifier = Modifier.height(8.dp))
-            LazyColumn(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                itemsIndexed(recognizedItems) { index, item ->
-                    RecognizedItemCard(
-                        item = item,
-                        onDelete = { recognizedItems.removeAt(index) },
-                        onEdit = { editingIndex = index }
-                    )
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("识别结果", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    
+                    TextButton(onClick = { viewModel.clearPhotoItems() }) {
+                        Text("清空结果", color = MaterialTheme.colorScheme.error)
+                    }
                 }
             }
             
-            Spacer(modifier = Modifier.height(16.dp))
+            // 7. Recognized Items
+            itemsIndexed(recognizedItems) { index, item ->
+                RecognizedItemCard(
+                    item = item,
+                    showMacros = showMacros,
+                    onDelete = { viewModel.removePhotoItem(index) },
+                    onEdit = { editingIndex = index }
+                )
+            }
             
-            Button(
-                onClick = { onSave(recognizedItems.toList()) },
-                enabled = recognizedItems.isNotEmpty(),
-                modifier = Modifier.fillMaxWidth().height(50.dp),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Text("确认添加", style = MaterialTheme.typography.titleMedium)
+            // 8. Confirm Button
+            item {
+                Spacer(modifier = Modifier.height(16.dp))
+                Button(
+                    onClick = { 
+                        onSave(recognizedItems.toList())
+                        viewModel.clearPhotoItems()
+                    },
+                    enabled = recognizedItems.isNotEmpty(),
+                    modifier = Modifier.fillMaxWidth().height(50.dp),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text("确认添加", style = MaterialTheme.typography.titleMedium)
+                }
+                Spacer(modifier = Modifier.height(32.dp)) // Extra space at bottom
             }
         }
     }
@@ -950,14 +1051,16 @@ fun PhotoRecognitionTab(
 @Composable
 fun RecognizedItemCard(
     item: EntryItem,
+    showMacros: Boolean = false,
     onDelete: () -> Unit,
     onEdit: () -> Unit
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(1.dp),
-        shape = RoundedCornerShape(12.dp)
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)),
+        elevation = CardDefaults.cardElevation(0.dp),
+        shape = RoundedCornerShape(12.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
     ) {
         Row(
             modifier = Modifier.padding(12.dp),
@@ -967,7 +1070,10 @@ fun RecognizedItemCard(
                 Text(item.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 val timeInfo = if (item.time.isNotBlank()) " · ${item.time}" else ""
                 val notesInfo = if (item.notes.isNotBlank()) " · ${item.notes}" else ""
-                Text("${item.calories} kcal · ${if (item.type == "food") "食物" else "运动"}$timeInfo$notesInfo", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                val macroInfo = if (showMacros && item.type == "food") {
+                    " · 碳${item.carbs} 蛋${item.protein} 脂${item.fat}"
+                } else ""
+                Text("${item.calories} kcal · ${if (item.type == "food") "食物" else "运动"}$macroInfo$timeInfo$notesInfo", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             IconButton(onClick = onEdit) {
                 Icon(Icons.Default.Edit, contentDescription = "Edit", tint = MaterialTheme.colorScheme.primary)
@@ -982,11 +1088,15 @@ fun RecognizedItemCard(
 @Composable
 fun EditEntryDialog(
     item: EntryItem,
+    showMacros: Boolean = false,
     onDismiss: () -> Unit,
     onConfirm: (EntryItem) -> Unit
 ) {
     var name by remember { mutableStateOf(item.name) }
     var calories by remember { mutableStateOf(item.calories.toString()) }
+    var carbs by remember { mutableStateOf(item.carbs.toString()) }
+    var protein by remember { mutableStateOf(item.protein.toString()) }
+    var fat by remember { mutableStateOf(item.fat.toString()) }
     var time by remember { mutableStateOf(item.time) }
     var notes by remember { mutableStateOf(item.notes) }
 
@@ -1010,6 +1120,36 @@ fun EditEntryDialog(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp)
                 )
+                
+                if (showMacros && item.type == "food") {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(
+                            value = carbs,
+                            onValueChange = { if (it.all { char -> char.isDigit() }) carbs = it },
+                            label = { Text("碳水") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                        OutlinedTextField(
+                            value = protein,
+                            onValueChange = { if (it.all { char -> char.isDigit() }) protein = it },
+                            label = { Text("蛋白质") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                        OutlinedTextField(
+                            value = fat,
+                            onValueChange = { if (it.all { char -> char.isDigit() }) fat = it },
+                            label = { Text("脂肪") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                    }
+                }
+
                 OutlinedTextField(
                     value = time,
                     onValueChange = { time = it },
@@ -1029,8 +1169,12 @@ fun EditEntryDialog(
         confirmButton = {
             TextButton(onClick = {
                 val cal = calories.toIntOrNull() ?: 0
+                val c = carbs.toIntOrNull() ?: 0
+                val p = protein.toIntOrNull() ?: 0
+                val f = fat.toIntOrNull() ?: 0
+
                 if (name.isNotBlank()) {
-                    onConfirm(item.copy(name = name, calories = cal, time = time, notes = notes))
+                    onConfirm(item.copy(name = name, calories = cal, carbs = c, protein = p, fat = f, time = time, notes = notes))
                 }
             }) {
                 Text("确定")

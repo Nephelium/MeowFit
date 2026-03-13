@@ -24,6 +24,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.example.calorietracker.data.CalorieItemEntity
 import com.example.calorietracker.data.DailyRecordEntity
@@ -627,6 +628,48 @@ fun SummaryCard(userProfile: UserProfileEntity?, dailyRecord: DailyRecordEntity?
                     color = if (progress > 1f) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
                     trackColor = MaterialTheme.colorScheme.surfaceVariant
                 )
+                
+                // Macros (if enabled)
+                if (userProfile?.showMacros == true) {
+                    Spacer(modifier = Modifier.height(16.dp))
+                    
+                    val macroTargets = CalorieUtils.calculateMacroTargets(
+                        weight = effectiveWeight,
+                        goal = userProfile.goal,
+                        dailyCalorieTarget = target
+                    )
+                    
+                    val currentCarbs = dailyRecord?.totalCarbs ?: 0
+                    val currentProtein = dailyRecord?.totalProtein ?: 0
+                    val currentFat = dailyRecord?.totalFat ?: 0
+                    
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        MacroProgressBar(
+                            label = "碳水化合物",
+                            current = currentCarbs,
+                            target = macroTargets.first,
+                            color = Color(0xFF69F0AE), // Cyan/Greenish
+                            modifier = Modifier.weight(1f).padding(end = 4.dp)
+                        )
+                        MacroProgressBar(
+                            label = "蛋白质",
+                            current = currentProtein,
+                            target = macroTargets.second,
+                            color = Color(0xFF40C4FF), // Light Blue
+                            modifier = Modifier.weight(1f).padding(horizontal = 4.dp)
+                        )
+                        MacroProgressBar(
+                            label = "脂肪",
+                            current = currentFat,
+                            target = macroTargets.third,
+                            color = Color(0xFFFF8A80), // Pink/Red
+                            modifier = Modifier.weight(1f).padding(start = 4.dp)
+                        )
+                    }
+                }
             }
             
             Spacer(modifier = Modifier.height(24.dp))
@@ -640,6 +683,41 @@ fun SummaryCard(userProfile: UserProfileEntity?, dailyRecord: DailyRecordEntity?
                 StatItem("总摄入", "$intake", MaterialTheme.colorScheme.primary)
             }
         }
+    }
+}
+
+@Composable
+fun MacroProgressBar(
+    label: String,
+    current: Int,
+    target: Int,
+    color: Color,
+    modifier: Modifier = Modifier
+) {
+    val progress = if (target > 0) (current.toFloat() / target.toFloat()).coerceIn(0f, 1f) else 0f
+    
+    Column(modifier = modifier) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        LinearProgressIndicator(
+            progress = progress,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(6.dp)
+                .clip(RoundedCornerShape(3.dp)),
+            color = color,
+            trackColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+        )
+        Spacer(modifier = Modifier.height(2.dp))
+        Text(
+            text = "$current / ${target}克",
+            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
 

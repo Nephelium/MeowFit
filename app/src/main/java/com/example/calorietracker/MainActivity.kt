@@ -191,6 +191,7 @@ fun MainApp(viewModel: MainViewModel, aiViewModel: AiViewModel, backupViewModel:
             composable("overview") {
                 val allRecords by viewModel.allRecords.collectAsState()
                 val userProfile by viewModel.userProfile.collectAsState()
+                val allItems by viewModel.allCalorieItems.collectAsState()
                 
                 val (selectedDate, setSelectedDate) = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<String?>(null) }
                 
@@ -207,6 +208,7 @@ fun MainApp(viewModel: MainViewModel, aiViewModel: AiViewModel, backupViewModel:
 
                 OverviewScreen(
                     records = allRecords,
+                    allItems = allItems,
                     userProfile = userProfile,
                     onAddRecord = { date ->
                         navController.navigate("add_entry?date=$date")
@@ -228,8 +230,13 @@ fun MainApp(viewModel: MainViewModel, aiViewModel: AiViewModel, backupViewModel:
             
             composable("settings") {
                 val userProfile by viewModel.userProfile.collectAsState()
+                val allItems by viewModel.allCalorieItems.collectAsState()
+                val updateStatus by viewModel.updateStatus.collectAsState()
+                
                 SettingsScreen(
                     userProfile = userProfile,
+                    availableExercises = allItems.filter { it.type == "exercise" }.map { it.name }.distinct(),
+                    updateStatus = updateStatus,
                     onEditProfile = { navController.navigate("profile_edit") },
                     onBackupSettings = { navController.navigate("backup_settings") },
                     onAiSettings = { navController.navigate("ai_settings") },
@@ -238,7 +245,11 @@ fun MainApp(viewModel: MainViewModel, aiViewModel: AiViewModel, backupViewModel:
                         userProfile?.let {
                             viewModel.saveProfile(it.copy(sleepGoal = goal))
                         }
-                    }
+                    },
+                    onUpdateExcludedExercises = { viewModel.updateExcludedExercises(it) },
+                    onUpdateShowMacros = { viewModel.updateShowMacros(it) },
+                    onCheckUpdate = { currentVersion -> viewModel.checkForUpdate(currentVersion) },
+                    onDismissUpdateDialog = { viewModel.resetUpdateStatus() }
                 )
             }
 
@@ -276,9 +287,20 @@ fun MainApp(viewModel: MainViewModel, aiViewModel: AiViewModel, backupViewModel:
                     targetDate = date ?: com.example.calorietracker.util.CalorieUtils.getTodayString(),
                     aiViewModel = aiViewModel,
                     userWeight = userProfile?.weight ?: 70f,
+                    showMacros = userProfile?.showMacros ?: false,
                     onSave = { items ->
                         items.forEach { item ->
-                            viewModel.addRecordItem(item.type, item.name, item.calories, item.time, item.notes, targetDate = date)
+                            viewModel.addRecordItem(
+                                type = item.type,
+                                name = item.name,
+                                calories = item.calories,
+                                carbs = item.carbs,
+                                protein = item.protein,
+                                fat = item.fat,
+                                time = item.time,
+                                notes = item.notes,
+                                targetDate = date
+                            )
                         }
                         navController.popBackStack()
                     },

@@ -11,6 +11,7 @@ data class UserProfileEntity(
     val name: String,
     val gender: String, // "male", "female"
     val age: Int,
+    val birthDate: String = "", // YYYY-MM-DD
     val height: Float, // cm
     val weight: Float, // kg
     val targetWeight: Float, // kg
@@ -18,6 +19,8 @@ data class UserProfileEntity(
     val goal: String,
     val dailyCalorieTarget: Int,
     val sleepGoal: Float = 7.5f, // Hours, default 7.5
+    val showMacros: Boolean = false, // Whether to show carbs/protein/fat
+    val excludedExercises: String = "", // Comma-separated list of excluded exercises
     val createdAt: String
 )
 
@@ -28,6 +31,9 @@ data class DailyRecordEntity(
     val totalIntake: Int = 0,
     val totalBurned: Int = 0,
     val netCalories: Int = 0,
+    val totalCarbs: Int = 0, // grams
+    val totalProtein: Int = 0, // grams
+    val totalFat: Int = 0, // grams
     val totalWater: Int = 0, // ml
     val sleepDuration: Int = 0 // minutes
 )
@@ -50,6 +56,9 @@ data class CalorieItemEntity(
     val type: String, // "food", "exercise"
     val name: String,
     val calories: Int,
+    val carbs: Int = 0, // grams
+    val protein: Int = 0, // grams
+    val fat: Int = 0, // grams
     val time: String,
     val imageUrl: String? = null,
     val notes: String? = null,
