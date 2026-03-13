@@ -7,6 +7,12 @@ import java.util.Locale
 import java.util.UUID
 
 object CalorieUtils {
+    enum class MealCategory(val label: String) {
+        BREAKFAST("早餐"),
+        LUNCH("午餐"),
+        DINNER("晚餐"),
+        NIGHT_SNACK("宵夜")
+    }
     
     fun generateId(): String {
         return "${System.currentTimeMillis()}-${UUID.randomUUID().toString().substring(0, 9)}"
@@ -95,6 +101,17 @@ object CalorieUtils {
             return match.groupValues[1].toIntOrNull() ?: 0
         }
         return 0
+    }
+
+    fun getMealCategoryByTime(time: String): MealCategory {
+        val hour = time.takeIf { it.contains(":") }?.split(":")?.firstOrNull()?.toIntOrNull()
+        return when {
+            hour == null -> MealCategory.DINNER
+            hour in 4..10 -> MealCategory.BREAKFAST
+            hour in 11..16 -> MealCategory.LUNCH
+            hour in 17..21 -> MealCategory.DINNER
+            else -> MealCategory.NIGHT_SNACK
+        }
     }
 
     fun getEffectiveWeight(

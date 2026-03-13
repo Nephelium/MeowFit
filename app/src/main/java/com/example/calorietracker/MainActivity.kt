@@ -299,6 +299,7 @@ fun MainApp(viewModel: MainViewModel, aiViewModel: AiViewModel, backupViewModel:
                                 fat = item.fat,
                                 time = item.time,
                                 notes = item.notes,
+                                imageUrl = item.imagePath,
                                 targetDate = date
                             )
                         }

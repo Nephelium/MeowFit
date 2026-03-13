@@ -1,7 +1,5 @@
 package com.example.calorietracker.ui.screens
 
-import android.content.Intent
-import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
@@ -10,7 +8,6 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.example.calorietracker.ui.BackupViewModel
 import java.text.SimpleDateFormat
@@ -26,11 +23,8 @@ fun BackupSettingsScreen(
     val status by viewModel.status.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val lastAutoBackup by viewModel.lastAutoBackupTime.collectAsState()
-    val context = LocalContext.current
-
-    // Launcher for creating a file (Manual Backup)
     val createDocumentLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.CreateDocument("application/json")
+        contract = ActivityResultContracts.CreateDocument("application/zip")
     ) { uri ->
         uri?.let { viewModel.performManualBackup(it) }
     }
@@ -103,7 +97,7 @@ fun BackupSettingsScreen(
             Button(
                 onClick = {
                     val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
-                    createDocumentLauncher.launch("calorie_tracker_backup_$timestamp.json")
+                    createDocumentLauncher.launch("calorie_tracker_backup_$timestamp.zip")
                 },
                 modifier = Modifier.fillMaxWidth(),
                 enabled = !isLoading
@@ -113,7 +107,7 @@ fun BackupSettingsScreen(
             
             OutlinedButton(
                 onClick = {
-                    openDocumentLauncher.launch(arrayOf("application/json"))
+                    openDocumentLauncher.launch(arrayOf("application/zip", "application/octet-stream"))
                 },
                 modifier = Modifier.fillMaxWidth(),
                 enabled = !isLoading

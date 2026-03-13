@@ -62,6 +62,7 @@ class MainViewModel(private val repository: CalorieRepository) : ViewModel() {
         fat: Int = 0, 
         time: String = "", 
         notes: String? = null, 
+        imageUrl: String? = null,
         targetDate: String? = null
     ) {
         viewModelScope.launch {
@@ -77,6 +78,7 @@ class MainViewModel(private val repository: CalorieRepository) : ViewModel() {
                 time = time.ifEmpty { 
                     java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date()) 
                 },
+                imageUrl = imageUrl,
                 notes = notes,
                 createdAt = java.util.Date().toString()
             )

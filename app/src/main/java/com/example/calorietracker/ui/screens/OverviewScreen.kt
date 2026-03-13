@@ -48,7 +48,6 @@ import androidx.compose.ui.platform.LocalContext
 import android.graphics.Bitmap
 import android.graphics.Canvas as AndroidCanvas
 import android.view.View
-import androidx.compose.ui.graphics.asAndroidPath
 import androidx.compose.ui.platform.ComposeView
 import android.content.Intent
 import android.net.Uri
@@ -352,6 +351,20 @@ fun generateCalendarBitmap(
     userProfile: UserProfileEntity?
 ): Bitmap {
     // 1. Calculate stats
+    fun getTarget(date: String): Int {
+        return if (userProfile != null) {
+            val effectiveWeight = CalorieUtils.getEffectiveWeight(date, records, userProfile)
+            CalorieUtils.calculateDailyTarget(
+                gender = userProfile.gender,
+                weight = effectiveWeight,
+                height = userProfile.height,
+                age = userProfile.age,
+                activityLevel = userProfile.activityLevel,
+                goal = userProfile.goal
+            )
+        } else 2000
+    }
+
     val relevantRecords = records.filter { record ->
         val parts = record.date.split("-")
         if (parts.size == 3) {
@@ -382,10 +395,9 @@ fun generateCalendarBitmap(
             "💤 哇！${periodStr}有 ${qualifiedCount} 天睡饱啦！✨"
         }
         HeatmapMetric.Net -> {
-            // Using 2000 as default BMR to match the heatmap logic in this file
             val validRecords = relevantRecords.filter { it.totalIntake > 0 || it.totalBurned > 0 }
-            val deficitCount = validRecords.count { (it.totalIntake - (2000 + it.totalBurned)) <= 0 }
-            val surplusCount = validRecords.count { (it.totalIntake - (2000 + it.totalBurned)) > 0 }
+            val deficitCount = validRecords.count { (it.totalIntake - (getTarget(it.date) + it.totalBurned)) <= 0 }
+            val surplusCount = validRecords.count { (it.totalIntake - (getTarget(it.date) + it.totalBurned)) > 0 }
             // Force split into 3 lines for better readability
             "🔥 燃脂大作战！\n成功制造缺口 ${deficitCount} 天，只有 ${surplusCount} 天稍微放纵了一下哦~🍰"
         }
@@ -781,7 +793,8 @@ fun generateCalendarBitmap(
                         HeatmapMetric.Net -> {
                             val intake = record?.totalIntake ?: 0
                             val burned = record?.totalBurned ?: 0
-                            intake - (2000 + burned)
+                            val target = getTarget(dateStr)
+                            intake - (target + burned)
                         }
                         HeatmapMetric.Weight -> {
                             val w = record?.weight ?: 0f
@@ -878,7 +891,8 @@ fun generateCalendarBitmap(
                 HeatmapMetric.Net -> {
                     val intake = record?.totalIntake ?: 0
                     val burned = record?.totalBurned ?: 0
-                    intake - (2000 + burned)
+                    val target = getTarget(dateStr)
+                    intake - (target + burned)
                 }
                 HeatmapMetric.Weight -> {
                     val w = record?.weight ?: 0f
@@ -1635,6 +1649,56 @@ fun StatBox(label: String, value: String, color: Color) {
 }
 
 @Composable
+fun DetailRecordSectionHeader(title: String, calories: Int, accentColor: Color) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 8.dp, bottom = 6.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleSmall,
+            color = accentColor,
+            fontWeight = FontWeight.SemiBold
+        )
+        Text(
+            text = "${calories} kcal",
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontWeight = FontWeight.Medium
+        )
+    }
+}
+
+@Composable
+fun DetailRecordRow(item: CalorieItemEntity) {
+    val isFood = item.type == "food"
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            if (isFood) Icons.Default.Restaurant else Icons.Default.FitnessCenter,
+            contentDescription = null,
+            tint = if (isFood) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary,
+            modifier = Modifier.size(16.dp)
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(item.name, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+        Text(
+            "${if (isFood) "+" else "-"}${item.calories}",
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Bold,
+            color = if (isFood) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary
+        )
+    }
+}
+
+@Composable
 fun DayDetailDialog(
     date: String,
     record: DailyRecordEntity?,
@@ -1866,32 +1930,100 @@ fun DayDetailDialog(
                         Text("记录详情", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Spacer(modifier = Modifier.height(8.dp))
                         
+                        val breakfastItems = remember(items) {
+                            items
+                                .filter { it.type == "food" && CalorieUtils.getMealCategoryByTime(it.time) == CalorieUtils.MealCategory.BREAKFAST }
+                                .sortedBy { it.time }
+                        }
+                        val lunchItems = remember(items) {
+                            items
+                                .filter { it.type == "food" && CalorieUtils.getMealCategoryByTime(it.time) == CalorieUtils.MealCategory.LUNCH }
+                                .sortedBy { it.time }
+                        }
+                        val dinnerItems = remember(items) {
+                            items
+                                .filter { it.type == "food" && CalorieUtils.getMealCategoryByTime(it.time) == CalorieUtils.MealCategory.DINNER }
+                                .sortedBy { it.time }
+                        }
+                        val nightSnackItems = remember(items) {
+                            items
+                                .filter { it.type == "food" && CalorieUtils.getMealCategoryByTime(it.time) == CalorieUtils.MealCategory.NIGHT_SNACK }
+                                .sortedBy { it.time }
+                        }
+                        val exerciseItems = remember(items) {
+                            items
+                                .filter { it.type == "exercise" }
+                                .sortedByDescending { it.time }
+                        }
+
                         if (items.isEmpty()) {
                             Text("无饮食运动记录", style = MaterialTheme.typography.bodySmall, color = Color.Gray, modifier = Modifier.padding(bottom = 16.dp))
                         } else {
                             LazyColumn(modifier = Modifier.weight(1f, fill = false)) {
-                                items(items) { item ->
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        val isFood = item.type == "food"
-                                        Icon(
-                                            if (isFood) Icons.Default.Restaurant else Icons.Default.FitnessCenter,
-                                            contentDescription = null,
-                                            tint = if (isFood) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Text(item.name, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-                                        Text(
-                                            "${if (isFood) "+" else "-"}${item.calories}", 
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            fontWeight = FontWeight.Bold,
-                                            color = if (isFood) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary
+                                if (breakfastItems.isNotEmpty()) {
+                                    item {
+                                        DetailRecordSectionHeader(
+                                            title = "早餐",
+                                            calories = breakfastItems.sumOf { it.calories },
+                                            accentColor = MaterialTheme.colorScheme.primary
                                         )
                                     }
-                                    Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                                    items(breakfastItems) { item ->
+                                        DetailRecordRow(item)
+                                        Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                                    }
+                                }
+                                if (lunchItems.isNotEmpty()) {
+                                    item {
+                                        DetailRecordSectionHeader(
+                                            title = "午餐",
+                                            calories = lunchItems.sumOf { it.calories },
+                                            accentColor = Color(0xFF26A69A)
+                                        )
+                                    }
+                                    items(lunchItems) { item ->
+                                        DetailRecordRow(item)
+                                        Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                                    }
+                                }
+                                if (dinnerItems.isNotEmpty()) {
+                                    item {
+                                        DetailRecordSectionHeader(
+                                            title = "晚餐",
+                                            calories = dinnerItems.sumOf { it.calories },
+                                            accentColor = Color(0xFFFF7043)
+                                        )
+                                    }
+                                    items(dinnerItems) { item ->
+                                        DetailRecordRow(item)
+                                        Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                                    }
+                                }
+                                if (exerciseItems.isNotEmpty()) {
+                                    item {
+                                        DetailRecordSectionHeader(
+                                            title = "运动",
+                                            calories = exerciseItems.sumOf { it.calories },
+                                            accentColor = MaterialTheme.colorScheme.secondary
+                                        )
+                                    }
+                                    items(exerciseItems) { item ->
+                                        DetailRecordRow(item)
+                                        Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                                    }
+                                }
+                                if (nightSnackItems.isNotEmpty()) {
+                                    item {
+                                        DetailRecordSectionHeader(
+                                            title = "宵夜",
+                                            calories = nightSnackItems.sumOf { it.calories },
+                                            accentColor = Color(0xFF7E57C2)
+                                        )
+                                    }
+                                    items(nightSnackItems) { item ->
+                                        DetailRecordRow(item)
+                                        Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                                    }
                                 }
                             }
                         }

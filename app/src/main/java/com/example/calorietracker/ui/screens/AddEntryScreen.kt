@@ -52,7 +52,9 @@ import coil.compose.AsyncImage
 import com.example.calorietracker.ui.AiUiState
 import com.example.calorietracker.ui.AiViewModel
 import com.example.calorietracker.util.CalorieUtils
+import com.example.calorietracker.util.ImageStorageUtils
 import java.io.InputStream
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
@@ -65,7 +67,8 @@ data class EntryItem(
     val protein: Int = 0,
     val fat: Int = 0,
     val time: String = "",
-    val notes: String = ""
+    val notes: String = "",
+    val imagePath: String? = null
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -170,6 +173,12 @@ fun ManualInputTab(
     var startTime by remember { mutableStateOf("") }
     var endTime by remember { mutableStateOf("") }
     var notes by remember { mutableStateOf("") }
+    var selectedImageUri by remember { mutableStateOf<Uri?>(null) }
+    val imagePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        selectedImageUri = uri
+    }
 
     val context = LocalContext.current
     val calendar = Calendar.getInstance()
@@ -394,8 +403,40 @@ fun ManualInputTab(
                         modifier = Modifier.fillMaxWidth(),
                         leadingIcon = { Icon(Icons.Default.Notes, null) },
                         shape = RoundedCornerShape(12.dp),
-                        singleLine = true
+                        singleLine = false,
+                        minLines = 3,
+                        maxLines = 5
                     )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        OutlinedButton(
+                            onClick = { imagePickerLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
+                        ) {
+                            Icon(Icons.Default.AddPhotoAlternate, contentDescription = null)
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(if (selectedImageUri == null) "添加备注图片" else "更换图片")
+                        }
+                        if (selectedImageUri != null) {
+                            TextButton(onClick = { selectedImageUri = null }) {
+                                Text("移除")
+                            }
+                        }
+                    }
+
+                    if (selectedImageUri != null) {
+                        AsyncImage(
+                            model = selectedImageUri,
+                            contentDescription = null,
+                            modifier = Modifier
+                                .size(72.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(10.dp))
+                        )
+                    }
                 }
             }
         }
@@ -409,6 +450,7 @@ fun ManualInputTab(
                     val fatInt = fat.toIntOrNull() ?: 0
                     
                     if (name.isNotEmpty() && calInt > 0) {
+                        val compressedImagePath = selectedImageUri?.let { ImageStorageUtils.compressAndSaveImage(context, it) }
                         if (type == "exercise") {
                             val duration = calculateDuration()
                             // Use startTime as the record time
@@ -416,9 +458,9 @@ fun ManualInputTab(
                             val durationNote = if (duration > 0) "时长: $duration 分钟" else ""
                             val finalNotes = if (notes.isNotBlank()) "$notes${if(durationNote.isNotBlank()) ", $durationNote" else ""}" else durationNote
                             
-                            onSave(EntryItem(type = type, name = name, calories = calInt, time = recordTime, notes = finalNotes))
+                            onSave(EntryItem(type = type, name = name, calories = calInt, time = recordTime, notes = finalNotes, imagePath = compressedImagePath))
                         } else {
-                            onSave(EntryItem(type = type, name = name, calories = calInt, carbs = carbsInt, protein = proteinInt, fat = fatInt, time = time, notes = notes))
+                            onSave(EntryItem(type = type, name = name, calories = calInt, carbs = carbsInt, protein = proteinInt, fat = fatInt, time = time, notes = notes, imagePath = compressedImagePath))
                         }
                     }
                 },
@@ -909,13 +951,14 @@ fun PhotoRecognitionTab(
         // 2. Notes Input
         item {
             OutlinedTextField(
-                value = notes,
-                onValueChange = { notes = it },
-                label = { Text("备注 (可选)") },
-                placeholder = { Text("例如：这碗面大概多少卡？") },
-                modifier = Modifier.fillMaxWidth(),
-                maxLines = 3
-            )
+            value = notes,
+            onValueChange = { notes = it },
+            label = { Text("备注 (可选)") },
+            placeholder = { Text("例如：这碗面大概多少卡？") },
+            modifier = Modifier.fillMaxWidth(),
+            minLines = 3,
+            maxLines = 5
+        )
         }
 
         // 3. Action Buttons
@@ -1070,10 +1113,11 @@ fun RecognizedItemCard(
                 Text(item.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 val timeInfo = if (item.time.isNotBlank()) " · ${item.time}" else ""
                 val notesInfo = if (item.notes.isNotBlank()) " · ${item.notes}" else ""
+                val imageInfo = if (!item.imagePath.isNullOrBlank()) " · 已附图" else ""
                 val macroInfo = if (showMacros && item.type == "food") {
                     " · 碳${item.carbs} 蛋${item.protein} 脂${item.fat}"
                 } else ""
-                Text("${item.calories} kcal · ${if (item.type == "food") "食物" else "运动"}$macroInfo$timeInfo$notesInfo", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("${item.calories} kcal · ${if (item.type == "food") "食物" else "运动"}$macroInfo$timeInfo$notesInfo$imageInfo", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             IconButton(onClick = onEdit) {
                 Icon(Icons.Default.Edit, contentDescription = "Edit", tint = MaterialTheme.colorScheme.primary)
@@ -1162,7 +1206,10 @@ fun EditEntryDialog(
                     onValueChange = { notes = it },
                     label = { Text("备注") },
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp)
+                    shape = RoundedCornerShape(12.dp),
+                    singleLine = false,
+                    minLines = 3,
+                    maxLines = 5
                 )
             }
         },

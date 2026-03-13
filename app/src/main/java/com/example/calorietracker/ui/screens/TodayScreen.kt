@@ -1,7 +1,21 @@
 package com.example.calorietracker.ui.screens
 
+import android.content.ContentValues
+import android.content.Context
+import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.net.Uri
+import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -15,6 +29,8 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material.icons.filled.FitnessCenter
+import androidx.compose.material.icons.filled.AddPhotoAlternate
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -22,14 +38,21 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.core.content.FileProvider
+import coil.compose.AsyncImage
 import com.example.calorietracker.data.CalorieItemEntity
 import com.example.calorietracker.data.DailyRecordEntity
 import com.example.calorietracker.data.UserProfileEntity
 import com.example.calorietracker.util.CalorieUtils
+import com.example.calorietracker.util.ImageStorageUtils
+import java.io.File
+import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
@@ -61,6 +84,7 @@ fun TodayScreen(
     onUpdateWater: (Int) -> Unit,
     onUpdateSleep: (Int) -> Unit // minutes
 ) {
+    val context = LocalContext.current
     var showWeightDialog by remember { mutableStateOf(false) }
     var showWaterDialog by remember { mutableStateOf(false) }
     var showSleepDialog by remember { mutableStateOf(false) }
@@ -69,11 +93,76 @@ fun TodayScreen(
     var showTimerDialog by remember { mutableStateOf(false) }
     var exerciseName by remember { mutableStateOf("") }
     var editingItem by remember { mutableStateOf<CalorieItemEntity?>(null) }
+    var previewImagePath by remember { mutableStateOf<String?>(null) }
+    var showShareDialog by remember { mutableStateOf(false) }
 
     // Calculate effective weight for today (or selected date)
     // If dailyRecord.weight is set, use it. Otherwise find previous.
     val effectiveWeight = remember(dailyRecord, allRecords, selectedDate, userProfile) {
         CalorieUtils.getEffectiveWeight(selectedDate, allRecords, userProfile)
+    }
+    val breakfastItems = remember(items) { items.filter { it.type == "food" && CalorieUtils.getMealCategoryByTime(it.time) == CalorieUtils.MealCategory.BREAKFAST }.sortedBy { it.time } }
+    val lunchItems = remember(items) { items.filter { it.type == "food" && CalorieUtils.getMealCategoryByTime(it.time) == CalorieUtils.MealCategory.LUNCH }.sortedBy { it.time } }
+    val dinnerItems = remember(items) { items.filter { it.type == "food" && CalorieUtils.getMealCategoryByTime(it.time) == CalorieUtils.MealCategory.DINNER }.sortedBy { it.time } }
+    val nightSnackItems = remember(items) { items.filter { it.type == "food" && CalorieUtils.getMealCategoryByTime(it.time) == CalorieUtils.MealCategory.NIGHT_SNACK }.sortedBy { it.time } }
+    val exerciseItems = remember(items) { items.filter { it.type == "exercise" }.sortedByDescending { it.time } }
+
+    if (!previewImagePath.isNullOrBlank()) {
+        Dialog(onDismissRequest = { previewImagePath = null }) {
+            Card(
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            ) {
+                AsyncImage(
+                    model = File(previewImagePath!!),
+                    contentDescription = null,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 280.dp, max = 520.dp)
+                        .padding(12.dp)
+                )
+            }
+        }
+    }
+
+    if (showShareDialog) {
+        AlertDialog(
+            onDismissRequest = { showShareDialog = false },
+            title = { Text("分享今日记录") },
+            text = { Text("可保存为图片，或直接分享给好友") },
+            confirmButton = {
+                TextButton(onClick = {
+                    try {
+                        val bitmap = generateTodayLongScreenshot(context, userProfile, dailyRecord, allRecords, items, selectedDate)
+                        saveTodayBitmap(context, bitmap)
+                    } catch (e: Exception) {
+                        Toast.makeText(context, "保存失败: ${e.message}", Toast.LENGTH_SHORT).show()
+                    }
+                    showShareDialog = false
+                }) {
+                    Text("保存图片")
+                }
+            },
+            dismissButton = {
+                Row {
+                    TextButton(onClick = {
+                        try {
+                            val bitmap = generateTodayLongScreenshot(context, userProfile, dailyRecord, allRecords, items, selectedDate)
+                            shareTodayBitmap(context, bitmap)
+                        } catch (e: Exception) {
+                            Toast.makeText(context, "分享失败: ${e.message}", Toast.LENGTH_SHORT).show()
+                        }
+                        showShareDialog = false
+                    }) {
+                        Text("分享")
+                    }
+                    TextButton(onClick = { showShareDialog = false }) {
+                        Text("取消")
+                    }
+                }
+            }
+        )
     }
 
     if (editingItem != null) {
@@ -250,6 +339,9 @@ fun TodayScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = { showShareDialog = true }) {
+                        Icon(Icons.Default.Share, "Share Today")
+                    }
                     IconButton(onClick = {
                          val cal = Calendar.getInstance()
                         val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
@@ -371,13 +463,35 @@ fun TodayScreen(
                     EmptyState()
                 }
             }
-
-            items(items) { item ->
-                RecordItem(
-                    item = item, 
-                    onDelete = onDeleteItem, 
-                    onEdit = { editingItem = it }
-                )
+            if (breakfastItems.isNotEmpty()) {
+                item { RecordSectionHeader("早餐", breakfastItems.sumOf { it.calories }, MaterialTheme.colorScheme.primary) }
+                items(breakfastItems) { item ->
+                    RecordItem(item = item, onDelete = onDeleteItem, onEdit = { editingItem = it }, onImagePreview = { previewImagePath = it })
+                }
+            }
+            if (lunchItems.isNotEmpty()) {
+                item { RecordSectionHeader("午餐", lunchItems.sumOf { it.calories }, Color(0xFF26A69A)) }
+                items(lunchItems) { item ->
+                    RecordItem(item = item, onDelete = onDeleteItem, onEdit = { editingItem = it }, onImagePreview = { previewImagePath = it })
+                }
+            }
+            if (dinnerItems.isNotEmpty()) {
+                item { RecordSectionHeader("晚餐", dinnerItems.sumOf { it.calories }, Color(0xFFFF7043)) }
+                items(dinnerItems) { item ->
+                    RecordItem(item = item, onDelete = onDeleteItem, onEdit = { editingItem = it }, onImagePreview = { previewImagePath = it })
+                }
+            }
+            if (nightSnackItems.isNotEmpty()) {
+                item { RecordSectionHeader("宵夜", nightSnackItems.sumOf { it.calories }, Color(0xFF7E57C2)) }
+                items(nightSnackItems) { item ->
+                    RecordItem(item = item, onDelete = onDeleteItem, onEdit = { editingItem = it }, onImagePreview = { previewImagePath = it })
+                }
+            }
+            if (exerciseItems.isNotEmpty()) {
+                item { RecordSectionHeader("运动", exerciseItems.sumOf { it.calories }, MaterialTheme.colorScheme.secondary) }
+                items(exerciseItems) { item ->
+                    RecordItem(item = item, onDelete = onDeleteItem, onEdit = { editingItem = it }, onImagePreview = { previewImagePath = it })
+                }
             }
             
             item {
@@ -395,8 +509,19 @@ fun EditRecordDialog(
 ) {
     var name by remember { mutableStateOf(item.name) }
     var calories by remember { mutableStateOf(item.calories.toString()) }
+    var carbs by remember { mutableStateOf(item.carbs.toString()) }
+    var protein by remember { mutableStateOf(item.protein.toString()) }
+    var fat by remember { mutableStateOf(item.fat.toString()) }
     var time by remember { mutableStateOf(item.time) }
     var notes by remember { mutableStateOf(item.notes ?: "") }
+    var selectedImageUri by remember { mutableStateOf<android.net.Uri?>(null) }
+    var currentImagePath by remember { mutableStateOf(item.imageUrl) }
+    val imagePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        selectedImageUri = uri
+    }
+    val context = LocalContext.current
     
     // Check if it's an exercise with duration
     val isExercise = item.type == "exercise"
@@ -461,6 +586,35 @@ fun EditRecordDialog(
                     modifier = Modifier.fillMaxWidth()
                 )
                 
+                if (!isExercise) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(
+                            value = carbs,
+                            onValueChange = { if (it.all { char -> char.isDigit() }) carbs = it },
+                            label = { Text("碳水") },
+                            singleLine = true,
+                            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
+                            modifier = Modifier.weight(1f)
+                        )
+                        OutlinedTextField(
+                            value = protein,
+                            onValueChange = { if (it.all { char -> char.isDigit() }) protein = it },
+                            label = { Text("蛋白质") },
+                            singleLine = true,
+                            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
+                            modifier = Modifier.weight(1f)
+                        )
+                        OutlinedTextField(
+                            value = fat,
+                            onValueChange = { if (it.all { char -> char.isDigit() }) fat = it },
+                            label = { Text("脂肪") },
+                            singleLine = true,
+                            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+                
                 if (isExercise) {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedTextField(
@@ -492,9 +646,54 @@ fun EditRecordDialog(
                     value = notes,
                     onValueChange = { notes = it },
                     label = { Text("备注") },
-                    singleLine = true,
+                    singleLine = false,
+                    minLines = 3,
+                    maxLines = 5,
                     modifier = Modifier.fillMaxWidth()
                 )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OutlinedButton(
+                        onClick = {
+                            imagePickerLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                        }
+                    ) {
+                        Icon(Icons.Default.AddPhotoAlternate, contentDescription = null)
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(if (selectedImageUri == null && currentImagePath.isNullOrBlank()) "添加备注图片" else "更换图片")
+                    }
+                    if (selectedImageUri != null || !currentImagePath.isNullOrBlank()) {
+                        TextButton(onClick = {
+                            selectedImageUri = null
+                            currentImagePath = null
+                        }) {
+                            Text("移除")
+                        }
+                    }
+                }
+
+                if (selectedImageUri != null) {
+                    AsyncImage(
+                        model = selectedImageUri,
+                        contentDescription = null,
+                        modifier = Modifier
+                            .size(72.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                    )
+                } else if (!currentImagePath.isNullOrBlank() && File(currentImagePath!!).exists()) {
+                    AsyncImage(
+                        model = File(currentImagePath!!),
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .size(72.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                    )
+                }
                 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -506,6 +705,11 @@ fun EditRecordDialog(
                     Spacer(modifier = Modifier.width(8.dp))
                     Button(onClick = {
                         val cal = calories.toIntOrNull()
+                        val c = carbs.toIntOrNull() ?: 0
+                        val p = protein.toIntOrNull() ?: 0
+                        val f = fat.toIntOrNull() ?: 0
+                        val finalImagePath = selectedImageUri?.let { ImageStorageUtils.compressAndSaveImage(context, it) } ?: currentImagePath
+                        
                         if (name.isNotBlank() && cal != null) {
                             if (isExercise) {
                                 // Recalculate duration and update notes
@@ -528,9 +732,9 @@ fun EditRecordDialog(
                                     }
                                 } catch (e: Exception) {}
                                 
-                                onConfirm(item.copy(name = name, calories = cal, time = startTimeStr, notes = newNotes))
+                                onConfirm(item.copy(name = name, calories = cal, carbs = 0, protein = 0, fat = 0, time = startTimeStr, notes = newNotes, imageUrl = finalImagePath))
                             } else {
-                                onConfirm(item.copy(name = name, calories = cal, time = time, notes = notes))
+                                onConfirm(item.copy(name = name, calories = cal, carbs = c, protein = p, fat = f, time = time, notes = notes, imageUrl = finalImagePath))
                             }
                         }
                     }) {
@@ -908,7 +1112,37 @@ fun EmptyState() {
 }
 
 @Composable
-fun RecordItem(item: CalorieItemEntity, onDelete: (CalorieItemEntity) -> Unit, onEdit: (CalorieItemEntity) -> Unit) {
+fun RecordSectionHeader(title: String, calories: Int, accentColor: Color) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 8.dp, bottom = 4.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleSmall,
+            color = accentColor,
+            fontWeight = FontWeight.SemiBold
+        )
+        Text(
+            text = "${calories} kcal",
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+@Composable
+fun RecordItem(
+    item: CalorieItemEntity,
+    onDelete: (CalorieItemEntity) -> Unit,
+    onEdit: (CalorieItemEntity) -> Unit,
+    onImagePreview: (String) -> Unit = {}
+) {
+    val notesText = remember(item.notes) { item.notes?.trim().orEmpty() }
+    val imagePath = remember(item.imageUrl) { item.imageUrl?.takeIf { !it.isNullOrBlank() && File(it).exists() } }
     Card(
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -927,14 +1161,31 @@ fun RecordItem(item: CalorieItemEntity, onDelete: (CalorieItemEntity) -> Unit, o
             val iconColor = if (isFood) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSecondaryContainer
             val icon = if (isFood) Icons.Default.Restaurant else Icons.Default.FitnessCenter
             
-            Box(
-                modifier = Modifier
-                    .size(48.dp)
-                    .clip(CircleShape)
-                    .background(iconBg),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(icon, contentDescription = null, tint = iconColor, modifier = Modifier.size(24.dp))
+            if (!imagePath.isNullOrBlank()) {
+                AsyncImage(
+                    model = File(imagePath),
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clip(CircleShape)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null
+                        ) {
+                            onImagePreview(imagePath)
+                        }
+                )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clip(CircleShape)
+                        .background(iconBg),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(icon, contentDescription = null, tint = iconColor, modifier = Modifier.size(24.dp))
+                }
             }
             
             Spacer(modifier = Modifier.width(16.dp))
@@ -946,8 +1197,17 @@ fun RecordItem(item: CalorieItemEntity, onDelete: (CalorieItemEntity) -> Unit, o
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                if (notesText.isNotBlank()) {
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        notesText,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2
+                    )
+                }
             }
-            
+
             Text(
                 "${if (isFood) "+" else "-"}${item.calories}",
                 style = MaterialTheme.typography.titleMedium,
@@ -1286,5 +1546,491 @@ fun WeightDialog(currentWeight: Float, onDismiss: () -> Unit, onConfirm: (Float)
                 }
             }
         }
+    }
+}
+
+fun generateTodayLongScreenshot(
+    context: Context,
+    userProfile: UserProfileEntity?,
+    dailyRecord: DailyRecordEntity?,
+    allRecords: List<DailyRecordEntity>,
+    items: List<CalorieItemEntity>,
+    selectedDate: String
+): Bitmap {
+    val effectiveWeight = CalorieUtils.getEffectiveWeight(selectedDate, allRecords, userProfile)
+    val target = if (userProfile != null) {
+        CalorieUtils.calculateDailyTarget(
+            gender = userProfile.gender,
+            weight = effectiveWeight,
+            height = userProfile.height,
+            age = userProfile.age,
+            activityLevel = userProfile.activityLevel,
+            goal = userProfile.goal
+        )
+    } else {
+        2000
+    }
+    val intake = dailyRecord?.totalIntake ?: 0
+    val burned = dailyRecord?.totalBurned ?: 0
+    val balance = intake - (target + burned)
+
+    val breakfastItems = items.filter { it.type == "food" && CalorieUtils.getMealCategoryByTime(it.time) == CalorieUtils.MealCategory.BREAKFAST }.sortedBy { it.time }
+    val lunchItems = items.filter { it.type == "food" && CalorieUtils.getMealCategoryByTime(it.time) == CalorieUtils.MealCategory.LUNCH }.sortedBy { it.time }
+    val dinnerItems = items.filter { it.type == "food" && CalorieUtils.getMealCategoryByTime(it.time) == CalorieUtils.MealCategory.DINNER }.sortedBy { it.time }
+    val nightSnackItems = items.filter { it.type == "food" && CalorieUtils.getMealCategoryByTime(it.time) == CalorieUtils.MealCategory.NIGHT_SNACK }.sortedBy { it.time }
+    val exerciseItems = items.filter { it.type == "exercise" }.sortedByDescending { it.time }
+
+    data class ShareSection(val title: String, val color: Int, val list: List<CalorieItemEntity>)
+    val sections = listOf(
+        ShareSection("早餐", android.graphics.Color.parseColor("#4CAF50"), breakfastItems),
+        ShareSection("午餐", android.graphics.Color.parseColor("#26A69A"), lunchItems),
+        ShareSection("晚餐", android.graphics.Color.parseColor("#FF7043"), dinnerItems),
+        ShareSection("宵夜", android.graphics.Color.parseColor("#7E57C2"), nightSnackItems),
+        ShareSection("运动", android.graphics.Color.parseColor("#2196F3"), exerciseItems)
+    ).filter { it.list.isNotEmpty() }
+
+    val width = 1080f
+    val padding = 52f
+    val headerH = 244f
+    val showMacros = userProfile?.showMacros == true
+    val summaryH = if (showMacros) 668f else 516f
+    val metricsH = 192f
+    val sectionHeaderH = 64f
+    val itemH = 126f
+    val footerH = 260f
+    val sectionGap = 12f
+
+    var contentH = headerH + summaryH + metricsH + footerH + 64f
+    sections.forEach { section ->
+        contentH += sectionHeaderH + section.list.size * itemH + sectionGap
+    }
+
+    val maxBitmapHeight = 12000f
+    val scale = (maxBitmapHeight / contentH).coerceAtMost(1f)
+    val bitmap = Bitmap.createBitmap((width * scale).toInt(), (contentH * scale).toInt(), Bitmap.Config.ARGB_8888)
+    val canvas = android.graphics.Canvas(bitmap)
+    if (scale < 1f) canvas.scale(scale, scale)
+
+    val paint = android.graphics.Paint().apply { isAntiAlias = true }
+    val textPaint = android.text.TextPaint().apply { isAntiAlias = true }
+    data class ShareTheme(
+        val bgColor: Int,
+        val bgPatternEmoji: List<String>,
+        val primaryColor: Int
+    )
+    val themePool = listOf(
+        ShareTheme(android.graphics.Color.parseColor("#FFFDE7"), listOf("🍎", "🥗", "🍇", "🥑"), android.graphics.Color.parseColor("#FFF59D")),
+        ShareTheme(android.graphics.Color.parseColor("#FFEBEE"), listOf("🔥", "💪", "🏃", "✨"), android.graphics.Color.parseColor("#FFCDD2")),
+        ShareTheme(android.graphics.Color.parseColor("#E1F5FE"), listOf("💧", "🌊", "🧊", "💙"), android.graphics.Color.parseColor("#B3E5FC")),
+        ShareTheme(android.graphics.Color.parseColor("#F3E5F5"), listOf("💤", "🌙", "⭐", "🛌"), android.graphics.Color.parseColor("#E1BEE7")),
+        ShareTheme(android.graphics.Color.parseColor("#E8F5E9"), listOf("🐱", "🐾", "🌿", "🍀"), android.graphics.Color.parseColor("#C8E6C9")),
+        ShareTheme(android.graphics.Color.parseColor("#E0F7FA"), listOf("⚖️", "✨", "📉", "💪"), android.graphics.Color.parseColor("#B2EBF2"))
+    )
+    val randomTheme = themePool[java.util.Random().nextInt(themePool.size)]
+    canvas.drawColor(randomTheme.bgColor)
+
+    val bgPaint = android.graphics.Paint().apply {
+        shader = android.graphics.LinearGradient(
+            0f, 0f, 0f, 420f,
+            randomTheme.primaryColor,
+            randomTheme.bgColor,
+            android.graphics.Shader.TileMode.CLAMP
+        )
+        isAntiAlias = true
+    }
+    canvas.drawRect(0f, 0f, width, 520f, bgPaint)
+    paint.textSize = 100f
+    paint.alpha = 24
+    paint.textAlign = android.graphics.Paint.Align.CENTER
+    val patternCols = 5
+    val patternRows = (contentH / 300f).toInt() + 1
+    val patternGapX = width / patternCols
+    val patternGapY = 300f
+    val bgRandom = java.util.Random()
+    for (r in 0 until patternRows) {
+        for (c in 0 until patternCols) {
+            val emoji = randomTheme.bgPatternEmoji[bgRandom.nextInt(randomTheme.bgPatternEmoji.size)]
+            val x = c * patternGapX + patternGapX / 2 + (bgRandom.nextFloat() - 0.5f) * 50f
+            val yPattern = r * patternGapY + patternGapY / 2 + (bgRandom.nextFloat() - 0.5f) * 50f
+            val rotation = (bgRandom.nextFloat() - 0.5f) * 60f
+            canvas.save()
+            canvas.rotate(rotation, x, yPattern)
+            canvas.drawText(emoji, x, yPattern, paint)
+            canvas.restore()
+        }
+    }
+    paint.alpha = 255
+
+    var y = 88f
+    textPaint.color = android.graphics.Color.parseColor("#1F2A24")
+    textPaint.textSize = 52f
+    textPaint.typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
+    canvas.drawText("今日记录", padding, y, textPaint)
+
+    y += 66f
+    textPaint.textSize = 30f
+    textPaint.typeface = android.graphics.Typeface.DEFAULT
+    textPaint.color = android.graphics.Color.parseColor("#4F5B56")
+    canvas.drawText(selectedDate, padding, y, textPaint)
+
+    y += 54f
+
+    val summaryTop = headerH - 22f
+    paint.color = android.graphics.Color.argb(200, 255, 255, 255)
+    paint.setShadowLayer(8f, 0f, 3f, android.graphics.Color.parseColor("#1A000000"))
+    val summaryRect = android.graphics.RectF(padding, summaryTop, width - padding, summaryTop + summaryH)
+    canvas.drawRoundRect(summaryRect, 44f, 44f, paint)
+    paint.clearShadowLayer()
+
+    val statusText = if (balance > 0) "今日热量盈余" else "今日热量缺口"
+    val statusColor = if (balance > 0) android.graphics.Color.parseColor("#D32F2F") else android.graphics.Color.parseColor("#4CAF50")
+    val balanceAbs = kotlin.math.abs(balance)
+    val limit = target + burned
+    val progressRaw = if (limit > 0) intake.toFloat() / limit.toFloat() else 0f
+    val progress = progressRaw.coerceIn(0f, 1f)
+
+    val leftX = padding + 44f
+    textPaint.color = android.graphics.Color.parseColor("#67736E")
+    textPaint.textSize = 24f
+    textPaint.typeface = android.graphics.Typeface.DEFAULT
+    canvas.drawText("今日状态", leftX, summaryTop + 64f, textPaint)
+    textPaint.color = statusColor
+    textPaint.textSize = 54f
+    textPaint.typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
+    canvas.drawText(statusText, leftX, summaryTop + 138f, textPaint)
+
+    val rightX = width - padding - 50f
+    val balanceText = "${if (balance > 0) "+" else "-"}$balanceAbs"
+    textPaint.textAlign = android.graphics.Paint.Align.RIGHT
+    textPaint.textSize = 68f
+    canvas.drawText(balanceText, rightX, summaryTop + 126f, textPaint)
+    textPaint.textSize = 40f
+    textPaint.typeface = android.graphics.Typeface.DEFAULT
+    textPaint.color = android.graphics.Color.parseColor("#4F5B56")
+    canvas.drawText("kcal", rightX, summaryTop + 180f, textPaint)
+    textPaint.textAlign = android.graphics.Paint.Align.LEFT
+
+    textPaint.color = android.graphics.Color.parseColor("#4F5B56")
+    textPaint.textSize = 38f
+    textPaint.typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
+    canvas.drawText("已摄入 $intake", leftX, summaryTop + 248f, textPaint)
+    textPaint.textAlign = android.graphics.Paint.Align.RIGHT
+    canvas.drawText("限额 $limit", rightX, summaryTop + 248f, textPaint)
+    textPaint.textAlign = android.graphics.Paint.Align.LEFT
+
+    val barLeft = leftX
+    val barRight = rightX
+    val barTop = summaryTop + 282f
+    paint.color = android.graphics.Color.parseColor("#F1F4F1")
+    val trackRect = android.graphics.RectF(barLeft, barTop, barRight, barTop + 34f)
+    canvas.drawRoundRect(trackRect, 17f, 17f, paint)
+    val fillRight = barLeft + (barRight - barLeft) * progress
+    if (fillRight > barLeft + 2f) {
+        paint.color = if (progressRaw > 1f) android.graphics.Color.parseColor("#D32F2F") else android.graphics.Color.parseColor("#4CAF50")
+        canvas.drawRoundRect(android.graphics.RectF(barLeft, barTop, fillRight, barTop + 34f), 17f, 17f, paint)
+    }
+
+    var blockBottom = barTop + 34f
+    if (showMacros) {
+        val macroTargets = CalorieUtils.calculateMacroTargets(
+            weight = effectiveWeight,
+            goal = userProfile?.goal ?: "maintain",
+            dailyCalorieTarget = target
+        )
+        val macroData = listOf(
+            Triple("碳水化合物", Pair(dailyRecord?.totalCarbs ?: 0, macroTargets.first), android.graphics.Color.parseColor("#69F0AE")),
+            Triple("蛋白质", Pair(dailyRecord?.totalProtein ?: 0, macroTargets.second), android.graphics.Color.parseColor("#40C4FF")),
+            Triple("脂肪", Pair(dailyRecord?.totalFat ?: 0, macroTargets.third), android.graphics.Color.parseColor("#FF8A80"))
+        )
+        val macroTop = blockBottom + 32f
+        val gap = 20f
+        val macroWidth = (barRight - barLeft - gap * 2f) / 3f
+        macroData.forEachIndexed { idx, macro ->
+            val x = barLeft + idx * (macroWidth + gap)
+            textPaint.color = android.graphics.Color.parseColor("#6A7570")
+            textPaint.textSize = 30f
+            textPaint.typeface = android.graphics.Typeface.DEFAULT
+            canvas.drawText(macro.first, x, macroTop + 40f, textPaint)
+
+            paint.color = android.graphics.Color.parseColor("#EEF3EE")
+            canvas.drawRoundRect(android.graphics.RectF(x, macroTop + 54f, x + macroWidth, macroTop + 74f), 10f, 10f, paint)
+            val current = macro.second.first
+            val targetMacro = macro.second.second.coerceAtLeast(1)
+            val p = (current.toFloat() / targetMacro.toFloat()).coerceIn(0f, 1f)
+            paint.color = macro.third
+            canvas.drawRoundRect(android.graphics.RectF(x, macroTop + 54f, x + macroWidth * p, macroTop + 74f), 10f, 10f, paint)
+
+            textPaint.color = android.graphics.Color.parseColor("#4E5B56")
+            textPaint.textSize = 34f
+            textPaint.typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
+            canvas.drawText("$current / ${macro.second.second}克", x, macroTop + 132f, textPaint)
+        }
+        blockBottom = macroTop + 146f
+    }
+
+    val statsTop = blockBottom + 18f
+    val statWidth = (barRight - barLeft) / 3f
+    val statData = listOf(
+        Triple("基础消耗", target.toString(), android.graphics.Color.parseColor("#F9A825")),
+        Triple("运动消耗", burned.toString(), android.graphics.Color.parseColor("#2196F3")),
+        Triple("总摄入", intake.toString(), android.graphics.Color.parseColor("#43A047"))
+    )
+    statData.forEachIndexed { idx, stat ->
+        val x = barLeft + idx * statWidth
+        textPaint.color = android.graphics.Color.parseColor("#5F6C67")
+        textPaint.textSize = 34f
+        textPaint.typeface = android.graphics.Typeface.DEFAULT
+        canvas.drawText(stat.first, x, statsTop + 34f, textPaint)
+        textPaint.color = stat.third
+        textPaint.textSize = 48f
+        textPaint.typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
+        canvas.drawText(stat.second, x, statsTop + 102f, textPaint)
+    }
+
+    val metricsTop = summaryTop + summaryH + 24f
+    val metricGap = 20f
+    val metricWidth = (width - padding * 2 - metricGap * 2) / 3f
+    val weightText = dailyRecord?.weight?.let { String.format(Locale.getDefault(), "%.1f kg", it) } ?: "记录"
+    val waterText = "${dailyRecord?.totalWater ?: 0} ml"
+    val sleepHour = (dailyRecord?.sleepDuration ?: 0) / 60
+    val sleepMinute = (dailyRecord?.sleepDuration ?: 0) % 60
+    val metricList = listOf(
+        listOf("今日体重", weightText, "", android.graphics.Color.parseColor("#1E1E1E"), android.graphics.Color.parseColor("#FFF3CD"), android.graphics.Color.parseColor("#C28B00")),
+        listOf("今日饮水", waterText, "", android.graphics.Color.parseColor("#2196F3"), android.graphics.Color.parseColor("#E3F2FD"), android.graphics.Color.parseColor("#2196F3")),
+        listOf("今日睡眠", "${sleepHour}h ${sleepMinute}m", "", android.graphics.Color.parseColor("#673AB7"), android.graphics.Color.parseColor("#EDE7F6"), android.graphics.Color.parseColor("#673AB7"))
+    )
+    metricList.forEachIndexed { idx, pair ->
+        val left = padding + idx * (metricWidth + metricGap)
+        val rect = android.graphics.RectF(left, metricsTop, left + metricWidth, metricsTop + metricsH)
+        paint.color = android.graphics.Color.argb(200, 255, 255, 255)
+        paint.setShadowLayer(6f, 0f, 2f, android.graphics.Color.parseColor("#18000000"))
+        canvas.drawRoundRect(rect, 30f, 30f, paint)
+        paint.clearShadowLayer()
+
+        paint.color = pair[4] as Int
+        canvas.drawCircle(left + metricWidth - 40f, metricsTop + 42f, 24f, paint)
+        textPaint.color = pair[5] as Int
+        textPaint.textSize = 20f
+        textPaint.typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
+        canvas.drawText("✎", left + metricWidth - 50f, metricsTop + 50f, textPaint)
+
+        textPaint.color = android.graphics.Color.parseColor("#5E6A65")
+        textPaint.textSize = 34f
+        textPaint.typeface = android.graphics.Typeface.DEFAULT
+        canvas.drawText(pair[0] as String, left + 22f, metricsTop + 58f, textPaint)
+
+        textPaint.color = pair[3] as Int
+        textPaint.textSize = 50f
+        textPaint.typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
+        val value = pair[1] as String
+        canvas.drawText(value, left + 22f, metricsTop + 146f, textPaint)
+        val unit = pair[2] as String
+        if (unit.isNotBlank() && value != "记录") {
+            textPaint.textSize = 34f
+            textPaint.typeface = android.graphics.Typeface.DEFAULT_BOLD
+            val vWidth = textPaint.measureText(value)
+            canvas.drawText(unit, left + 26f + vWidth, metricsTop + 146f, textPaint)
+        }
+    }
+
+    var currentY = metricsTop + metricsH + 34f
+    fun drawSectionTitle(title: String, calories: Int, color: Int) {
+        textPaint.color = color
+        textPaint.textSize = 32f
+        textPaint.typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
+        canvas.drawText(title, padding, currentY + 42f, textPaint)
+        textPaint.color = android.graphics.Color.parseColor("#6A7570")
+        textPaint.textSize = 28f
+        textPaint.typeface = android.graphics.Typeface.DEFAULT
+        canvas.drawText("${calories} kcal", width - padding - 190f, currentY + 42f, textPaint)
+        currentY += sectionHeaderH
+    }
+
+    fun decodeThumbnail(path: String): Bitmap? {
+        return try {
+            if (path.startsWith("content://")) {
+                context.contentResolver.openInputStream(Uri.parse(path))?.use { BitmapFactory.decodeStream(it) }
+            } else {
+                BitmapFactory.decodeFile(path)
+            }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    fun resolveImagePath(item: CalorieItemEntity): String? {
+        val directPath = item.imageUrl?.trim().orEmpty()
+        if (directPath.isNotBlank()) return directPath
+        val notes = item.notes.orEmpty()
+        val marker = "|img:"
+        val markerIndex = notes.indexOf(marker)
+        if (markerIndex < 0) return null
+        val start = markerIndex + marker.length
+        if (start >= notes.length) return null
+        val end = notes.indexOf('|', start).takeIf { it >= 0 } ?: notes.length
+        return notes.substring(start, end).trim().takeIf { it.isNotBlank() }
+    }
+
+    fun drawItemRow(item: CalorieItemEntity) {
+        val rect = android.graphics.RectF(padding, currentY, width - padding, currentY + itemH - 14f)
+        paint.color = android.graphics.Color.argb(150, 255, 255, 255)
+        paint.setShadowLayer(5f, 0f, 2f, android.graphics.Color.parseColor("#16000000"))
+        canvas.drawRoundRect(rect, 24f, 24f, paint)
+        paint.clearShadowLayer()
+
+        val isFood = item.type == "food"
+        val iconBg = if (isFood) android.graphics.Color.parseColor("#DDF7D8") else android.graphics.Color.parseColor("#D9ECFF")
+        val iconCx = padding + 44f
+        val iconCy = currentY + 54f
+        val imagePath = resolveImagePath(item)
+        var thumbnailDrawn = false
+        if (!imagePath.isNullOrBlank()) {
+            val srcBitmap = decodeThumbnail(imagePath)
+            if (srcBitmap != null) {
+                val srcSide = kotlin.math.min(srcBitmap.width, srcBitmap.height)
+                val srcLeft = (srcBitmap.width - srcSide) / 2
+                val srcTop = (srcBitmap.height - srcSide) / 2
+                val srcRect = android.graphics.Rect(srcLeft, srcTop, srcLeft + srcSide, srcTop + srcSide)
+                val dstRect = android.graphics.RectF(iconCx - 30f, iconCy - 30f, iconCx + 30f, iconCy + 30f)
+                val clipPath = android.graphics.Path().apply { addCircle(iconCx, iconCy, 30f, android.graphics.Path.Direction.CW) }
+                canvas.save()
+                canvas.clipPath(clipPath)
+                canvas.drawBitmap(srcBitmap, srcRect, dstRect, null)
+                canvas.restore()
+                thumbnailDrawn = true
+            }
+        }
+        if (!thumbnailDrawn) {
+            paint.alpha = 255
+            paint.color = iconBg
+            canvas.drawCircle(iconCx, iconCy, 30f, paint)
+            textPaint.textSize = 24f
+            textPaint.color = if (isFood) android.graphics.Color.parseColor("#2E7D32") else android.graphics.Color.parseColor("#1565C0")
+            canvas.drawText(if (isFood) "🍴" else "💪", iconCx - 17f, iconCy + 11f, textPaint)
+        }
+
+        textPaint.textSize = 30f
+        textPaint.typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
+        textPaint.color = android.graphics.Color.parseColor("#222C27")
+        val name = if (item.name.length > 22) item.name.take(22) + "…" else item.name
+        canvas.drawText(name, padding + 94f, currentY + 52f, textPaint)
+
+        textPaint.typeface = android.graphics.Typeface.DEFAULT
+        textPaint.textSize = 24f
+        textPaint.color = android.graphics.Color.parseColor("#7B8681")
+        canvas.drawText("${item.time} · ${if (isFood) "食物" else "运动"}", padding + 94f, currentY + 88f, textPaint)
+
+        textPaint.textSize = 30f
+        textPaint.typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
+        textPaint.color = if (isFood) android.graphics.Color.parseColor("#2E7D32") else android.graphics.Color.parseColor("#1565C0")
+        val calText = "${if (isFood) "+" else "-"}${item.calories}"
+        val calWidth = textPaint.measureText(calText)
+        canvas.drawText(calText, width - padding - calWidth - 12f, currentY + 70f, textPaint)
+        textPaint.typeface = android.graphics.Typeface.DEFAULT
+
+        currentY += itemH
+    }
+
+    if (sections.isEmpty()) {
+        textPaint.color = android.graphics.Color.parseColor("#7C8883")
+        textPaint.textSize = 28f
+        canvas.drawText("今天还没有记录，去添加第一条吧～", padding, currentY + 44f, textPaint)
+        currentY += 72f
+    } else {
+        sections.forEach { section ->
+            drawSectionTitle(section.title, section.list.sumOf { it.calories }, section.color)
+            section.list.forEach { drawItemRow(it) }
+            currentY += sectionGap
+        }
+    }
+
+    val footerTop = contentH - footerH
+    paint.color = android.graphics.Color.parseColor("#CCD6D1")
+    paint.strokeWidth = 2f
+    canvas.drawLine(padding, footerTop + 36f, width - padding, footerTop + 36f, paint)
+
+    val iconSize = 86f
+    val iconX = width / 2f - 250f
+    val iconY = footerTop + 74f
+    val iconId = context.resources.getIdentifier("app_icon", "drawable", context.packageName)
+    if (iconId != 0) {
+        val iconBitmap = BitmapFactory.decodeResource(context.resources, iconId)
+        if (iconBitmap != null) {
+            val scaled = Bitmap.createScaledBitmap(iconBitmap, iconSize.toInt(), iconSize.toInt(), true)
+            canvas.drawBitmap(scaled, iconX, iconY, null)
+        }
+    } else {
+        paint.color = randomTheme.primaryColor
+        val iconRect = android.graphics.RectF(iconX, iconY, iconX + iconSize, iconY + iconSize)
+        canvas.drawRoundRect(iconRect, 18f, 18f, paint)
+        textPaint.color = android.graphics.Color.WHITE
+        textPaint.textSize = 40f
+        textPaint.typeface = android.graphics.Typeface.DEFAULT_BOLD
+        canvas.drawText("猫", iconX + 24f, iconY + 56f, textPaint)
+    }
+
+    textPaint.color = android.graphics.Color.parseColor("#2F3934")
+    textPaint.textSize = 46f
+    textPaint.typeface = android.graphics.Typeface.create(android.graphics.Typeface.SANS_SERIF, android.graphics.Typeface.BOLD)
+    canvas.drawText("猫猫要健康！", iconX + iconSize + 24f, iconY + 40f, textPaint)
+    textPaint.color = android.graphics.Color.parseColor("#6E7A75")
+    textPaint.textSize = 28f
+    textPaint.typeface = android.graphics.Typeface.DEFAULT
+    canvas.drawText("记录每一份努力", iconX + iconSize + 24f, iconY + 82f, textPaint)
+
+    return bitmap
+}
+
+fun saveTodayBitmap(context: Context, bitmap: Bitmap) {
+    val filename = "MeowFit_Today_${System.currentTimeMillis()}.png"
+    var outputStream: java.io.OutputStream? = null
+    try {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val values = ContentValues().apply {
+                put(MediaStore.MediaColumns.DISPLAY_NAME, filename)
+                put(MediaStore.MediaColumns.MIME_TYPE, "image/png")
+                put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/MeowFit")
+            }
+            val uri = context.contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+            if (uri != null) {
+                outputStream = context.contentResolver.openOutputStream(uri)
+            }
+        } else {
+            val picturesDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES)
+            val appDir = File(picturesDir, "MeowFit")
+            if (!appDir.exists()) appDir.mkdirs()
+            val imageFile = File(appDir, filename)
+            outputStream = FileOutputStream(imageFile)
+        }
+
+        if (outputStream != null) {
+            bitmap.compress(Bitmap.CompressFormat.PNG, 100, outputStream)
+            outputStream.close()
+            Toast.makeText(context, "图片已保存到相册", Toast.LENGTH_SHORT).show()
+        } else {
+            Toast.makeText(context, "保存失败", Toast.LENGTH_SHORT).show()
+        }
+    } catch (e: Exception) {
+        Toast.makeText(context, "保存失败: ${e.message}", Toast.LENGTH_SHORT).show()
+    }
+}
+
+fun shareTodayBitmap(context: Context, bitmap: Bitmap) {
+    try {
+        val cachePath = File(context.cacheDir, "images")
+        cachePath.mkdirs()
+        val file = File(cachePath, "share_today.png")
+        FileOutputStream(file).use { stream ->
+            bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)
+        }
+        val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+            type = "image/png"
+            putExtra(Intent.EXTRA_STREAM, uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        context.startActivity(Intent.createChooser(shareIntent, "分享今日记录"))
+    } catch (e: Exception) {
+        Toast.makeText(context, "分享失败: ${e.message}", Toast.LENGTH_SHORT).show()
     }
 }

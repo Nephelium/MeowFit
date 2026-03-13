@@ -7,16 +7,19 @@ import com.example.calorietracker.data.DailyRecordEntity
 import com.example.calorietracker.data.RecordDao
 import com.example.calorietracker.data.UserDao
 import com.example.calorietracker.data.UserProfileEntity
+import com.example.calorietracker.util.ImageStorageUtils
 import com.google.gson.Gson
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
-import java.io.InputStream
-import java.io.InputStreamReader
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.zip.ZipEntry
+import java.util.zip.ZipInputStream
+import java.util.zip.ZipOutputStream
 
 // DTO for UserProfile to handle version compatibility (missing fields in JSON)
 data class BackupUserProfile(
@@ -83,7 +86,7 @@ data class BackupData(
     val userProfile: BackupUserProfile?,
     val dailyRecords: List<DailyRecordEntity>,
     val calorieItems: List<CalorieItemEntity>,
-    val version: Int = 1,
+    val version: Int = 2,
     val timestamp: Long = System.currentTimeMillis()
 )
 
@@ -101,30 +104,71 @@ class BackupManager(
         }
     }
 
-    private suspend fun getBackupData(): BackupData {
+    private data class BackupPayload(
+        val data: BackupData,
+        val imageSources: List<Pair<File, String>>
+    )
+
+    private suspend fun getBackupPayload(): BackupPayload {
         return withContext(Dispatchers.IO) {
             val userProfile = userDao.getUserProfileSync()
             val dailyRecords = recordDao.getAllRecordsSync()
             val calorieItems = recordDao.getAllCalorieItemsSync()
-            BackupData(
-                userProfile?.let { BackupUserProfile.fromEntity(it) }, 
-                dailyRecords, 
-                calorieItems
+            val mappedImages = mutableListOf<Pair<File, String>>()
+            var imageIndex = 0
+
+            val remappedItems = calorieItems.map { item ->
+                val path = item.imageUrl
+                if (path.isNullOrBlank()) {
+                    item
+                } else {
+                    val file = File(path)
+                    if (file.exists() && file.isFile) {
+                        val entryName = "images/${imageIndex}_${file.name}"
+                        imageIndex += 1
+                        mappedImages += file to entryName
+                        item.copy(imageUrl = entryName)
+                    } else {
+                        item.copy(imageUrl = null)
+                    }
+                }
+            }
+
+            BackupPayload(
+                BackupData(
+                    userProfile?.let { BackupUserProfile.fromEntity(it) },
+                    dailyRecords,
+                    remappedItems
+                ),
+                mappedImages
             )
         }
+    }
+
+    private fun buildBackupZipBytes(payload: BackupPayload): ByteArray {
+        val output = ByteArrayOutputStream()
+        ZipOutputStream(output).use { zip ->
+            zip.putNextEntry(ZipEntry("backup.json"))
+            zip.write(gson.toJson(payload.data).toByteArray())
+            zip.closeEntry()
+
+            payload.imageSources.forEach { (file, entryName) ->
+                zip.putNextEntry(ZipEntry(entryName))
+                file.inputStream().use { input -> input.copyTo(zip) }
+                zip.closeEntry()
+            }
+        }
+        return output.toByteArray()
     }
 
     suspend fun performAutoBackup(): Boolean {
         return withContext(Dispatchers.IO) {
             try {
-                val data = getBackupData()
-                val json = gson.toJson(data)
-                val file = File(backupDir, "auto_backup.json")
-                file.writeText(json)
-                
-                // Also save to Downloads folder as requested
-                exportBackupToDownloads(json)
-                
+                val payload = getBackupPayload()
+                val zipBytes = buildBackupZipBytes(payload)
+                val file = File(backupDir, "auto_backup.zip")
+                FileOutputStream(file).use { it.write(zipBytes) }
+                exportBackupToDownloads(zipBytes)
                 true
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -133,28 +177,24 @@ class BackupManager(
         }
     }
     
-    fun exportBackupToDownloads(json: String) {
+    fun exportBackupToDownloads(zipBytes: ByteArray) {
         try {
             val timestamp = SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(Date())
-            val filename = "MeowFit_Backup_$timestamp.json"
+            val filename = "MeowFit_Backup_$timestamp.zip"
             
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
                 val contentValues = android.content.ContentValues().apply {
                     put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, filename)
-                    put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "application/json")
+                    put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "application/zip")
                     put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, android.os.Environment.DIRECTORY_DOWNLOADS + "/MeowFit")
                     put(android.provider.MediaStore.MediaColumns.IS_PENDING, 1)
                 }
                 
                 val resolver = context.contentResolver
-                // Check if file exists (optional, MediaStore handles duplicates by appending numbers usually)
-                // But to avoid spamming duplicates if backup runs multiple times a day, we could query first.
-                // For simplicity and safety, we let MediaStore handle it.
-                
                 val uri = resolver.insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, contentValues)
                 uri?.let {
                     resolver.openOutputStream(it)?.use { os ->
-                        os.write(json.toByteArray())
+                        os.write(zipBytes)
                     }
                     contentValues.clear()
                     contentValues.put(android.provider.MediaStore.MediaColumns.IS_PENDING, 0)
@@ -165,7 +205,7 @@ class BackupManager(
                 val appDir = File(downloadsDir, "MeowFit")
                 if (!appDir.exists()) appDir.mkdirs()
                 val file = File(appDir, filename)
-                file.writeText(json)
+                FileOutputStream(file).use { it.write(zipBytes) }
             }
         } catch (e: Exception) {
             e.printStackTrace()
@@ -175,11 +215,10 @@ class BackupManager(
     suspend fun performManualBackup(targetUri: Uri): Boolean {
         return withContext(Dispatchers.IO) {
             try {
-                val data = getBackupData()
-                val json = gson.toJson(data)
-                
+                val payload = getBackupPayload()
+                val zipBytes = buildBackupZipBytes(payload)
                 context.contentResolver.openOutputStream(targetUri)?.use { outputStream ->
-                    outputStream.write(json.toByteArray())
+                    outputStream.write(zipBytes)
                 }
                 true
             } catch (e: Exception) {
@@ -193,8 +232,7 @@ class BackupManager(
         return withContext(Dispatchers.IO) {
             try {
                 context.contentResolver.openInputStream(uri)?.use { inputStream ->
-                    val reader = InputStreamReader(inputStream)
-                    val backupData = gson.fromJson(reader, BackupData::class.java)
+                    val backupData = readBackupDataFromZip(inputStream.readBytes())
                     restoreData(backupData)
                 }
                 true
@@ -203,6 +241,44 @@ class BackupManager(
                 false
             }
         }
+    }
+
+    private fun readBackupDataFromZip(zipBytes: ByteArray): BackupData {
+        var backupJson = ""
+        val imageDir = ImageStorageUtils.getImageDir(context)
+
+        ZipInputStream(zipBytes.inputStream()).use { zip ->
+            var entry = zip.nextEntry
+            while (entry != null) {
+                if (!entry.isDirectory) {
+                    if (entry.name == "backup.json") {
+                        backupJson = zip.readBytes().toString(Charsets.UTF_8)
+                    } else if (entry.name.startsWith("images/")) {
+                        val filename = entry.name.removePrefix("images/")
+                        if (filename.isNotBlank()) {
+                            val target = File(imageDir, filename)
+                            FileOutputStream(target).use { output ->
+                                zip.copyTo(output)
+                            }
+                        }
+                    }
+                }
+                zip.closeEntry()
+                entry = zip.nextEntry
+            }
+        }
+
+        val parsed = gson.fromJson(backupJson, BackupData::class.java)
+        val restoredItems = parsed.calorieItems.map { item ->
+            val p = item.imageUrl
+            if (!p.isNullOrBlank() && p.startsWith("images/")) {
+                val filename = p.removePrefix("images/")
+                item.copy(imageUrl = File(imageDir, filename).absolutePath)
+            } else {
+                item
+            }
+        }
+        return parsed.copy(calorieItems = restoredItems)
     }
 
     private suspend fun restoreData(backupData: BackupData) {
@@ -223,7 +299,7 @@ class BackupManager(
     }
 
     fun getAutoBackupTime(): Long {
-        val file = File(backupDir, "auto_backup.json")
+        val file = File(backupDir, "auto_backup.zip")
         return if (file.exists()) file.lastModified() else 0L
     }
 }
