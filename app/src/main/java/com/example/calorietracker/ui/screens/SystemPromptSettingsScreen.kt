@@ -3,12 +3,14 @@ package com.example.calorietracker.ui.screens
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.example.calorietracker.data.ai.AiService
 import com.example.calorietracker.ui.AiViewModel
@@ -17,9 +19,13 @@ import com.example.calorietracker.ui.AiViewModel
 @Composable
 fun SystemPromptSettingsScreen(
     viewModel: AiViewModel,
+    selectedThemeIndex: Int = 0,
     onBack: () -> Unit
 ) {
     val config by viewModel.config.collectAsState()
+    val isDarkTheme = isSystemInDarkTheme()
+    val selectedTheme = remember(selectedThemeIndex) { getTodayVisualTheme(selectedThemeIndex) }
+    val accentColor = remember(selectedTheme, isDarkTheme) { themedAccentColor(selectedTheme, isDarkTheme) }
     
     var chatPrompt by remember { mutableStateOf(config.customChatPrompt ?: AiService.DEFAULT_CHAT_PROMPT) }
     var imagePrompt by remember { mutableStateOf(config.customImagePrompt ?: AiService.DEFAULT_IMAGE_PROMPT) }
@@ -87,13 +93,15 @@ fun SystemPromptSettingsScreen(
             )
             
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(
+                OutlinedButton(
                     onClick = {
                         // Reset to defaults
                         chatPrompt = AiService.DEFAULT_CHAT_PROMPT
                         imagePrompt = AiService.DEFAULT_IMAGE_PROMPT
                     },
-                    colors = ButtonDefaults.outlinedButtonColors(),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = accentColor
+                    ),
                     modifier = Modifier.weight(1f)
                 ) {
                     Text("重置默认")
@@ -112,6 +120,10 @@ fun SystemPromptSettingsScreen(
                         )
                         onBack()
                     },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = accentColor,
+                        contentColor = Color.White
+                    ),
                     modifier = Modifier.weight(1f)
                 ) {
                     Text("保存修改")

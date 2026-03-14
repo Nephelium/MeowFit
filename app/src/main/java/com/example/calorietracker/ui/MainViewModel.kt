@@ -117,6 +117,12 @@ class MainViewModel(private val repository: CalorieRepository) : ViewModel() {
         }
     }
 
+    fun updateTodayThemeIndex(index: Int) {
+        viewModelScope.launch {
+            repository.updateTodayThemeIndex(index)
+        }
+    }
+
     fun updateWater(amount: Int, targetDate: String? = null) {
         viewModelScope.launch {
             repository.updateWater(targetDate ?: _selectedDate.value, amount)

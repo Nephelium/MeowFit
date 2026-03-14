@@ -36,6 +36,8 @@ data class BackupUserProfile(
     val dailyCalorieTarget: Int? = null,
     val sleepGoal: Float? = null,
     val showMacros: Boolean? = null,
+    val selectedTodayThemeIndex: Int? = null,
+    val hasSelectedTodayTheme: Boolean? = null,
     val excludedExercises: String? = null,
     val createdAt: String? = null
 ) {
@@ -54,6 +56,8 @@ data class BackupUserProfile(
             dailyCalorieTarget = dailyCalorieTarget ?: 2000,
             sleepGoal = sleepGoal ?: 7.5f,
             showMacros = showMacros ?: false,
+            selectedTodayThemeIndex = selectedTodayThemeIndex ?: 0,
+            hasSelectedTodayTheme = hasSelectedTodayTheme ?: false,
             excludedExercises = excludedExercises ?: "",
             createdAt = createdAt ?: java.util.Date().toString()
         )
@@ -75,6 +79,8 @@ data class BackupUserProfile(
                 dailyCalorieTarget = entity.dailyCalorieTarget,
                 sleepGoal = entity.sleepGoal,
                 showMacros = entity.showMacros,
+                selectedTodayThemeIndex = entity.selectedTodayThemeIndex,
+                hasSelectedTodayTheme = entity.hasSelectedTodayTheme,
                 excludedExercises = entity.excludedExercises,
                 createdAt = entity.createdAt
             )

@@ -6,6 +6,7 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -76,6 +77,7 @@ data class EntryItem(
 fun AddEntryScreen(
     targetDate: String = CalorieUtils.getTodayString(),
     aiViewModel: AiViewModel,
+    selectedThemeIndex: Int = 0,
     userWeight: Float = 70f,
     showMacros: Boolean = false,
     onSave: (List<EntryItem>) -> Unit,
@@ -83,6 +85,11 @@ fun AddEntryScreen(
 ) {
     var selectedTab by remember { mutableIntStateOf(2) } // Default to Manual for safety
     val tabs = listOf("AI 对话", "拍照识别", "手动输入")
+    val isDarkTheme = androidx.compose.foundation.isSystemInDarkTheme()
+    val selectedTheme = remember(selectedThemeIndex) { getTodayVisualTheme(selectedThemeIndex) }
+    val accentColor = remember(selectedTheme, isDarkTheme) { themedAccentColor(selectedTheme, isDarkTheme) }
+    val cardColor = remember(selectedTheme, isDarkTheme) { themedDashboardCardColor(selectedTheme, isDarkTheme) }
+    val onCardColor = if (isDarkTheme) Color.White else if (calculatePerceivedLuminance(cardColor) > 0.5f) Color(0xFF1E1E1E) else Color(0xFFF4F4F4)
 
     // Remove automatic state clearing to persist chat/results across navigation
     // LaunchedEffect(Unit) {
@@ -94,36 +101,36 @@ fun AddEntryScreen(
             CenterAlignedTopAppBar(
                 title = { 
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("添加记录", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                        Text(CalorieUtils.formatDate(targetDate), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("添加记录", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = onCardColor)
+                        Text(CalorieUtils.formatDate(targetDate), style = MaterialTheme.typography.bodySmall, color = onCardColor.copy(alpha = 0.72f))
                     }
                 },
                 navigationIcon = {
                     IconButton(onClick = onCancel) {
-                        Icon(Icons.Default.Close, contentDescription = "Close")
+                        Icon(Icons.Default.Close, contentDescription = "Close", tint = accentColor)
                     }
                 },
                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background
+                    containerColor = cardColor.copy(alpha = if (isDarkTheme) 0.92f else 0.95f)
                 )
             )
         },
-        containerColor = MaterialTheme.colorScheme.background
+        containerColor = Color.Transparent
     ) { padding ->
         Column(modifier = Modifier.padding(padding)) {
             // Custom Tab Indicator
             TabRow(
                 selectedTabIndex = selectedTab,
-                containerColor = MaterialTheme.colorScheme.background,
-                contentColor = MaterialTheme.colorScheme.primary,
+                containerColor = cardColor.copy(alpha = if (isDarkTheme) 0.88f else 0.92f),
+                contentColor = accentColor,
                 indicator = { tabPositions ->
                     TabRowDefaults.Indicator(
                         Modifier.tabIndicatorOffset(tabPositions[selectedTab]),
                         height = 3.dp,
-                        color = MaterialTheme.colorScheme.primary
+                        color = accentColor
                     )
                 },
-                divider = { Divider(color = MaterialTheme.colorScheme.surfaceVariant) }
+                divider = { Divider(color = onCardColor.copy(alpha = 0.18f)) }
             ) {
                 tabs.forEachIndexed { index, title ->
                     Tab(
@@ -136,8 +143,8 @@ fun AddEntryScreen(
                                 style = MaterialTheme.typography.bodyMedium
                             ) 
                         },
-                        selectedContentColor = MaterialTheme.colorScheme.primary,
-                        unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                        selectedContentColor = accentColor,
+                        unselectedContentColor = onCardColor.copy(alpha = 0.72f)
                     )
                 }
             }
@@ -145,12 +152,12 @@ fun AddEntryScreen(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.surface) // Light background for content area
+                    .background(cardColor.copy(alpha = if (isDarkTheme) 0.94f else 0.96f))
             ) {
                 when (selectedTab) {
-                    0 -> AiDialogueTab(aiViewModel, userWeight, showMacros, onSave)
-                    1 -> PhotoRecognitionTab(aiViewModel, userWeight, showMacros, onSave)
-                    2 -> ManualInputTab(showMacros, onSave = { item -> onSave(listOf(item)) }, onCancel = onCancel)
+                    0 -> AiDialogueTab(aiViewModel, userWeight, showMacros, onSave, accentColor, cardColor, onCardColor)
+                    1 -> PhotoRecognitionTab(aiViewModel, userWeight, showMacros, onSave, accentColor, cardColor, onCardColor)
+                    2 -> ManualInputTab(showMacros, onSave = { item -> onSave(listOf(item)) }, onCancel = onCancel, accentColor = accentColor, cardColor = cardColor, onCardColor = onCardColor)
                 }
             }
         }
@@ -161,7 +168,10 @@ fun AddEntryScreen(
 fun ManualInputTab(
     showMacros: Boolean,
     onSave: (EntryItem) -> Unit,
-    onCancel: () -> Unit
+    onCancel: () -> Unit,
+    accentColor: Color,
+    cardColor: Color,
+    onCardColor: Color
 ) {
     var type by remember { mutableStateOf("food") }
     var name by remember { mutableStateOf("") }
@@ -224,7 +234,7 @@ fun ManualInputTab(
         item {
             // Type Selection Card
             Card(
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                colors = CardDefaults.cardColors(containerColor = cardColor.copy(alpha = 0.96f)),
                 elevation = CardDefaults.cardElevation(2.dp),
                 shape = RoundedCornerShape(16.dp),
                 modifier = Modifier.fillMaxWidth()
@@ -233,8 +243,8 @@ fun ManualInputTab(
                     val types = listOf("food" to "食物", "exercise" to "运动")
                     types.forEach { (key, label) ->
                         val selected = type == key
-                        val bgColor = if (selected) MaterialTheme.colorScheme.primary else Color.Transparent
-                        val contentColor = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                        val bgColor = if (selected) accentColor else Color.Transparent
+                        val contentColor = if (selected) Color.White else onCardColor.copy(alpha = 0.78f)
                         
                         Box(
                             modifier = Modifier
@@ -263,7 +273,13 @@ fun ManualInputTab(
 
         item {
             Card(
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                colors = CardDefaults.cardColors(
+                    containerColor = if (androidx.compose.foundation.isSystemInDarkTheme()) {
+                        MaterialTheme.colorScheme.surface
+                    } else {
+                        cardColor.copy(alpha = 0.92f)
+                    }
+                ),
                 elevation = CardDefaults.cardElevation(2.dp),
                 shape = RoundedCornerShape(16.dp),
                 modifier = Modifier.fillMaxWidth()
@@ -390,7 +406,7 @@ fun ManualInputTab(
                             Text(
                                 "时长: $duration 分钟", 
                                 style = MaterialTheme.typography.bodySmall, 
-                                color = MaterialTheme.colorScheme.primary,
+                                color = accentColor,
                                 modifier = Modifier.align(Alignment.End)
                             )
                         }
@@ -414,15 +430,20 @@ fun ManualInputTab(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         OutlinedButton(
-                            onClick = { imagePickerLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
+                            onClick = { imagePickerLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                containerColor = cardColor.copy(alpha = 0.96f),
+                                contentColor = accentColor
+                            ),
+                            border = BorderStroke(1.dp, accentColor.copy(alpha = 0.56f))
                         ) {
-                            Icon(Icons.Default.AddPhotoAlternate, contentDescription = null)
+                            Icon(Icons.Default.AddPhotoAlternate, contentDescription = null, tint = accentColor)
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text(if (selectedImageUri == null) "添加备注图片" else "更换图片")
+                            Text(if (selectedImageUri == null) "添加备注图片" else "更换图片", color = accentColor)
                         }
                         if (selectedImageUri != null) {
                             TextButton(onClick = { selectedImageUri = null }) {
-                                Text("移除")
+                                Text("移除", color = accentColor)
                             }
                         }
                     }
@@ -466,7 +487,7 @@ fun ManualInputTab(
                 },
                 modifier = Modifier.fillMaxWidth().height(50.dp),
                 shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = Color.White)
             ) {
                 Text("保存记录", style = MaterialTheme.typography.titleMedium)
             }
@@ -479,7 +500,10 @@ fun AiDialogueTab(
     viewModel: AiViewModel,
     userWeight: Float,
     showMacros: Boolean,
-    onSave: (List<EntryItem>) -> Unit
+    onSave: (List<EntryItem>) -> Unit,
+    accentColor: Color,
+    cardColor: Color,
+    onCardColor: Color
 ) {
     var inputText by remember { mutableStateOf("") }
     val uiState by viewModel.uiState.collectAsState()
@@ -545,6 +569,9 @@ fun AiDialogueTab(
         EditEntryDialog(
             item = recognizedItems[editingIndex],
             showMacros = showMacros,
+            accentColor = accentColor,
+            cardColor = cardColor,
+            onCardColor = onCardColor,
             onDismiss = { editingIndex = -1 },
             onConfirm = { newItem ->
                 viewModel.updateChatItem(editingIndex, newItem)
@@ -562,10 +589,10 @@ fun AiDialogueTab(
                 state = listState,
                 modifier = Modifier.weight(1f).padding(bottom = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
-                contentPadding = PaddingValues(bottom = 16.dp, top = 40.dp) // Add top padding for FAB space
+                contentPadding = PaddingValues(bottom = 16.dp)
             ) {
             items(displayMessages) { msg ->
-                ChatBubble(msg)
+                ChatBubble(msg, accentColor, cardColor, onCardColor)
             }
             if (uiState is AiUiState.Loading) {
                  item {
@@ -577,11 +604,11 @@ fun AiDialogueTab(
                              Icons.Default.SmartToy, 
                              contentDescription = "AI", 
                              modifier = Modifier.padding(top = 8.dp, end = 8.dp).size(28.dp),
-                             tint = MaterialTheme.colorScheme.primary
+                             tint = accentColor
                          )
                          Surface(
                              shape = MaterialTheme.shapes.medium.copy(bottomStart = androidx.compose.foundation.shape.CornerSize(0.dp)),
-                             color = MaterialTheme.colorScheme.surfaceVariant,
+                             color = cardColor.copy(alpha = 0.92f),
                              shadowElevation = 1.dp
                          ) {
                              Row(
@@ -591,13 +618,13 @@ fun AiDialogueTab(
                                  CircularProgressIndicator(
                                      modifier = Modifier.size(16.dp),
                                      strokeWidth = 2.dp,
-                                     color = MaterialTheme.colorScheme.onSurfaceVariant
+                                     color = onCardColor.copy(alpha = 0.8f)
                                  )
                                  Spacer(modifier = Modifier.width(8.dp))
                                  Text(
                                      text = "AI正在思考...",
                                      style = MaterialTheme.typography.bodyMedium,
-                                     color = MaterialTheme.colorScheme.onSurfaceVariant
+                                     color = onCardColor.copy(alpha = 0.8f)
                                  )
                              }
                          }
@@ -618,7 +645,7 @@ fun AiDialogueTab(
         // Pending Items Area (Cart)
         if (recognizedItems.isNotEmpty()) {
             Card(
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)),
+                colors = CardDefaults.cardColors(containerColor = cardColor.copy(alpha = if (androidx.compose.foundation.isSystemInDarkTheme()) 0.85f else 0.78f)),
                 shape = RoundedCornerShape(16.dp),
                 modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
             ) {
@@ -626,7 +653,7 @@ fun AiDialogueTab(
                     Text(
                         "待添加记录 (${recognizedItems.size})", 
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.primary,
+                        color = accentColor,
                         fontWeight = FontWeight.Bold
                     )
                     Spacer(modifier = Modifier.height(8.dp))
@@ -642,7 +669,10 @@ fun AiDialogueTab(
                                 item = item,
                                 showMacros = showMacros,
                                 onDelete = { viewModel.removeChatItem(index) },
-                                onEdit = { editingIndex = index }
+                                onEdit = { editingIndex = index },
+                                accentColor = accentColor,
+                                cardColor = cardColor,
+                                onCardColor = onCardColor
                             )
                         }
                     }
@@ -655,7 +685,8 @@ fun AiDialogueTab(
                             viewModel.clearChatItems()
                         },
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp)
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = Color.White)
                     ) {
                         val totalCal = recognizedItems.sumOf { if (it.type == "food") it.calories else -it.calories }
                         Text("确认添加 ($totalCal kcal)")
@@ -668,6 +699,7 @@ fun AiDialogueTab(
         Card(
             shape = RoundedCornerShape(24.dp),
             elevation = CardDefaults.cardElevation(4.dp),
+            colors = CardDefaults.cardColors(containerColor = cardColor.copy(alpha = 0.94f)),
             modifier = Modifier.fillMaxWidth()
         ) {
             Column {
@@ -705,7 +737,7 @@ fun AiDialogueTab(
                     IconButton(onClick = { 
                         launcher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
                     }) {
-                        Icon(Icons.Default.AddPhotoAlternate, contentDescription = "Image", tint = MaterialTheme.colorScheme.primary)
+                        Icon(Icons.Default.AddPhotoAlternate, contentDescription = "Image", tint = accentColor)
                     }
 
                     OutlinedTextField(
@@ -740,7 +772,7 @@ fun AiDialogueTab(
                         if (uiState is AiUiState.Loading) {
                             CircularProgressIndicator(modifier = Modifier.size(24.dp))
                         } else {
-                            Icon(Icons.Default.Send, contentDescription = "Send", tint = MaterialTheme.colorScheme.primary)
+                            Icon(Icons.Default.Send, contentDescription = "Send", tint = accentColor)
                         }
                     }
                 }
@@ -753,7 +785,7 @@ fun AiDialogueTab(
             SmallFloatingActionButton(
                 onClick = { showClearDialog = true },
                 modifier = Modifier.align(Alignment.TopEnd).padding(16.dp),
-                containerColor = MaterialTheme.colorScheme.surface,
+                containerColor = cardColor.copy(alpha = 0.95f),
                 contentColor = MaterialTheme.colorScheme.error
             ) {
                 Icon(Icons.Default.Delete, "Clear Chat")
@@ -763,7 +795,12 @@ fun AiDialogueTab(
 }
 
 @Composable
-fun ChatBubble(message: ChatMessage) {
+fun ChatBubble(
+    message: ChatMessage,
+    accentColor: Color,
+    cardColor: Color,
+    onCardColor: Color
+) {
     val isUser = message.role == "user"
     val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
     val context = LocalContext.current
@@ -777,7 +814,7 @@ fun ChatBubble(message: ChatMessage) {
                  Icons.Default.SmartToy, 
                  contentDescription = "AI", 
                  modifier = Modifier.padding(top = 8.dp, end = 8.dp).size(28.dp),
-                 tint = MaterialTheme.colorScheme.primary
+                 tint = accentColor
              )
         }
         
@@ -823,7 +860,7 @@ fun ChatBubble(message: ChatMessage) {
                         bottomStart = if (!isUser) androidx.compose.foundation.shape.CornerSize(0.dp) else MaterialTheme.shapes.medium.bottomStart,
                         bottomEnd = if (isUser) androidx.compose.foundation.shape.CornerSize(0.dp) else MaterialTheme.shapes.medium.bottomEnd
                     ),
-                    color = if (isUser) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                    color = if (isUser) accentColor else cardColor.copy(alpha = 0.94f),
                     shadowElevation = 1.dp,
                     modifier = Modifier
                         .widthIn(max = 280.dp)
@@ -835,7 +872,7 @@ fun ChatBubble(message: ChatMessage) {
                     Text(
                         text = message.content,
                         modifier = Modifier.padding(12.dp),
-                        color = if (isUser) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = if (isUser) Color.White else onCardColor.copy(alpha = 0.88f),
                         style = MaterialTheme.typography.bodyMedium
                     )
                 }
@@ -847,7 +884,7 @@ fun ChatBubble(message: ChatMessage) {
                  Icons.Default.Person, 
                  contentDescription = "User", 
                  modifier = Modifier.padding(top = 8.dp, start = 8.dp).size(28.dp),
-                 tint = MaterialTheme.colorScheme.secondary
+                 tint = accentColor.copy(alpha = 0.82f)
              )
         }
     }
@@ -866,7 +903,10 @@ fun PhotoRecognitionTab(
     viewModel: AiViewModel,
     userWeight: Float,
     showMacros: Boolean,
-    onSave: (List<EntryItem>) -> Unit
+    onSave: (List<EntryItem>) -> Unit,
+    accentColor: Color,
+    cardColor: Color,
+    onCardColor: Color
 ) {
     val context = LocalContext.current
     var selectedImageUris by remember { mutableStateOf<List<Uri>>(emptyList()) }
@@ -893,6 +933,9 @@ fun PhotoRecognitionTab(
         EditEntryDialog(
             item = recognizedItems[editingIndex],
             showMacros = showMacros,
+            accentColor = accentColor,
+            cardColor = cardColor,
+            onCardColor = onCardColor,
             onDismiss = { editingIndex = -1 },
             onConfirm = { newItem ->
                 viewModel.updatePhotoItem(editingIndex, newItem)
@@ -912,7 +955,7 @@ fun PhotoRecognitionTab(
                     .fillMaxWidth()
                     .height(200.dp)
                     .clip(RoundedCornerShape(16.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                    .background(cardColor.copy(alpha = 0.8f))
                     .clickable { launcher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
                 contentAlignment = Alignment.Center
             ) {
@@ -939,10 +982,10 @@ fun PhotoRecognitionTab(
                             Icons.Default.AddPhotoAlternate,
                             contentDescription = null,
                             modifier = Modifier.size(48.dp),
-                            tint = MaterialTheme.colorScheme.primary
+                            tint = accentColor
                         )
                         Spacer(modifier = Modifier.height(8.dp))
-                        Text("点击选择图片 (支持多张)", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("点击选择图片 (支持多张)", style = MaterialTheme.typography.bodyMedium, color = onCardColor.copy(alpha = 0.78f))
                     }
                 }
             }
@@ -973,7 +1016,7 @@ fun PhotoRecognitionTab(
                     },
                     modifier = Modifier.weight(1f),
                     shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondaryContainer, contentColor = MaterialTheme.colorScheme.onSecondaryContainer)
+                    colors = ButtonDefaults.buttonColors(containerColor = cardColor.copy(alpha = 0.92f), contentColor = onCardColor)
                 ) {
                     Icon(Icons.Default.CameraAlt, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(8.dp))
@@ -998,7 +1041,8 @@ fun PhotoRecognitionTab(
                     },
                     enabled = selectedImageUris.isNotEmpty() && uiState !is AiUiState.Loading,
                     modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(12.dp)
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = Color.White)
                 ) {
                     if (uiState is AiUiState.Loading) {
                         CircularProgressIndicator(
@@ -1030,14 +1074,14 @@ fun PhotoRecognitionTab(
             if (!summary.isNullOrBlank()) {
                 item {
                     Card(
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+                        colors = CardDefaults.cardColors(containerColor = cardColor.copy(alpha = 0.82f)),
                         shape = RoundedCornerShape(12.dp),
                         modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
                     ) {
                         Text(
                             text = summary,
                             style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = onCardColor.copy(alpha = 0.86f),
                             modifier = Modifier.padding(12.dp)
                         )
                     }
@@ -1067,7 +1111,10 @@ fun PhotoRecognitionTab(
                     item = item,
                     showMacros = showMacros,
                     onDelete = { viewModel.removePhotoItem(index) },
-                    onEdit = { editingIndex = index }
+                    onEdit = { editingIndex = index },
+                    accentColor = accentColor,
+                    cardColor = cardColor,
+                    onCardColor = onCardColor
                 )
             }
             
@@ -1081,7 +1128,8 @@ fun PhotoRecognitionTab(
                     },
                     enabled = recognizedItems.isNotEmpty(),
                     modifier = Modifier.fillMaxWidth().height(50.dp),
-                    shape = RoundedCornerShape(12.dp)
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = Color.White)
                 ) {
                     Text("确认添加", style = MaterialTheme.typography.titleMedium)
                 }
@@ -1096,14 +1144,17 @@ fun RecognizedItemCard(
     item: EntryItem,
     showMacros: Boolean = false,
     onDelete: () -> Unit,
-    onEdit: () -> Unit
+    onEdit: () -> Unit,
+    accentColor: Color,
+    cardColor: Color,
+    onCardColor: Color
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)),
+        colors = CardDefaults.cardColors(containerColor = cardColor.copy(alpha = 0.78f)),
         elevation = CardDefaults.cardElevation(0.dp),
         shape = RoundedCornerShape(12.dp),
-        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+        border = androidx.compose.foundation.BorderStroke(1.dp, onCardColor.copy(alpha = 0.2f))
     ) {
         Row(
             modifier = Modifier.padding(12.dp),
@@ -1117,10 +1168,10 @@ fun RecognizedItemCard(
                 val macroInfo = if (showMacros && item.type == "food") {
                     " · 碳${item.carbs} 蛋${item.protein} 脂${item.fat}"
                 } else ""
-                Text("${item.calories} kcal · ${if (item.type == "food") "食物" else "运动"}$macroInfo$timeInfo$notesInfo$imageInfo", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("${item.calories} kcal · ${if (item.type == "food") "食物" else "运动"}$macroInfo$timeInfo$notesInfo$imageInfo", style = MaterialTheme.typography.bodySmall, color = onCardColor.copy(alpha = 0.72f))
             }
             IconButton(onClick = onEdit) {
-                Icon(Icons.Default.Edit, contentDescription = "Edit", tint = MaterialTheme.colorScheme.primary)
+                Icon(Icons.Default.Edit, contentDescription = "Edit", tint = accentColor)
             }
             IconButton(onClick = onDelete) {
                 Icon(Icons.Default.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error)
@@ -1133,6 +1184,9 @@ fun RecognizedItemCard(
 fun EditEntryDialog(
     item: EntryItem,
     showMacros: Boolean = false,
+    accentColor: Color,
+    cardColor: Color,
+    onCardColor: Color,
     onDismiss: () -> Unit,
     onConfirm: (EntryItem) -> Unit
 ) {
@@ -1146,7 +1200,8 @@ fun EditEntryDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("编辑记录") },
+        title = { Text("编辑记录", color = onCardColor) },
+        containerColor = cardColor,
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(
@@ -1214,7 +1269,8 @@ fun EditEntryDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = {
+            Button(
+                onClick = {
                 val cal = calories.toIntOrNull() ?: 0
                 val c = carbs.toIntOrNull() ?: 0
                 val p = protein.toIntOrNull() ?: 0
@@ -1223,12 +1279,17 @@ fun EditEntryDialog(
                 if (name.isNotBlank()) {
                     onConfirm(item.copy(name = name, calories = cal, carbs = c, protein = p, fat = f, time = time, notes = notes))
                 }
-            }) {
-                Text("确定")
+            },
+                colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = Color.White)
+            ) {
+                Text("保存")
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
+            Button(
+                onClick = onDismiss,
+                colors = ButtonDefaults.buttonColors(containerColor = accentColor.copy(alpha = 0.72f), contentColor = Color.White)
+            ) {
                 Text("取消")
             }
         },

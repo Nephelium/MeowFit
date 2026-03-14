@@ -19,11 +19,13 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.Fill
@@ -60,7 +62,6 @@ import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
 import android.widget.Toast
-import androidx.compose.runtime.saveable.rememberSaveable
 
 enum class HeatmapMetric(val label: String) {
     Sleep("睡眠"),
@@ -85,12 +86,20 @@ fun OverviewScreen(
     detailItems: List<CalorieItemEntity>,
     onDetailDateChange: (String?) -> Unit
 ) {
+    val isDarkTheme = isSystemInDarkTheme()
+    val selectedThemeIndex = userProfile?.selectedTodayThemeIndex ?: 0
+    val selectedTheme = remember(selectedThemeIndex) { getTodayVisualTheme(selectedThemeIndex) }
+    val backgroundSeed = remember(selectedThemeIndex) { (selectedThemeIndex + 1) * 1031 }
+    val cardColor = remember(selectedTheme, isDarkTheme) { themedDashboardCardColor(selectedTheme, isDarkTheme) }
+    val onCardColor = if (isDarkTheme) Color.White else if (calculatePerceivedLuminance(cardColor) > 0.5f) Color(0xFF1E1E1E) else Color(0xFFF4F4F4)
+    val accentColor = remember(selectedTheme, isDarkTheme) { themedAccentColor(selectedTheme, isDarkTheme) }
+
     var selectedYear by remember { mutableIntStateOf(Calendar.getInstance().get(Calendar.YEAR)) }
     // Default to current month
     var selectedMonth by remember { mutableStateOf<Int?>(Calendar.getInstance().get(Calendar.MONTH)) }
     
     var heatmapMetric by remember { mutableStateOf(HeatmapMetric.Net) }
-    var showShareDialog by rememberSaveable { mutableStateOf(false) }
+    var previewCalendarBitmap by remember { mutableStateOf<Bitmap?>(null) }
     
     val recordMap = remember(records) { records.associateBy { it.date } }
     val context = LocalContext.current
@@ -104,6 +113,9 @@ fun OverviewScreen(
             items = detailItems,
             userProfile = userProfile,
             metric = heatmapMetric,
+            accentColor = accentColor,
+            cardColor = cardColor,
+            onCardColor = onCardColor,
             onDismiss = { onDetailDateChange(null) },
             onAddRecord = { onAddRecord(detailDate); onDetailDateChange(null) },
             onUpdateWeight = { w -> onUpdateWeight(w, detailDate) },
@@ -112,44 +124,68 @@ fun OverviewScreen(
         )
     }
 
-    if (showShareDialog) {
-        AlertDialog(
-            onDismissRequest = { showShareDialog = false },
-            title = { Text("日历分享") },
-            text = { Text("您想如何分享您的日历？") },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        showShareDialog = false
-                        val bitmap = generateCalendarBitmap(context, selectedYear, selectedMonth, records, allItems, heatmapMetric, userProfile)
-                        saveCalendarToGallery(context, bitmap)
-                    }
-                ) {
-                    Text("保存到相册")
-                }
-            },
-            dismissButton = {
-                Row {
-                    TextButton(
-                        onClick = {
-                            showShareDialog = false
-                            val bitmap = generateCalendarBitmap(context, selectedYear, selectedMonth, records, allItems, heatmapMetric, userProfile)
-                            shareCalendarImage(context, bitmap)
-                        }
+    if (previewCalendarBitmap != null) {
+        Dialog(onDismissRequest = { previewCalendarBitmap = null }) {
+            Card(
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            ) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Image(
+                        bitmap = previewCalendarBitmap!!.asImageBitmap(),
+                        contentDescription = null,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 280.dp, max = 520.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End
                     ) {
-                        Text("分享给朋友")
-                    }
-                    TextButton(onClick = { showShareDialog = false }) {
-                        Text("取消")
+                        TextButton(onClick = { previewCalendarBitmap = null }) {
+                            Text("取消")
+                        }
+                        TextButton(onClick = {
+                            saveCalendarToGallery(context, previewCalendarBitmap!!)
+                            previewCalendarBitmap = null
+                        }) {
+                            Text("保存到相册")
+                        }
+                        TextButton(onClick = {
+                            shareCalendarImage(context, previewCalendarBitmap!!)
+                            previewCalendarBitmap = null
+                        }) {
+                            Text("分享给朋友")
+                        }
                     }
                 }
             }
-        )
+        }
     }
 
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
-        topBar = {
+    Box(modifier = Modifier.fillMaxSize()) {
+        TodayBackground(
+            theme = selectedTheme,
+            seed = backgroundSeed,
+            isDarkTheme = isDarkTheme,
+            modifier = Modifier
+                .matchParentSize()
+                .blur(if (isDarkTheme) 22.dp else 10.dp)
+        )
+        Scaffold(
+            containerColor = Color.Transparent,
+            contentWindowInsets = WindowInsets(0, 0, 0, 0)
+        ) { padding ->
+            Column(
+                modifier = Modifier
+                    .padding(padding)
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding())
+                    .padding(16.dp)
+            ) {
             OverviewTopBar(
                 selectedYear = selectedYear,
                 selectedMonth = selectedMonth,
@@ -160,20 +196,26 @@ fun OverviewScreen(
                     selectedYear = cal.get(Calendar.YEAR)
                     selectedMonth = cal.get(Calendar.MONTH)
                 },
-                onShare = { showShareDialog = true }
+                onShare = {
+                    previewCalendarBitmap = generateCalendarBitmap(
+                        context = context,
+                        year = selectedYear,
+                        month = selectedMonth,
+                        records = records,
+                        allItems = allItems,
+                        metric = heatmapMetric,
+                        userProfile = userProfile
+                    )
+                },
+                containerColor = Color.Transparent,
+                titleContentColor = onCardColor,
+                accentColor = accentColor,
+                modifier = Modifier
             )
-        }
-    ) { padding ->
-        Column(
-            modifier = Modifier
-                .padding(padding)
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(16.dp)
-        ) {
+
             // Heatmap Card
             Card(
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                colors = CardDefaults.cardColors(containerColor = cardColor),
                 shape = RoundedCornerShape(16.dp),
                 elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
             ) {
@@ -186,19 +228,19 @@ fun OverviewScreen(
                         Text(
                             text = if (selectedMonth == null) "统计" else "${selectedMonth!! + 1}月",
                             style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = onCardColor.copy(alpha = 0.8f)
                         )
                         
                         // Metric Toggle
                         Row(
                             modifier = Modifier
-                                .background(MaterialTheme.colorScheme.surfaceVariant, CircleShape)
+                                .background(onCardColor.copy(alpha = 0.12f), CircleShape)
                                 .padding(2.dp)
                         ) {
                             HeatmapMetric.values().forEach { metric ->
                                 val selected = heatmapMetric == metric
-                                val bgColor = if (selected) MaterialTheme.colorScheme.primary else Color.Transparent
-                                val contentColor = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                                val bgColor = if (selected) accentColor else Color.Transparent
+                                val contentColor = if (selected) Color.White else onCardColor.copy(alpha = 0.8f)
                                 
                                 Box(
                                     modifier = Modifier
@@ -249,7 +291,7 @@ fun OverviewScreen(
             // Chart Card
             AnimatedVisibility(visible = selectedMonth != null) {
                 Card(
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    colors = CardDefaults.cardColors(containerColor = cardColor),
                     shape = RoundedCornerShape(16.dp),
                     elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
                 ) {
@@ -257,20 +299,23 @@ fun OverviewScreen(
                         Text(
                             text = "体重趋势",
                             style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = onCardColor.copy(alpha = 0.86f)
                         )
                         Spacer(modifier = Modifier.height(16.dp))
 
                         SmoothWeightChart(
                             year = selectedYear,
                             month = selectedMonth,
-                            records = records
+                            records = records,
+                            accentColor = accentColor,
+                            contentColor = onCardColor
                         )
                     }
                 }
             }
             
-            Spacer(modifier = Modifier.height(80.dp))
+                Spacer(modifier = Modifier.height(80.dp))
+            }
         }
     }
 }
@@ -282,21 +327,27 @@ fun OverviewTopBar(
     selectedMonth: Int?,
     onYearChange: (Int) -> Unit,
     onBackToYear: () -> Unit,
-    onBackToMonth: () -> Unit, // Add callback for Back to Month View
-    onShare: () -> Unit
+    onBackToMonth: () -> Unit,
+    onShare: () -> Unit,
+    containerColor: Color,
+    titleContentColor: Color,
+    accentColor: Color,
+    modifier: Modifier = Modifier
 ) {
     CenterAlignedTopAppBar(
+        modifier = modifier,
+        windowInsets = WindowInsets(0, 0, 0, 0),
         title = {
             if (selectedMonth != null) {
                 Text("${selectedYear}年 ${selectedMonth + 1}月", fontWeight = FontWeight.Bold)
             } else {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = { onYearChange(selectedYear - 1) }) {
-                        Icon(Icons.Default.ChevronLeft, "Prev Year")
+                        Icon(Icons.Default.ChevronLeft, "Prev Year", tint = accentColor)
                     }
                     Text("$selectedYear", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleLarge)
                     IconButton(onClick = { onYearChange(selectedYear + 1) }) {
-                        Icon(Icons.Default.ChevronRight, "Next Year")
+                        Icon(Icons.Default.ChevronRight, "Next Year", tint = accentColor)
                     }
                 }
             }
@@ -305,12 +356,12 @@ fun OverviewTopBar(
             if (selectedMonth != null) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = onBackToYear) {
-                        Icon(Icons.Default.ChevronLeft, "Back")
+                        Icon(Icons.Default.ChevronLeft, "Back", tint = accentColor)
                     }
                     Text(
                         text = "年视图",
                         style = MaterialTheme.typography.bodySmall,
-                        color = Color.Gray,
+                        color = titleContentColor.copy(alpha = 0.7f),
                         modifier = Modifier.clickable { onBackToYear() }
                     )
                 }
@@ -318,12 +369,12 @@ fun OverviewTopBar(
                 // Year View: Show Back to Month View
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = onBackToMonth) {
-                        Icon(Icons.Default.ChevronLeft, "Back")
+                        Icon(Icons.Default.ChevronLeft, "Back", tint = accentColor)
                     }
                     Text(
                         text = "月视图",
                         style = MaterialTheme.typography.bodySmall,
-                        color = Color.Gray,
+                        color = titleContentColor.copy(alpha = 0.7f),
                         modifier = Modifier.clickable { onBackToMonth() }
                     )
                 }
@@ -331,12 +382,12 @@ fun OverviewTopBar(
         },
         actions = {
             IconButton(onClick = onShare) {
-                Icon(Icons.Default.Share, "Share")
+                Icon(Icons.Default.Share, "Share", tint = accentColor)
             }
         },
         colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-            containerColor = MaterialTheme.colorScheme.background,
-            titleContentColor = MaterialTheme.colorScheme.onBackground
+            containerColor = containerColor,
+            titleContentColor = titleContentColor
         )
     )
 }
@@ -611,7 +662,14 @@ fun generateCalendarBitmap(
     canvas.drawText(yearTag, badgeRect.centerX(), badgeRect.centerY() + badgeTextOffset, paint)
 
     // Subtitle with Emoji
-    val fullSubtitle = "$emoji $subtitle"
+    val trimmedSubtitle = subtitle.trimStart()
+    val firstCodePoint = trimmedSubtitle.firstOrNull()?.let { trimmedSubtitle.codePointAt(0) } ?: -1
+    val hasLeadingEmoji = firstCodePoint != -1 && (
+        firstCodePoint in 0x1F000..0x1FAFF ||
+        firstCodePoint in 0x2600..0x27BF ||
+        Character.getType(firstCodePoint) == Character.OTHER_SYMBOL.toInt()
+    )
+    val fullSubtitle = if (hasLeadingEmoji) subtitle else "$emoji $subtitle"
     // Adjust text size based on length to prevent clipping
     paint.textSize = if (fullSubtitle.length > 25) 40f else 48f
     paint.typeface = android.graphics.Typeface.create(android.graphics.Typeface.SERIF, android.graphics.Typeface.BOLD) // Use Serif for "cute" look if possible, or stick to Default Bold
@@ -692,8 +750,8 @@ fun generateCalendarBitmap(
                 }
             }
             HeatmapMetric.Water -> lerp(android.graphics.Color.parseColor("#B3E5FC"), android.graphics.Color.parseColor("#0277BD"), value/2500f)
-            HeatmapMetric.Intake -> lerp(android.graphics.Color.parseColor("#C8E6C9"), android.graphics.Color.parseColor("#2E7D32"), value/3000f)
-            HeatmapMetric.Burned -> lerp(android.graphics.Color.parseColor("#F0F8FF"), android.graphics.Color.parseColor("#1565C0"), value/3000f)
+            HeatmapMetric.Intake -> lerp(android.graphics.Color.parseColor("#FFF8E1"), android.graphics.Color.parseColor("#F57F17"), value/3000f)
+            HeatmapMetric.Burned -> lerp(android.graphics.Color.parseColor("#FCE4EC"), android.graphics.Color.parseColor("#AD1457"), value/3000f)
             HeatmapMetric.Weight -> {
                 // value is encoded weight * 10 or just raw weight cast to Int?
                 // Actually getColor takes Int. We'll pass weight * 10
@@ -702,6 +760,14 @@ fun generateCalendarBitmap(
                 lerp(android.graphics.Color.parseColor("#E0F7FA"), android.graphics.Color.parseColor("#006064"), progress)
             }
         }
+    }
+
+    fun drawHeatCell(rect: android.graphics.RectF, radius: Float, color: Int) {
+        paint.style = android.graphics.Paint.Style.FILL
+        paint.color = color
+        paint.setShadowLayer(8f, 0f, 2f, android.graphics.Color.argb(70, 0, 0, 0))
+        canvas.drawRoundRect(rect, radius, radius, paint)
+        paint.clearShadowLayer()
     }
 
     fun drawStar(cx: Float, cy: Float, size: Float) {
@@ -813,9 +879,10 @@ fun generateCalendarBitmap(
                     
                     val color = if (!hasDataForMetric) getColor(0, metric) else getColor(value, metric)
                     
-                    paint.color = color
                     val rect = android.graphics.RectF(x, y, x + yearViewDaySize, y + yearViewDaySize)
-                    canvas.drawRoundRect(rect, 12f, 12f, paint) // More rounded
+                    if (hasDataForMetric) {
+                        drawHeatCell(rect, 12f, color)
+                    }
                     
                     if (metric == HeatmapMetric.Sleep && hasDataForMetric) {
                          val durationHours = value / 60f
@@ -826,7 +893,7 @@ fun generateCalendarBitmap(
                     }
                     
                     // Draw Day Number
-                    paint.color = getContrastColor(color)
+                    paint.color = if (hasDataForMetric) getContrastColor(color) else android.graphics.Color.parseColor("#666666")
                     paint.textSize = 34f // Larger font size for year view days
                     paint.typeface = android.graphics.Typeface.create(android.graphics.Typeface.SANS_SERIF, android.graphics.Typeface.BOLD)
                     paint.textAlign = android.graphics.Paint.Align.CENTER
@@ -911,9 +978,15 @@ fun generateCalendarBitmap(
             
             val color = if (!hasDataForMetric) getColor(0, metric) else getColor(value, metric)
             
-            paint.color = color
             val rect = android.graphics.RectF(x, y, x + monthViewDaySize, y + monthViewDaySize)
-            canvas.drawRoundRect(rect, 16f, 16f, paint)
+            if (hasDataForMetric) {
+                drawHeatCell(rect, 16f, color)
+            } else {
+                paint.style = android.graphics.Paint.Style.FILL
+                paint.color = color
+                paint.clearShadowLayer()
+                canvas.drawRoundRect(rect, 16f, 16f, paint)
+            }
             
             if (metric == HeatmapMetric.Sleep && hasDataForMetric) {
                  val durationHours = value / 60f
@@ -1157,8 +1230,8 @@ fun getHeatmapColor(
     max: Float = 100f
 ): Color {
     if (value == 0) return when(metric) {
-        HeatmapMetric.Intake -> Color(0xFFE8F5E9) // Very light green
-        HeatmapMetric.Burned -> Color(0xFFF0F8FF) // AliceBlue (Very very light blue)
+        HeatmapMetric.Intake -> Color(0xFFFFF8E1)
+        HeatmapMetric.Burned -> Color(0xFFFCE4EC)
         HeatmapMetric.Water -> Color(0xFFE1F5FE) // Very light light-blue
         HeatmapMetric.Sleep -> Color(0xFFEDE7F6) // Very light deep-purple
         HeatmapMetric.Weight -> Color(0xFFE0F7FA) // Very light cyan
@@ -1213,24 +1286,18 @@ fun getHeatmapColor(
             )
         }
         HeatmapMetric.Intake -> {
-            // Gradient from very light green (0) to very deep green (3000)
-            // 0 -> 0xFFE8F5E9
-            // 3000 -> 0xFF1B5E20 (Deep Green)
             val fraction = (value / 3000f).coerceIn(0f, 1f)
             androidx.compose.ui.graphics.lerp(
-                Color(0xFFE8F5E9),
-                Color(0xFF1B5E20),
+                Color(0xFFFFF8E1),
+                Color(0xFFF57F17),
                 fraction
             )
         }
         HeatmapMetric.Burned -> {
-            // Gradient from very light blue (0) to very deep blue (3000)
-            // 0 -> 0xFFF0F8FF (AliceBlue)
-            // 3000 -> 0xFF0D47A1 (Deep Blue)
             val fraction = (value / 3000f).coerceIn(0f, 1f)
             androidx.compose.ui.graphics.lerp(
-                Color(0xFFF0F8FF),
-                Color(0xFF0D47A1),
+                Color(0xFFFCE4EC),
+                Color(0xFFAD1457),
                 fraction
             )
         }
@@ -1649,7 +1716,7 @@ fun StatBox(label: String, value: String, color: Color) {
 }
 
 @Composable
-fun DetailRecordSectionHeader(title: String, calories: Int, accentColor: Color) {
+fun DetailRecordSectionHeader(title: String, calories: Int, accentColor: Color, textColor: Color) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -1666,14 +1733,14 @@ fun DetailRecordSectionHeader(title: String, calories: Int, accentColor: Color) 
         Text(
             text = "${calories} kcal",
             style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = textColor.copy(alpha = 0.78f),
             fontWeight = FontWeight.Medium
         )
     }
 }
 
 @Composable
-fun DetailRecordRow(item: CalorieItemEntity) {
+fun DetailRecordRow(item: CalorieItemEntity, textColor: Color) {
     val isFood = item.type == "food"
     Row(
         modifier = Modifier
@@ -1688,7 +1755,7 @@ fun DetailRecordRow(item: CalorieItemEntity) {
             modifier = Modifier.size(16.dp)
         )
         Spacer(modifier = Modifier.width(8.dp))
-        Text(item.name, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+        Text(item.name, style = MaterialTheme.typography.bodyMedium, color = textColor, modifier = Modifier.weight(1f))
         Text(
             "${if (isFood) "+" else "-"}${item.calories}",
             style = MaterialTheme.typography.bodyMedium,
@@ -1706,6 +1773,9 @@ fun DayDetailDialog(
     items: List<CalorieItemEntity>,
     userProfile: UserProfileEntity?,
     metric: HeatmapMetric,
+    accentColor: Color,
+    cardColor: Color,
+    onCardColor: Color,
     onDismiss: () -> Unit,
     onAddRecord: () -> Unit,
     onUpdateWeight: (Float) -> Unit,
@@ -1726,7 +1796,7 @@ fun DayDetailDialog(
     Dialog(onDismissRequest = onDismiss) {
         Card(
             shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            colors = CardDefaults.cardColors(containerColor = cardColor.copy(alpha = 0.96f)),
             elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
             modifier = Modifier.fillMaxWidth().heightIn(max = 600.dp)
         ) {
@@ -1736,9 +1806,9 @@ fun DayDetailDialog(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(text = date, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                    Text(text = date, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = onCardColor)
                     IconButton(onClick = onDismiss) {
-                        Icon(Icons.Default.Close, "Close", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Icon(Icons.Default.Close, "Close", tint = onCardColor.copy(alpha = 0.72f))
                     }
                 }
                 
@@ -1753,7 +1823,7 @@ fun DayDetailDialog(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Column {
-                                Text("当日饮水", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("当日饮水", style = MaterialTheme.typography.labelMedium, color = onCardColor.copy(alpha = 0.72f))
                                 if (showWaterEdit) {
                                     OutlinedTextField(
                                         value = waterInput,
@@ -1768,7 +1838,7 @@ fun DayDetailDialog(
                                         text = "${record?.totalWater ?: 0} ml",
                                         style = MaterialTheme.typography.headlineMedium,
                                         fontWeight = FontWeight.Bold,
-                                        color = Color(0xFF2196F3)
+                                        color = accentColor
                                     )
                                 }
                             }
@@ -1784,7 +1854,7 @@ fun DayDetailDialog(
                                     showWaterEdit = true
                                 }
                             }) {
-                                Text(if (showWaterEdit) "保存" else "修改")
+                                Text(if (showWaterEdit) "保存" else "修改", color = accentColor)
                             }
                         }
                     }
@@ -1796,7 +1866,7 @@ fun DayDetailDialog(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Column {
-                                Text("当日睡眠", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("当日睡眠", style = MaterialTheme.typography.labelMedium, color = onCardColor.copy(alpha = 0.72f))
                                 if (showSleepEdit) {
                                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                         OutlinedTextField(
@@ -1824,7 +1894,7 @@ fun DayDetailDialog(
                                         text = "${h}h ${m}m",
                                         style = MaterialTheme.typography.headlineMedium,
                                         fontWeight = FontWeight.Bold,
-                                        color = Color(0xFF673AB7)
+                                        color = accentColor
                                     )
                                 }
                             }
@@ -1842,7 +1912,7 @@ fun DayDetailDialog(
                                     showSleepEdit = true
                                 }
                             }) {
-                                Text(if (showSleepEdit) "保存" else "修改")
+                                Text(if (showSleepEdit) "保存" else "修改", color = accentColor)
                             }
                         }
                     }
@@ -1886,7 +1956,7 @@ fun DayDetailDialog(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Column {
-                                Text("当日体重", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("当日体重", style = MaterialTheme.typography.labelMedium, color = onCardColor.copy(alpha = 0.72f))
                                 if (showWeightEdit) {
                                     OutlinedTextField(
                                         value = weightInput,
@@ -1904,7 +1974,7 @@ fun DayDetailDialog(
                                         text = if (record?.weight != null) "${record.weight} kg" else "未记录",
                                         style = MaterialTheme.typography.titleMedium,
                                         fontWeight = FontWeight.SemiBold,
-                                        color = MaterialTheme.colorScheme.onSurface
+                                        color = onCardColor
                                     )
                                 }
                             }
@@ -1920,14 +1990,14 @@ fun DayDetailDialog(
                                     showWeightEdit = true
                                 }
                             }) {
-                                Text(if (showWeightEdit) "保存" else if (record?.weight != null) "修改" else "补录")
+                                Text(if (showWeightEdit) "保存" else if (record?.weight != null) "修改" else "补录", color = accentColor)
                             }
                         }
                         
                         Spacer(modifier = Modifier.height(16.dp))
                         
                         // Items List
-                        Text("记录详情", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("记录详情", style = MaterialTheme.typography.labelMedium, color = onCardColor.copy(alpha = 0.72f))
                         Spacer(modifier = Modifier.height(8.dp))
                         
                         val breakfastItems = remember(items) {
@@ -1957,7 +2027,7 @@ fun DayDetailDialog(
                         }
 
                         if (items.isEmpty()) {
-                            Text("无饮食运动记录", style = MaterialTheme.typography.bodySmall, color = Color.Gray, modifier = Modifier.padding(bottom = 16.dp))
+                            Text("无饮食运动记录", style = MaterialTheme.typography.bodySmall, color = onCardColor.copy(alpha = 0.68f), modifier = Modifier.padding(bottom = 16.dp))
                         } else {
                             LazyColumn(modifier = Modifier.weight(1f, fill = false)) {
                                 if (breakfastItems.isNotEmpty()) {
@@ -1965,11 +2035,12 @@ fun DayDetailDialog(
                                         DetailRecordSectionHeader(
                                             title = "早餐",
                                             calories = breakfastItems.sumOf { it.calories },
-                                            accentColor = MaterialTheme.colorScheme.primary
+                                            accentColor = MaterialTheme.colorScheme.primary,
+                                            textColor = onCardColor
                                         )
                                     }
                                     items(breakfastItems) { item ->
-                                        DetailRecordRow(item)
+                                        DetailRecordRow(item, textColor = onCardColor)
                                         Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                                     }
                                 }
@@ -1978,11 +2049,12 @@ fun DayDetailDialog(
                                         DetailRecordSectionHeader(
                                             title = "午餐",
                                             calories = lunchItems.sumOf { it.calories },
-                                            accentColor = Color(0xFF26A69A)
+                                            accentColor = Color(0xFF26A69A),
+                                            textColor = onCardColor
                                         )
                                     }
                                     items(lunchItems) { item ->
-                                        DetailRecordRow(item)
+                                        DetailRecordRow(item, textColor = onCardColor)
                                         Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                                     }
                                 }
@@ -1991,11 +2063,12 @@ fun DayDetailDialog(
                                         DetailRecordSectionHeader(
                                             title = "晚餐",
                                             calories = dinnerItems.sumOf { it.calories },
-                                            accentColor = Color(0xFFFF7043)
+                                            accentColor = Color(0xFFFF7043),
+                                            textColor = onCardColor
                                         )
                                     }
                                     items(dinnerItems) { item ->
-                                        DetailRecordRow(item)
+                                        DetailRecordRow(item, textColor = onCardColor)
                                         Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                                     }
                                 }
@@ -2004,11 +2077,12 @@ fun DayDetailDialog(
                                         DetailRecordSectionHeader(
                                             title = "运动",
                                             calories = exerciseItems.sumOf { it.calories },
-                                            accentColor = MaterialTheme.colorScheme.secondary
+                                            accentColor = MaterialTheme.colorScheme.secondary,
+                                            textColor = onCardColor
                                         )
                                     }
                                     items(exerciseItems) { item ->
-                                        DetailRecordRow(item)
+                                        DetailRecordRow(item, textColor = onCardColor)
                                         Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                                     }
                                 }
@@ -2017,11 +2091,12 @@ fun DayDetailDialog(
                                         DetailRecordSectionHeader(
                                             title = "宵夜",
                                             calories = nightSnackItems.sumOf { it.calories },
-                                            accentColor = Color(0xFF7E57C2)
+                                            accentColor = Color(0xFF7E57C2),
+                                            textColor = onCardColor
                                         )
                                     }
                                     items(nightSnackItems) { item ->
-                                        DetailRecordRow(item)
+                                        DetailRecordRow(item, textColor = onCardColor)
                                         Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                                     }
                                 }
@@ -2033,7 +2108,8 @@ fun DayDetailDialog(
                         Button(
                             onClick = onAddRecord,
                             modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp)
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = Color.White)
                         ) {
                             Text("补录饮食/运动")
                         }
@@ -2048,7 +2124,9 @@ fun DayDetailDialog(
 fun SmoothWeightChart(
     year: Int,
     month: Int?,
-    records: List<DailyRecordEntity>
+    records: List<DailyRecordEntity>,
+    accentColor: Color,
+    contentColor: Color
 ) {
     var viewMode by remember { mutableStateOf("Month") } // Month, Quarter, Year
     
@@ -2059,7 +2137,7 @@ fun SmoothWeightChart(
                 TextButton(
                     onClick = { viewMode = mode },
                     colors = ButtonDefaults.textButtonColors(
-                        contentColor = if (viewMode == mode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                        contentColor = if (viewMode == mode) accentColor else contentColor.copy(alpha = 0.72f)
                     )
                 ) {
                     Text(label)
@@ -2095,10 +2173,10 @@ fun SmoothWeightChart(
             }.filter { it.weight != null && it.weight > 0 }.sortedBy { it.date }
         }
 
-        val lineColor = MaterialTheme.colorScheme.primary
-        val dotColor = MaterialTheme.colorScheme.surface
-        val gridColor = MaterialTheme.colorScheme.outlineVariant
-        val textColor = MaterialTheme.colorScheme.onSurfaceVariant
+        val lineColor = accentColor
+        val dotColor = Color.White
+        val gridColor = contentColor.copy(alpha = 0.24f)
+        val textColor = contentColor.copy(alpha = 0.72f)
 
         if (filteredRecords.isEmpty()) {
             Box(

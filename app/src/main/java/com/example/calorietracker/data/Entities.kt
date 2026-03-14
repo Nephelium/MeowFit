@@ -20,6 +20,8 @@ data class UserProfileEntity(
     val dailyCalorieTarget: Int,
     val sleepGoal: Float = 7.5f, // Hours, default 7.5
     val showMacros: Boolean = false, // Whether to show carbs/protein/fat
+    val selectedTodayThemeIndex: Int = 0, // Selected Today page background theme
+    val hasSelectedTodayTheme: Boolean = false, // Whether user has explicitly selected a theme
     val excludedExercises: String = "", // Comma-separated list of excluded exercises
     val createdAt: String
 )

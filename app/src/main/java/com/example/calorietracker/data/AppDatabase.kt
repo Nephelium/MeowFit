@@ -7,7 +7,7 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [UserProfileEntity::class, DailyRecordEntity::class, CalorieItemEntity::class, AiChatMessageEntity::class], version = 8, exportSchema = false)
+@Database(entities = [UserProfileEntity::class, DailyRecordEntity::class, CalorieItemEntity::class, AiChatMessageEntity::class], version = 10, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun userDao(): UserDao
     abstract fun recordDao(): RecordDao
@@ -44,6 +44,18 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_8_9 = object : Migration(8, 9) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE user_profile ADD COLUMN selectedTodayThemeIndex INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
+        val MIGRATION_9_10 = object : Migration(9, 10) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE user_profile ADD COLUMN hasSelectedTodayTheme INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
         @Volatile
         private var INSTANCE: AppDatabase? = null
 
@@ -54,7 +66,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "calorie_tracker_database"
                 )
-                .addMigrations(MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
+                .addMigrations(MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
                 .fallbackToDestructiveMigration()
                 .build()
                 INSTANCE = instance

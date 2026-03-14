@@ -1,5 +1,7 @@
 package com.example.calorietracker
 
+import android.app.Activity
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -10,9 +12,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DateRange
@@ -21,13 +26,19 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.core.view.WindowCompat
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -44,6 +55,13 @@ import com.example.calorietracker.ui.AiViewModel
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        window.statusBarColor = android.graphics.Color.TRANSPARENT
+        window.navigationBarColor = android.graphics.Color.TRANSPARENT
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            window.isStatusBarContrastEnforced = false
+            window.isNavigationBarContrastEnforced = false
+        }
         
         val app = application as CalorieTrackerApp
         val viewModel: MainViewModel by viewModels { MainViewModelFactory(app.repository) }
@@ -69,16 +87,62 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+private object BottomNavTuning {
+    val barHeight = 60.dp
+    val iconSize = 22.dp
+    val itemVerticalOffset = (-5).dp
+    val iconVerticalOffset = 0.dp
+    val iconBottomPadding = 1.dp
+    val labelVerticalOffset = 15.dp
+    val labelTopPadding = 1.dp
+    val labelFontSize = 12.sp
+    val labelLineHeight = 12.sp
+    const val selectedIndicatorAlphaLight = 0.18f
+    const val selectedIndicatorAlphaDark = 0.26f
+}
+
+private object ScreenOffsetTuning {
+    val overviewPageOffsetY = (-15).dp
+    val statsPageOffsetY = (-25).dp
+    val settingsPageOffsetY = (-10).dp
+}
+
 @Composable
 fun MainApp(viewModel: MainViewModel, aiViewModel: AiViewModel, backupViewModel: BackupViewModel) {
     val navController = rememberNavController()
-    
-    Scaffold(
+    val userProfile by viewModel.userProfile.collectAsState()
+    val selectedThemeIndex = userProfile?.selectedTodayThemeIndex ?: 0
+    val shouldForceThemeSelection = userProfile?.hasSelectedTodayTheme == false
+    val selectedTheme = remember(selectedThemeIndex) { getTodayVisualTheme(selectedThemeIndex) }
+    val isDarkTheme = androidx.compose.foundation.isSystemInDarkTheme()
+    val accentColor = remember(selectedTheme, isDarkTheme) { themedAccentColor(selectedTheme, isDarkTheme) }
+    val navCardColor = remember(selectedTheme, isDarkTheme) { themedDashboardCardColor(selectedTheme, isDarkTheme) }
+    val navOnCardColor = if (isDarkTheme) Color.White else if (calculatePerceivedLuminance(navCardColor) > 0.5f) Color(0xFF1E1E1E) else Color(0xFFF4F4F4)
+    val view = LocalView.current
+    SideEffect {
+        val window = (view.context as Activity).window
+        WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !isDarkTheme
+        WindowCompat.getInsetsController(window, view).isAppearanceLightNavigationBars = !isDarkTheme
+    }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        TodayBackground(
+            theme = selectedTheme,
+            seed = (selectedThemeIndex + 1) * 1031,
+            isDarkTheme = isDarkTheme,
+            modifier = Modifier
+                .matchParentSize()
+                .blur(if (isDarkTheme) 22.dp else 10.dp)
+        )
+        Scaffold(
+        containerColor = Color.Transparent,
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         bottomBar = {
-            val isDark = androidx.compose.foundation.isSystemInDarkTheme()
             NavigationBar(
-                containerColor = if (isDark) MaterialTheme.colorScheme.surface else Color(0xFFF0F0F0),
-                tonalElevation = 4.dp
+                containerColor = navCardColor.copy(alpha = 0.95f),
+                tonalElevation = 4.dp,
+                modifier = Modifier.height(BottomNavTuning.barHeight),
+                windowInsets = WindowInsets(0, 0, 0, 0)
             ) {
                 val navBackStackEntry by navController.currentBackStackEntryAsState()
                 val currentRoute = navBackStackEntry?.destination?.route
@@ -104,23 +168,38 @@ fun MainApp(viewModel: MainViewModel, aiViewModel: AiViewModel, backupViewModel:
                                 restoreState = true
                             }
                         },
+                        modifier = Modifier.offset(y = BottomNavTuning.itemVerticalOffset),
                         icon = {
-                            Icon(
-                                icon, 
-                                contentDescription = label, 
-                                modifier = Modifier.size(24.dp)
-                            )
+                            Box(
+                                modifier = Modifier
+                                    .padding(bottom = BottomNavTuning.iconBottomPadding)
+                                    .offset(y = BottomNavTuning.iconVerticalOffset)
+                            ) {
+                                Icon(
+                                    icon,
+                                    contentDescription = label,
+                                    modifier = Modifier.size(BottomNavTuning.iconSize)
+                                )
+                            }
                         },
                         label = {
                             Text(
-                                label, 
-                                style = MaterialTheme.typography.labelSmall
+                                label,
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontSize = BottomNavTuning.labelFontSize,
+                                    lineHeight = BottomNavTuning.labelLineHeight
+                                ),
+                                modifier = Modifier
+                                    .padding(top = BottomNavTuning.labelTopPadding)
+                                    .offset(y = BottomNavTuning.labelVerticalOffset)
                             )
                         },
                         colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = MaterialTheme.colorScheme.primary,
-                            selectedTextColor = MaterialTheme.colorScheme.primary,
-                            indicatorColor = if (isDark) Color(0xFF2F2F2F) else Color(0xFFE8F5E9), // Dark mode: Dark Gray; Light mode: Very Light Green
+                            selectedIconColor = accentColor,
+                            selectedTextColor = accentColor,
+                            indicatorColor = accentColor.copy(
+                                alpha = if (isDarkTheme) BottomNavTuning.selectedIndicatorAlphaDark else BottomNavTuning.selectedIndicatorAlphaLight
+                            ),
                             unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
                             unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -185,12 +264,20 @@ fun MainApp(viewModel: MainViewModel, aiViewModel: AiViewModel, backupViewModel:
             
             composable("stats") {
                 val allItems by viewModel.allCalorieItems.collectAsState()
-                StatisticsScreen(allItems = allItems)
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .offset(y = ScreenOffsetTuning.statsPageOffsetY)
+                ) {
+                    StatisticsScreen(
+                        allItems = allItems,
+                        selectedThemeIndex = selectedThemeIndex
+                    )
+                }
             }
             
             composable("overview") {
                 val allRecords by viewModel.allRecords.collectAsState()
-                val userProfile by viewModel.userProfile.collectAsState()
                 val allItems by viewModel.allCalorieItems.collectAsState()
                 
                 val (selectedDate, setSelectedDate) = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<String?>(null) }
@@ -206,56 +293,69 @@ fun MainApp(viewModel: MainViewModel, aiViewModel: AiViewModel, backupViewModel:
                     }
                 }
 
-                OverviewScreen(
-                    records = allRecords,
-                    allItems = allItems,
-                    userProfile = userProfile,
-                    onAddRecord = { date ->
-                        navController.navigate("add_entry?date=$date")
-                    },
-                    onUpdateWeight = { weight, date ->
-                        viewModel.updateWeight(weight, date)
-                    },
-                    onUpdateWater = { water, date ->
-                        viewModel.updateWater(water, date)
-                    },
-                    onUpdateSleep = { sleep, date ->
-                        viewModel.updateSleep(sleep, date)
-                    },
-                    detailDate = selectedDate,
-                    detailItems = itemsForDialog,
-                    onDetailDateChange = setSelectedDate
-                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .offset(y = ScreenOffsetTuning.overviewPageOffsetY)
+                ) {
+                    OverviewScreen(
+                        records = allRecords,
+                        allItems = allItems,
+                        userProfile = userProfile,
+                        onAddRecord = { date ->
+                            navController.navigate("add_entry?date=$date")
+                        },
+                        onUpdateWeight = { weight, date ->
+                            viewModel.updateWeight(weight, date)
+                        },
+                        onUpdateWater = { water, date ->
+                            viewModel.updateWater(water, date)
+                        },
+                        onUpdateSleep = { sleep, date ->
+                            viewModel.updateSleep(sleep, date)
+                        },
+                        detailDate = selectedDate,
+                        detailItems = itemsForDialog,
+                        onDetailDateChange = setSelectedDate
+                    )
+                }
             }
             
             composable("settings") {
-                val userProfile by viewModel.userProfile.collectAsState()
                 val allItems by viewModel.allCalorieItems.collectAsState()
                 val updateStatus by viewModel.updateStatus.collectAsState()
                 
-                SettingsScreen(
-                    userProfile = userProfile,
-                    availableExercises = allItems.filter { it.type == "exercise" }.map { it.name }.distinct(),
-                    updateStatus = updateStatus,
-                    onEditProfile = { navController.navigate("profile_edit") },
-                    onBackupSettings = { navController.navigate("backup_settings") },
-                    onAiSettings = { navController.navigate("ai_settings") },
-                    onSystemPromptSettings = { navController.navigate("system_prompt_settings") },
-                    onUpdateSleepGoal = { goal ->
-                        userProfile?.let {
-                            viewModel.saveProfile(it.copy(sleepGoal = goal))
-                        }
-                    },
-                    onUpdateExcludedExercises = { viewModel.updateExcludedExercises(it) },
-                    onUpdateShowMacros = { viewModel.updateShowMacros(it) },
-                    onCheckUpdate = { currentVersion -> viewModel.checkForUpdate(currentVersion) },
-                    onDismissUpdateDialog = { viewModel.resetUpdateStatus() }
-                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .offset(y = ScreenOffsetTuning.settingsPageOffsetY)
+                ) {
+                    SettingsScreen(
+                        userProfile = userProfile,
+                        availableExercises = allItems.filter { it.type == "exercise" }.map { it.name }.distinct(),
+                        updateStatus = updateStatus,
+                        onEditProfile = { navController.navigate("profile_edit") },
+                        onBackupSettings = { navController.navigate("backup_settings") },
+                        onAiSettings = { navController.navigate("ai_settings") },
+                        onSystemPromptSettings = { navController.navigate("system_prompt_settings") },
+                        onUpdateSleepGoal = { goal ->
+                            userProfile?.let {
+                                viewModel.saveProfile(it.copy(sleepGoal = goal))
+                            }
+                        },
+                        onUpdateExcludedExercises = { viewModel.updateExcludedExercises(it) },
+                        onUpdateShowMacros = { viewModel.updateShowMacros(it) },
+                        onUpdateTodayThemeIndex = { viewModel.updateTodayThemeIndex(it) },
+                        onCheckUpdate = { currentVersion -> viewModel.checkForUpdate(currentVersion) },
+                        onDismissUpdateDialog = { viewModel.resetUpdateStatus() }
+                    )
+                }
             }
 
             composable("ai_settings") {
                 ApiSettingsScreen(
                     viewModel = aiViewModel,
+                    selectedThemeIndex = selectedThemeIndex,
                     onBack = { navController.popBackStack() }
                 )
             }
@@ -263,6 +363,7 @@ fun MainApp(viewModel: MainViewModel, aiViewModel: AiViewModel, backupViewModel:
             composable("system_prompt_settings") {
                 SystemPromptSettingsScreen(
                     viewModel = aiViewModel,
+                    selectedThemeIndex = selectedThemeIndex,
                     onBack = { navController.popBackStack() }
                 )
             }
@@ -270,6 +371,7 @@ fun MainApp(viewModel: MainViewModel, aiViewModel: AiViewModel, backupViewModel:
             composable("backup_settings") {
                 BackupSettingsScreen(
                     viewModel = backupViewModel,
+                    selectedThemeIndex = selectedThemeIndex,
                     onBack = { navController.popBackStack() }
                 )
             }
@@ -286,6 +388,7 @@ fun MainApp(viewModel: MainViewModel, aiViewModel: AiViewModel, backupViewModel:
                 AddEntryScreen(
                     targetDate = date ?: com.example.calorietracker.util.CalorieUtils.getTodayString(),
                     aiViewModel = aiViewModel,
+                    selectedThemeIndex = selectedThemeIndex,
                     userWeight = userProfile?.weight ?: 70f,
                     showMacros = userProfile?.showMacros ?: false,
                     onSave = { items ->
@@ -319,6 +422,17 @@ fun MainApp(viewModel: MainViewModel, aiViewModel: AiViewModel, backupViewModel:
                     }
                 )
             }
+        }
+    }
+        if (shouldForceThemeSelection) {
+            TodayThemeDialog(
+                currentIndex = selectedThemeIndex,
+                onDismiss = {},
+                onConfirm = { viewModel.updateTodayThemeIndex(it) },
+                containerColor = navCardColor,
+                textColor = navOnCardColor,
+                accentColor = accentColor
+            )
         }
     }
 }

@@ -13,10 +13,14 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -35,16 +39,23 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.core.content.FileProvider
+import androidx.core.graphics.toColorInt
 import coil.compose.AsyncImage
 import com.example.calorietracker.data.CalorieItemEntity
 import com.example.calorietracker.data.DailyRecordEntity
@@ -67,6 +78,96 @@ import androidx.compose.material.icons.filled.WaterDrop
 
 import androidx.compose.material.icons.filled.Bedtime
 
+data class TodayVisualTheme(
+    val id: Int,
+    val name: String,
+    val lightBgColor: Int,
+    val lightTopGradientColor: Int,
+    val darkBgColor: Int,
+    val darkTopGradientColor: Int,
+    val patternEmoji: List<String>
+)
+
+val todayVisualThemePool = listOf(
+    TodayVisualTheme(0, "清晨果园", "#FFFDE7".toColorInt(), "#FFF59D".toColorInt(), "#1B1A14".toColorInt(), "#2D2A1D".toColorInt(), listOf("🍎", "🥗", "🍇", "🥑")),
+    TodayVisualTheme(1, "燃脂能量", "#FFEBEE".toColorInt(), "#FFCDD2".toColorInt(), "#1F1618".toColorInt(), "#3A1E24".toColorInt(), listOf("🔥", "💪", "🏃", "✨")),
+    TodayVisualTheme(2, "海盐清蓝", "#E1F5FE".toColorInt(), "#B3E5FC".toColorInt(), "#111B22".toColorInt(), "#153448".toColorInt(), listOf("💧", "🌊", "🧊", "💙")),
+    TodayVisualTheme(3, "夜眠薰衣", "#F3E5F5".toColorInt(), "#E1BEE7".toColorInt(), "#1A1520".toColorInt(), "#30203A".toColorInt(), listOf("💤", "🌙", "⭐", "🛌")),
+    TodayVisualTheme(4, "猫系森绿", "#E8F5E9".toColorInt(), "#C8E6C9".toColorInt(), "#121A14".toColorInt(), "#1E3121".toColorInt(), listOf("🐱", "🐾", "🌿", "🍀")),
+    TodayVisualTheme(5, "暖阳蔬果", "#FFF3E0".toColorInt(), "#FFCC80".toColorInt(), "#20170F".toColorInt(), "#3C2A16".toColorInt(), listOf("🥕", "🍊", "🌞", "🌻"))
+)
+
+fun getTodayVisualTheme(index: Int): TodayVisualTheme {
+    val safeIndex = index.coerceIn(0, todayVisualThemePool.lastIndex)
+    return todayVisualThemePool[safeIndex]
+}
+
+fun calculatePerceivedLuminance(color: Color): Float {
+    return 0.299f * color.red + 0.587f * color.green + 0.114f * color.blue
+}
+
+@Composable
+fun TodayBackground(theme: TodayVisualTheme, seed: Int, isDarkTheme: Boolean, modifier: Modifier = Modifier) {
+    val bgColor = if (isDarkTheme) Color(theme.darkBgColor) else Color(theme.lightBgColor)
+    val gradientColor = if (isDarkTheme) Color(theme.darkTopGradientColor) else Color(theme.lightTopGradientColor)
+    Canvas(modifier = modifier) {
+        drawRect(color = bgColor)
+        val gradientEndY = minOf(size.height, 520.dp.toPx())
+        drawRect(
+            brush = Brush.verticalGradient(
+                colors = listOf(
+                    gradientColor.copy(alpha = if (isDarkTheme) 0.92f else 0.82f),
+                    bgColor.copy(alpha = 0f)
+                ),
+                startY = 0f,
+                endY = gradientEndY
+            )
+        )
+        drawIntoCanvas { canvas ->
+            val widthScale = size.width / 1080f
+            val paint = android.graphics.Paint().apply {
+                isAntiAlias = true
+                textSize = 100f * widthScale
+                color = if (isDarkTheme) android.graphics.Color.WHITE else android.graphics.Color.BLACK
+                alpha = if (isDarkTheme) 34 else 24
+                textAlign = android.graphics.Paint.Align.CENTER
+            }
+            val cols = 5
+            val gapX = size.width / cols
+            val gapY = 300f * widthScale
+            val rows = (size.height / gapY).toInt() + 2
+            val random = java.util.Random(seed.toLong())
+            for (r in 0 until rows) {
+                for (c in 0 until cols) {
+                    val emoji = theme.patternEmoji[random.nextInt(theme.patternEmoji.size)]
+                    val x = c * gapX + gapX / 2f + (random.nextFloat() - 0.5f) * (50f * widthScale)
+                    val y = r * gapY + gapY / 2f + (random.nextFloat() - 0.5f) * (50f * widthScale)
+                    val rotation = (random.nextFloat() - 0.5f) * 60f
+                    canvas.nativeCanvas.save()
+                    canvas.nativeCanvas.rotate(rotation, x, y)
+                    canvas.nativeCanvas.drawText(emoji, x, y, paint)
+                    canvas.nativeCanvas.restore()
+                }
+            }
+        }
+    }
+}
+
+fun themedDashboardCardColor(theme: TodayVisualTheme, isDarkTheme: Boolean): Color {
+    val baseCardColor = if (isDarkTheme) Color(theme.darkBgColor) else Color(theme.lightBgColor)
+    return if (isDarkTheme) {
+        val liftedFromBackground = lerp(baseCardColor, Color.White, 0.16f)
+        lerp(liftedFromBackground, Color(0xFF303236), 0.12f).copy(alpha = 0.97f)
+    } else {
+        lerp(baseCardColor, Color.White, 0.72f).copy(alpha = 0.96f)
+    }
+}
+
+fun themedAccentColor(theme: TodayVisualTheme, isDarkTheme: Boolean): Color {
+    val source = if (isDarkTheme) Color(theme.darkTopGradientColor) else Color(theme.lightTopGradientColor)
+    return if (isDarkTheme) lerp(source, Color.White, 0.40f) else lerp(source, Color(0xFF2B2B2B), 0.12f)
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TodayScreen(
@@ -85,6 +186,23 @@ fun TodayScreen(
     onUpdateSleep: (Int) -> Unit // minutes
 ) {
     val context = LocalContext.current
+    val isDarkTheme = isSystemInDarkTheme()
+    val selectedThemeIndex = userProfile?.selectedTodayThemeIndex ?: 0
+    val selectedVisualTheme = remember(selectedThemeIndex) { getTodayVisualTheme(selectedThemeIndex) }
+    val backgroundSeed = remember(selectedThemeIndex) { (selectedThemeIndex + 1) * 1031 }
+    val dashboardCardColor = remember(selectedVisualTheme, isDarkTheme) {
+        themedDashboardCardColor(selectedVisualTheme, isDarkTheme)
+    }
+    val dashboardOnCardColor = if (isDarkTheme) Color.White else if (calculatePerceivedLuminance(dashboardCardColor) > 0.5f) Color(0xFF1E1E1E) else Color(0xFFF4F4F4)
+    val dialogAccentColor = remember(selectedVisualTheme, isDarkTheme) {
+        themedAccentColor(selectedVisualTheme, isDarkTheme)
+    }
+    val timerCardColor = if (isDarkTheme) {
+        lerp(dashboardCardColor, dialogAccentColor, 0.26f)
+    } else {
+        lerp(dashboardCardColor, dialogAccentColor, 0.18f)
+    }
+    val timerOnCardColor = if (isDarkTheme) Color.White else if (calculatePerceivedLuminance(timerCardColor) > 0.5f) Color(0xFF1E1E1E) else Color(0xFFF4F4F4)
     var showWeightDialog by remember { mutableStateOf(false) }
     var showWaterDialog by remember { mutableStateOf(false) }
     var showSleepDialog by remember { mutableStateOf(false) }
@@ -94,7 +212,10 @@ fun TodayScreen(
     var exerciseName by remember { mutableStateOf("") }
     var editingItem by remember { mutableStateOf<CalorieItemEntity?>(null) }
     var previewImagePath by remember { mutableStateOf<String?>(null) }
+    var previewSavedBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var showShareDialog by remember { mutableStateOf(false) }
+    var shareShowNotes by remember { mutableStateOf(true) }
+    var shareMaskWeight by remember { mutableStateOf(false) }
 
     // Calculate effective weight for today (or selected date)
     // If dailyRecord.weight is set, use it. Otherwise find previous.
@@ -126,16 +247,72 @@ fun TodayScreen(
         }
     }
 
+    if (previewSavedBitmap != null) {
+        Dialog(onDismissRequest = { previewSavedBitmap = null }) {
+            Card(
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            ) {
+                Image(
+                    bitmap = previewSavedBitmap!!.asImageBitmap(),
+                    contentDescription = null,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 280.dp, max = 520.dp)
+                        .padding(12.dp)
+                )
+            }
+        }
+    }
+
     if (showShareDialog) {
         AlertDialog(
             onDismissRequest = { showShareDialog = false },
             title = { Text("分享今日记录") },
-            text = { Text("可保存为图片，或直接分享给好友") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("可保存为图片，或直接分享给好友")
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text("显示备注")
+                        Switch(
+                            checked = shareShowNotes,
+                            onCheckedChange = { shareShowNotes = it }
+                        )
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text("体重打码")
+                        Switch(
+                            checked = shareMaskWeight,
+                            onCheckedChange = { shareMaskWeight = it }
+                        )
+                    }
+                }
+            },
             confirmButton = {
                 TextButton(onClick = {
                     try {
-                        val bitmap = generateTodayLongScreenshot(context, userProfile, dailyRecord, allRecords, items, selectedDate)
-                        saveTodayBitmap(context, bitmap)
+                        val bitmap = generateTodayLongScreenshot(
+                            context = context,
+                            userProfile = userProfile,
+                            dailyRecord = dailyRecord,
+                            allRecords = allRecords,
+                            items = items,
+                            selectedDate = selectedDate,
+                            selectedThemeIndex = selectedThemeIndex,
+                            showNotes = shareShowNotes,
+                            maskWeight = shareMaskWeight
+                        )
+                        val saved = saveTodayBitmap(context, bitmap)
+                        if (saved) previewSavedBitmap = bitmap
                     } catch (e: Exception) {
                         Toast.makeText(context, "保存失败: ${e.message}", Toast.LENGTH_SHORT).show()
                     }
@@ -148,7 +325,17 @@ fun TodayScreen(
                 Row {
                     TextButton(onClick = {
                         try {
-                            val bitmap = generateTodayLongScreenshot(context, userProfile, dailyRecord, allRecords, items, selectedDate)
+                            val bitmap = generateTodayLongScreenshot(
+                                context = context,
+                                userProfile = userProfile,
+                                dailyRecord = dailyRecord,
+                                allRecords = allRecords,
+                                items = items,
+                                selectedDate = selectedDate,
+                                selectedThemeIndex = selectedThemeIndex,
+                                showNotes = shareShowNotes,
+                                maskWeight = shareMaskWeight
+                            )
                             shareTodayBitmap(context, bitmap)
                         } catch (e: Exception) {
                             Toast.makeText(context, "分享失败: ${e.message}", Toast.LENGTH_SHORT).show()
@@ -161,7 +348,10 @@ fun TodayScreen(
                         Text("取消")
                     }
                 }
-            }
+            },
+            containerColor = dashboardCardColor,
+            titleContentColor = dashboardOnCardColor,
+            textContentColor = dashboardOnCardColor
         )
     }
 
@@ -172,7 +362,10 @@ fun TodayScreen(
             onConfirm = { updatedItem ->
                 onUpdateItem(updatedItem)
                 editingItem = null
-            }
+            },
+            containerColor = dashboardCardColor,
+            onContainerColor = dashboardOnCardColor,
+            accentColor = dialogAccentColor
         )
     }
 
@@ -183,7 +376,10 @@ fun TodayScreen(
             onConfirm = { 
                 onUpdateWeight(it)
                 showWeightDialog = false
-            }
+            },
+            containerColor = dashboardCardColor,
+            onContainerColor = dashboardOnCardColor,
+            accentColor = dialogAccentColor
         )
     }
 
@@ -194,7 +390,10 @@ fun TodayScreen(
             onConfirm = { 
                 onUpdateWater(it)
                 showWaterDialog = false
-            }
+            },
+            containerColor = dashboardCardColor,
+            onContainerColor = dashboardOnCardColor,
+            accentColor = dialogAccentColor
         )
     }
 
@@ -205,7 +404,10 @@ fun TodayScreen(
             onConfirm = { 
                 onUpdateSleep(it)
                 showSleepDialog = false
-            }
+            },
+            containerColor = dashboardCardColor,
+            onContainerColor = dashboardOnCardColor,
+            accentColor = dialogAccentColor
         )
     }
 
@@ -228,7 +430,10 @@ fun TodayScreen(
                 isTimerRunning = false
                 timerStartTime = null
                 exerciseName = ""
-            }
+            },
+            containerColor = dashboardCardColor,
+            onContainerColor = dashboardOnCardColor,
+            accentColor = dialogAccentColor
         )
     }
     
@@ -246,19 +451,31 @@ fun TodayScreen(
                 )
             },
             confirmButton = {
-                Button(onClick = {
-                    if (exerciseName.isNotBlank()) {
-                        timerStartTime = System.currentTimeMillis()
-                    }
-                }) {
+                Button(
+                    onClick = {
+                        if (exerciseName.isNotBlank()) {
+                            timerStartTime = System.currentTimeMillis()
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = dialogAccentColor,
+                        contentColor = Color.White
+                    )
+                ) {
                     Text("开始计时")
                 }
             },
             dismissButton = {
-                TextButton(onClick = { isTimerRunning = false }) {
+                TextButton(
+                    onClick = { isTimerRunning = false },
+                    colors = ButtonDefaults.textButtonColors(contentColor = dialogAccentColor)
+                ) {
                     Text("取消")
                 }
-            }
+            },
+            containerColor = dashboardCardColor,
+            titleContentColor = dashboardOnCardColor,
+            textContentColor = dashboardOnCardColor
         )
     }
 
@@ -277,6 +494,22 @@ fun TodayScreen(
         
         DatePickerDialog(
             onDismissRequest = { showDatePicker = false },
+            colors = DatePickerDefaults.colors(
+                containerColor = dashboardCardColor,
+                titleContentColor = dashboardOnCardColor,
+                headlineContentColor = dialogAccentColor,
+                weekdayContentColor = dashboardOnCardColor.copy(alpha = 0.75f),
+                subheadContentColor = dashboardOnCardColor.copy(alpha = 0.75f),
+                yearContentColor = dashboardOnCardColor,
+                currentYearContentColor = dialogAccentColor,
+                selectedYearContentColor = dashboardOnCardColor,
+                selectedYearContainerColor = dialogAccentColor.copy(alpha = 0.24f),
+                dayContentColor = dashboardOnCardColor,
+                selectedDayContentColor = dashboardOnCardColor,
+                selectedDayContainerColor = dialogAccentColor,
+                todayContentColor = dialogAccentColor,
+                todayDateBorderColor = dialogAccentColor
+            ),
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -287,12 +520,12 @@ fun TodayScreen(
                         showDatePicker = false
                     }
                 ) {
-                    Text("确定")
+                    Text("确定", color = dialogAccentColor)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showDatePicker = false }) {
-                    Text("取消")
+                    Text("取消", color = dashboardOnCardColor.copy(alpha = 0.82f))
                 }
             }
         ) {
@@ -301,65 +534,8 @@ fun TodayScreen(
     }
 
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
-        topBar = {
-            // ... (existing TopBar code) ...
-            CenterAlignedTopAppBar(
-                title = { 
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .clickable { showDatePicker = true }
-                            .padding(8.dp)
-                    ) {
-                        Text(
-                            CalorieUtils.formatDate(selectedDate),
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Icon(
-                            Icons.Default.ArrowDropDown, 
-                            contentDescription = "Select Date",
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-                },
-                navigationIcon = {
-                    IconButton(onClick = {
-                        val cal = Calendar.getInstance()
-                        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-                        try {
-                            cal.time = sdf.parse(selectedDate)!!
-                            cal.add(Calendar.DAY_OF_YEAR, -1)
-                            onDateChange(sdf.format(cal.time))
-                        } catch (e: Exception) {}
-                    }) {
-                        Icon(Icons.Default.ArrowBack, "Previous Day")
-                    }
-                },
-                actions = {
-                    IconButton(onClick = { showShareDialog = true }) {
-                        Icon(Icons.Default.Share, "Share Today")
-                    }
-                    IconButton(onClick = {
-                         val cal = Calendar.getInstance()
-                        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-                        try {
-                            cal.time = sdf.parse(selectedDate)!!
-                            cal.add(Calendar.DAY_OF_YEAR, 1)
-                            onDateChange(sdf.format(cal.time))
-                        } catch (e: Exception) {}
-                    }) {
-                        Icon(Icons.Default.ArrowForward, "Next Day")
-                    }
-                },
-                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
-                    titleContentColor = MaterialTheme.colorScheme.onBackground
-                )
-            )
-        },
+        containerColor = Color.Transparent,
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         floatingActionButton = {
             Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 // Water FAB removed as per user request
@@ -392,8 +568,8 @@ fun TodayScreen(
                     onClick = {
                         onAddClick(selectedDate)
                     },
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                    containerColor = dialogAccentColor,
+                    contentColor = Color.White,
                     shape = CircleShape,
                     elevation = FloatingActionButtonDefaults.elevation(8.dp)
                 ) {
@@ -402,24 +578,96 @@ fun TodayScreen(
             }
         }
     ) { padding ->
-        // ... (rest of content) ...
-        LazyColumn(
-            modifier = Modifier
-                .padding(padding)
-                .fillMaxSize(),
-            contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            TodayBackground(
+                theme = selectedVisualTheme,
+                seed = backgroundSeed,
+                isDarkTheme = isDarkTheme,
+                modifier = Modifier
+                    .matchParentSize()
+                    .blur(if (isDarkTheme) 22.dp else 10.dp)
+            )
+            LazyColumn(
+                modifier = Modifier
+                    .padding(padding)
+                    .fillMaxSize(),
+                contentPadding = PaddingValues(16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+            item {
+                val dateNavColor = if (isDarkTheme) Color.White else dashboardOnCardColor
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(onClick = {
+                        val cal = Calendar.getInstance()
+                        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+                        try {
+                            cal.time = sdf.parse(selectedDate)!!
+                            cal.add(Calendar.DAY_OF_YEAR, -1)
+                            onDateChange(sdf.format(cal.time))
+                        } catch (_: Exception) {}
+                    }) {
+                        Icon(Icons.Default.ArrowBack, "Previous Day", tint = dateNavColor)
+                    }
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { showDatePicker = true }
+                            .padding(vertical = 8.dp),
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Text(
+                            CalorieUtils.formatDate(selectedDate),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = dateNavColor
+                        )
+                        Icon(
+                            Icons.Default.ArrowDropDown,
+                            contentDescription = "Select Date",
+                            modifier = Modifier.size(20.dp),
+                            tint = dateNavColor
+                        )
+                    }
+                    IconButton(onClick = { showShareDialog = true }) {
+                        Icon(Icons.Default.Share, "Share Today", tint = dateNavColor)
+                    }
+                    IconButton(onClick = {
+                        val cal = Calendar.getInstance()
+                        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+                        try {
+                            cal.time = sdf.parse(selectedDate)!!
+                            cal.add(Calendar.DAY_OF_YEAR, 1)
+                            onDateChange(sdf.format(cal.time))
+                        } catch (_: Exception) {}
+                    }) {
+                        Icon(Icons.Default.ArrowForward, "Next Day", tint = dateNavColor)
+                    }
+                }
+            }
             // Timer Status Banner
             if (isTimerRunning && timerStartTime != null) {
                 item {
-                    TimerStatusCard(exerciseName, timerStartTime!!)
+                    TimerStatusCard(
+                        name = exerciseName,
+                        startTime = timerStartTime!!,
+                        containerColor = timerCardColor,
+                        onContainerColor = timerOnCardColor,
+                        isDarkTheme = isDarkTheme,
+                        accentColor = dialogAccentColor
+                    )
                 }
             }
 
             // Summary Card
             item {
-                SummaryCard(userProfile, dailyRecord, effectiveWeight)
+                SummaryCard(userProfile, dailyRecord, effectiveWeight, dashboardCardColor, dashboardOnCardColor, isDarkTheme)
             }
 // ...
 
@@ -429,19 +677,28 @@ fun TodayScreen(
                     Box(modifier = Modifier.weight(1f)) {
                         WeightCard(
                             weight = dailyRecord?.weight,
-                            onEdit = { showWeightDialog = true }
+                            onEdit = { showWeightDialog = true },
+                            containerColor = dashboardCardColor,
+                            onContainerColor = dashboardOnCardColor,
+                            isDarkTheme = isDarkTheme
                         )
                     }
                     Box(modifier = Modifier.weight(1f)) {
                         WaterCard(
                             water = dailyRecord?.totalWater ?: 0,
-                            onEdit = { showWaterDialog = true }
+                            onEdit = { showWaterDialog = true },
+                            containerColor = dashboardCardColor,
+                            onContainerColor = dashboardOnCardColor,
+                            isDarkTheme = isDarkTheme
                         )
                     }
                     Box(modifier = Modifier.weight(1f)) {
                         SleepCard(
                             duration = dailyRecord?.sleepDuration ?: 0,
-                            onEdit = { showSleepDialog = true }
+                            onEdit = { showSleepDialog = true },
+                            containerColor = dashboardCardColor,
+                            onContainerColor = dashboardOnCardColor,
+                            isDarkTheme = isDarkTheme
                         )
                     }
                 }
@@ -466,36 +723,37 @@ fun TodayScreen(
             if (breakfastItems.isNotEmpty()) {
                 item { RecordSectionHeader("早餐", breakfastItems.sumOf { it.calories }, MaterialTheme.colorScheme.primary) }
                 items(breakfastItems) { item ->
-                    RecordItem(item = item, onDelete = onDeleteItem, onEdit = { editingItem = it }, onImagePreview = { previewImagePath = it })
+                    RecordItem(item = item, onDelete = onDeleteItem, onEdit = { editingItem = it }, onImagePreview = { previewImagePath = it }, containerColor = dashboardCardColor, onContainerColor = dashboardOnCardColor, isDarkTheme = isDarkTheme)
                 }
             }
             if (lunchItems.isNotEmpty()) {
                 item { RecordSectionHeader("午餐", lunchItems.sumOf { it.calories }, Color(0xFF26A69A)) }
                 items(lunchItems) { item ->
-                    RecordItem(item = item, onDelete = onDeleteItem, onEdit = { editingItem = it }, onImagePreview = { previewImagePath = it })
+                    RecordItem(item = item, onDelete = onDeleteItem, onEdit = { editingItem = it }, onImagePreview = { previewImagePath = it }, containerColor = dashboardCardColor, onContainerColor = dashboardOnCardColor, isDarkTheme = isDarkTheme)
                 }
             }
             if (dinnerItems.isNotEmpty()) {
                 item { RecordSectionHeader("晚餐", dinnerItems.sumOf { it.calories }, Color(0xFFFF7043)) }
                 items(dinnerItems) { item ->
-                    RecordItem(item = item, onDelete = onDeleteItem, onEdit = { editingItem = it }, onImagePreview = { previewImagePath = it })
+                    RecordItem(item = item, onDelete = onDeleteItem, onEdit = { editingItem = it }, onImagePreview = { previewImagePath = it }, containerColor = dashboardCardColor, onContainerColor = dashboardOnCardColor, isDarkTheme = isDarkTheme)
                 }
             }
             if (nightSnackItems.isNotEmpty()) {
                 item { RecordSectionHeader("宵夜", nightSnackItems.sumOf { it.calories }, Color(0xFF7E57C2)) }
                 items(nightSnackItems) { item ->
-                    RecordItem(item = item, onDelete = onDeleteItem, onEdit = { editingItem = it }, onImagePreview = { previewImagePath = it })
+                    RecordItem(item = item, onDelete = onDeleteItem, onEdit = { editingItem = it }, onImagePreview = { previewImagePath = it }, containerColor = dashboardCardColor, onContainerColor = dashboardOnCardColor, isDarkTheme = isDarkTheme)
                 }
             }
             if (exerciseItems.isNotEmpty()) {
                 item { RecordSectionHeader("运动", exerciseItems.sumOf { it.calories }, MaterialTheme.colorScheme.secondary) }
                 items(exerciseItems) { item ->
-                    RecordItem(item = item, onDelete = onDeleteItem, onEdit = { editingItem = it }, onImagePreview = { previewImagePath = it })
+                    RecordItem(item = item, onDelete = onDeleteItem, onEdit = { editingItem = it }, onImagePreview = { previewImagePath = it }, containerColor = dashboardCardColor, onContainerColor = dashboardOnCardColor, isDarkTheme = isDarkTheme)
                 }
             }
             
-            item {
-                Spacer(modifier = Modifier.height(80.dp))
+                item {
+                    Spacer(modifier = Modifier.height(80.dp))
+                }
             }
         }
     }
@@ -505,7 +763,10 @@ fun TodayScreen(
 fun EditRecordDialog(
     item: CalorieItemEntity,
     onDismiss: () -> Unit,
-    onConfirm: (CalorieItemEntity) -> Unit
+    onConfirm: (CalorieItemEntity) -> Unit,
+    containerColor: Color,
+    onContainerColor: Color,
+    accentColor: Color
 ) {
     var name by remember { mutableStateOf(item.name) }
     var calories by remember { mutableStateOf(item.calories.toString()) }
@@ -563,11 +824,11 @@ fun EditRecordDialog(
     Dialog(onDismissRequest = onDismiss) {
         Card(
             shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            colors = CardDefaults.cardColors(containerColor = containerColor),
             modifier = Modifier.fillMaxWidth()
         ) {
             Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                Text("编辑记录", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                Text("编辑记录", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = onContainerColor)
                 
                 OutlinedTextField(
                     value = name,
@@ -660,18 +921,23 @@ fun EditRecordDialog(
                     OutlinedButton(
                         onClick = {
                             imagePickerLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-                        }
+                        },
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            containerColor = containerColor.copy(alpha = 0.96f),
+                            contentColor = accentColor
+                        ),
+                        border = BorderStroke(1.dp, accentColor.copy(alpha = 0.56f))
                     ) {
-                        Icon(Icons.Default.AddPhotoAlternate, contentDescription = null)
+                        Icon(Icons.Default.AddPhotoAlternate, contentDescription = null, tint = accentColor)
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text(if (selectedImageUri == null && currentImagePath.isNullOrBlank()) "添加备注图片" else "更换图片")
+                        Text(if (selectedImageUri == null && currentImagePath.isNullOrBlank()) "添加备注图片" else "更换图片", color = accentColor)
                     }
                     if (selectedImageUri != null || !currentImagePath.isNullOrBlank()) {
                         TextButton(onClick = {
                             selectedImageUri = null
                             currentImagePath = null
                         }) {
-                            Text("移除")
+                            Text("移除", color = accentColor)
                         }
                     }
                 }
@@ -699,11 +965,18 @@ fun EditRecordDialog(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.End
                 ) {
-                    TextButton(onClick = onDismiss) {
+                    Button(
+                        onClick = onDismiss,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = accentColor.copy(alpha = 0.72f),
+                            contentColor = Color.White
+                        )
+                    ) {
                         Text("取消")
                     }
                     Spacer(modifier = Modifier.width(8.dp))
-                    Button(onClick = {
+                    Button(
+                        onClick = {
                         val cal = calories.toIntOrNull()
                         val c = carbs.toIntOrNull() ?: 0
                         val p = protein.toIntOrNull() ?: 0
@@ -737,7 +1010,12 @@ fun EditRecordDialog(
                                 onConfirm(item.copy(name = name, calories = cal, carbs = c, protein = p, fat = f, time = time, notes = notes, imageUrl = finalImagePath))
                             }
                         }
-                    }) {
+                    },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = accentColor,
+                            contentColor = Color.White
+                        )
+                    ) {
                         Text("保存")
                     }
                 }
@@ -749,11 +1027,19 @@ fun EditRecordDialog(
 // Helper to reuse parseDuration removed - using CalorieUtils.parseDuration
 
 @Composable
-fun SummaryCard(userProfile: UserProfileEntity?, dailyRecord: DailyRecordEntity?, effectiveWeight: Float) {
+fun SummaryCard(
+    userProfile: UserProfileEntity?,
+    dailyRecord: DailyRecordEntity?,
+    effectiveWeight: Float,
+    containerColor: Color,
+    onContainerColor: Color,
+    isDarkTheme: Boolean
+) {
+    val secondaryTextColor = onContainerColor.copy(alpha = 0.72f)
     Card(
         modifier = Modifier.fillMaxWidth(),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = if (isDarkTheme) 0.dp else 10.dp),
+        colors = CardDefaults.cardColors(containerColor = containerColor),
         shape = RoundedCornerShape(24.dp)
     ) {
         Column(modifier = Modifier.padding(24.dp)) {
@@ -778,7 +1064,7 @@ fun SummaryCard(userProfile: UserProfileEntity?, dailyRecord: DailyRecordEntity?
             val balance = intake - (target + burned)
             
             val isSurplus = balance > 0
-            val statusColor = if (isSurplus) MaterialTheme.colorScheme.error else Color(0xFF4CAF50) // Red vs Green
+            val statusColor = if (isSurplus) MaterialTheme.colorScheme.error else if (isDarkTheme) Color(0xFF81C784) else Color(0xFF2E7D32)
             val statusText = if (isSurplus) "今日热量盈余" else "今日热量缺口"
             val balanceAbs = Math.abs(balance)
 
@@ -788,7 +1074,7 @@ fun SummaryCard(userProfile: UserProfileEntity?, dailyRecord: DailyRecordEntity?
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column {
-                    Text("今日状态", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("今日状态", style = MaterialTheme.typography.labelMedium, color = secondaryTextColor)
                     Text(
                         statusText, 
                         style = MaterialTheme.typography.titleMedium, 
@@ -804,7 +1090,7 @@ fun SummaryCard(userProfile: UserProfileEntity?, dailyRecord: DailyRecordEntity?
                         fontWeight = FontWeight.Bold,
                         color = statusColor
                     )
-                    Text("kcal", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("kcal", style = MaterialTheme.typography.bodySmall, color = secondaryTextColor)
                 }
             }
             
@@ -819,8 +1105,8 @@ fun SummaryCard(userProfile: UserProfileEntity?, dailyRecord: DailyRecordEntity?
             
             Column {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("已摄入 $intake", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text("限额 $limit", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("已摄入 $intake", style = MaterialTheme.typography.bodySmall, color = secondaryTextColor)
+                    Text("限额 $limit", style = MaterialTheme.typography.bodySmall, color = secondaryTextColor)
                 }
                 Spacer(modifier = Modifier.height(8.dp))
                 LinearProgressIndicator(
@@ -934,11 +1220,11 @@ fun StatItem(label: String, value: String, color: Color) {
 }
 
 @Composable
-fun WeightCard(weight: Float?, onEdit: () -> Unit) {
+fun WeightCard(weight: Float?, onEdit: () -> Unit, containerColor: Color, onContainerColor: Color, isDarkTheme: Boolean) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = if (isDarkTheme) 0.dp else 8.dp),
+        colors = CardDefaults.cardColors(containerColor = containerColor),
         shape = RoundedCornerShape(16.dp)
     ) {
         Column(
@@ -950,11 +1236,13 @@ fun WeightCard(weight: Float?, onEdit: () -> Unit) {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("今日体重", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("今日体重", style = MaterialTheme.typography.bodyMedium, color = onContainerColor.copy(alpha = 0.72f))
                 FilledIconButton(
                     onClick = onEdit,
                     modifier = Modifier.size(24.dp),
-                    colors = IconButtonDefaults.filledIconButtonColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
+                    colors = IconButtonDefaults.filledIconButtonColors(
+                        containerColor = if (isDarkTheme) MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.9f) else MaterialTheme.colorScheme.secondaryContainer
+                    )
                 ) {
                     Icon(Icons.Default.Edit, contentDescription = "Edit", tint = MaterialTheme.colorScheme.onSecondaryContainer, modifier = Modifier.size(14.dp))
                 }
@@ -964,7 +1252,7 @@ fun WeightCard(weight: Float?, onEdit: () -> Unit) {
                     text = if (weight != null) "$weight" else "记录",
                     style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface
+                    color = onContainerColor
                 )
                 if (weight != null) {
                     Spacer(modifier = Modifier.width(4.dp))
@@ -972,7 +1260,7 @@ fun WeightCard(weight: Float?, onEdit: () -> Unit) {
                         text = "kg",
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface,
+                        color = onContainerColor,
                         modifier = Modifier.padding(bottom = 4.dp)
                     )
                 }
@@ -982,11 +1270,13 @@ fun WeightCard(weight: Float?, onEdit: () -> Unit) {
 }
 
 @Composable
-fun WaterCard(water: Int, onEdit: () -> Unit) {
+fun WaterCard(water: Int, onEdit: () -> Unit, containerColor: Color, onContainerColor: Color, isDarkTheme: Boolean) {
+    val accent = if (isDarkTheme) Color(0xFF81D4FA) else Color(0xFF1E88E5)
+    val accentContainer = if (isDarkTheme) Color(0xFF163445) else Color(0xFFE3F2FD)
     Card(
         modifier = Modifier.fillMaxWidth(),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = if (isDarkTheme) 0.dp else 8.dp),
+        colors = CardDefaults.cardColors(containerColor = containerColor),
         shape = RoundedCornerShape(16.dp)
     ) {
         Column(
@@ -998,13 +1288,13 @@ fun WaterCard(water: Int, onEdit: () -> Unit) {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("今日饮水", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("今日饮水", style = MaterialTheme.typography.bodyMedium, color = onContainerColor.copy(alpha = 0.72f))
                 FilledIconButton(
                     onClick = onEdit,
                     modifier = Modifier.size(24.dp),
-                    colors = IconButtonDefaults.filledIconButtonColors(containerColor = Color(0xFFE3F2FD))
+                    colors = IconButtonDefaults.filledIconButtonColors(containerColor = accentContainer)
                 ) {
-                    Icon(Icons.Default.Edit, contentDescription = "Edit", tint = Color(0xFF2196F3), modifier = Modifier.size(14.dp))
+                    Icon(Icons.Default.Edit, contentDescription = "Edit", tint = accent, modifier = Modifier.size(14.dp))
                 }
             }
             Row(verticalAlignment = Alignment.Bottom) {
@@ -1012,14 +1302,14 @@ fun WaterCard(water: Int, onEdit: () -> Unit) {
                     text = "$water",
                     style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.Bold,
-                    color = Color(0xFF2196F3)
+                    color = accent
                 )
                 Spacer(modifier = Modifier.width(4.dp))
                 Text(
                     text = "ml",
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.Bold,
-                    color = Color(0xFF2196F3),
+                    color = accent,
                     modifier = Modifier.padding(bottom = 4.dp)
                 )
             }
@@ -1028,11 +1318,13 @@ fun WaterCard(water: Int, onEdit: () -> Unit) {
 }
 
 @Composable
-fun SleepCard(duration: Int, onEdit: () -> Unit) {
+fun SleepCard(duration: Int, onEdit: () -> Unit, containerColor: Color, onContainerColor: Color, isDarkTheme: Boolean) {
+    val accent = if (isDarkTheme) Color(0xFFB39DDB) else Color(0xFF673AB7)
+    val accentContainer = if (isDarkTheme) Color(0xFF2B2242) else Color(0xFFEDE7F6)
     Card(
         modifier = Modifier.fillMaxWidth(),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = if (isDarkTheme) 0.dp else 8.dp),
+        colors = CardDefaults.cardColors(containerColor = containerColor),
         shape = RoundedCornerShape(16.dp)
     ) {
         Column(
@@ -1044,13 +1336,13 @@ fun SleepCard(duration: Int, onEdit: () -> Unit) {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("今日睡眠", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("今日睡眠", style = MaterialTheme.typography.bodyMedium, color = onContainerColor.copy(alpha = 0.72f))
                 FilledIconButton(
                     onClick = onEdit,
                     modifier = Modifier.size(24.dp),
-                    colors = IconButtonDefaults.filledIconButtonColors(containerColor = Color(0xFFEDE7F6))
+                    colors = IconButtonDefaults.filledIconButtonColors(containerColor = accentContainer)
                 ) {
-                    Icon(Icons.Default.Edit, contentDescription = "Edit", tint = Color(0xFF673AB7), modifier = Modifier.size(14.dp))
+                    Icon(Icons.Default.Edit, contentDescription = "Edit", tint = accent, modifier = Modifier.size(14.dp))
                 }
             }
             val hours = duration / 60
@@ -1060,14 +1352,14 @@ fun SleepCard(duration: Int, onEdit: () -> Unit) {
                     text = "$hours",
                     style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.Bold,
-                    color = Color(0xFF673AB7)
+                    color = accent
                 )
                 Spacer(modifier = Modifier.width(2.dp))
                 Text(
                     text = "h",
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.Bold,
-                    color = Color(0xFF673AB7),
+                    color = accent,
                     modifier = Modifier.padding(bottom = 4.dp)
                 )
                 Spacer(modifier = Modifier.width(4.dp))
@@ -1075,14 +1367,14 @@ fun SleepCard(duration: Int, onEdit: () -> Unit) {
                     text = "$minutes",
                     style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.Bold,
-                    color = Color(0xFF673AB7)
+                    color = accent
                 )
                 Spacer(modifier = Modifier.width(2.dp))
                 Text(
                     text = "m",
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.Bold,
-                    color = Color(0xFF673AB7),
+                    color = accent,
                     modifier = Modifier.padding(bottom = 4.dp)
                 )
             }
@@ -1122,7 +1414,7 @@ fun RecordSectionHeader(title: String, calories: Int, accentColor: Color) {
     ) {
         Text(
             text = title,
-            style = MaterialTheme.typography.titleSmall,
+            style = MaterialTheme.typography.titleMedium,
             color = accentColor,
             fontWeight = FontWeight.SemiBold
         )
@@ -1134,96 +1426,191 @@ fun RecordSectionHeader(title: String, calories: Int, accentColor: Color) {
     }
 }
 
+private fun loadEmojiKeywordRulesFromFile(context: Context): List<Pair<String, List<String>>> {
+    return try {
+        context.assets.open("emoji_rules.txt").bufferedReader().useLines { lines ->
+            lines.mapNotNull { rawLine ->
+                val line = rawLine.trim()
+                if (line.isBlank()) return@mapNotNull null
+                if (line.startsWith("#")) return@mapNotNull null
+                val delimiterIndex = line.indexOf('=').takeIf { it >= 0 } ?: line.indexOf('＝')
+                if (delimiterIndex < 0) return@mapNotNull null
+                val emoji = line.substring(0, delimiterIndex).trim()
+                val keywordBlock = line.substring(delimiterIndex + 1).trim()
+                val keywords = keywordBlock
+                    .split(Regex("[,，、|]"))
+                    .map { it.trim() }
+                    .filter { it.isNotBlank() }
+                if (emoji.isBlank() || keywords.isEmpty()) return@mapNotNull null
+                emoji to keywords
+            }.toList()
+        }
+    } catch (_: Exception) {
+        emptyList()
+    }
+}
+
+fun resolveDefaultEmoji(context: Context, name: String, type: String): String {
+    val locale = Locale.getDefault()
+    val primaryText = name.trim().lowercase(locale)
+    val rules = loadEmojiKeywordRulesFromFile(context)
+
+    rules.lastOrNull { (_, keywords) ->
+        keywords.any { keyword ->
+            val normalized = keyword.trim().lowercase(locale)
+            normalized.isNotBlank() && primaryText == normalized
+        }
+    }?.let {
+        return it.first
+    }
+
+    fun findBestEmoji(text: String): String? {
+        var bestEmoji: String? = null
+        var bestStart = -1
+        var bestLength = -1
+        var bestRuleIndex = -1
+        rules.forEachIndexed { ruleIndex, (emoji, keywords) ->
+            keywords.forEach { keyword ->
+                val normalized = keyword.trim().lowercase(locale)
+                if (normalized.isBlank()) return@forEach
+                val start = text.lastIndexOf(normalized)
+                if (start < 0) return@forEach
+                val better = start > bestStart ||
+                    (start == bestStart && normalized.length > bestLength) ||
+                    (start == bestStart && normalized.length == bestLength && ruleIndex > bestRuleIndex)
+                if (better) {
+                    bestEmoji = emoji
+                    bestStart = start
+                    bestLength = normalized.length
+                    bestRuleIndex = ruleIndex
+                }
+            }
+        }
+        return bestEmoji
+    }
+
+    findBestEmoji(primaryText)?.let { return it }
+    return if (type == "food") "🍽️" else "💪"
+}
+
 @Composable
 fun RecordItem(
     item: CalorieItemEntity,
     onDelete: (CalorieItemEntity) -> Unit,
     onEdit: (CalorieItemEntity) -> Unit,
-    onImagePreview: (String) -> Unit = {}
+    onImagePreview: (String) -> Unit = {},
+    containerColor: Color,
+    onContainerColor: Color,
+    isDarkTheme: Boolean,
+    showDeleteButton: Boolean = true
 ) {
+    val context = LocalContext.current
     val notesText = remember(item.notes) { item.notes?.trim().orEmpty() }
-    val imagePath = remember(item.imageUrl) { item.imageUrl?.takeIf { !it.isNullOrBlank() && File(it).exists() } }
+    val imagePath = remember(item.imageUrl) {
+        item.imageUrl?.trim()?.takeIf { it.isNotBlank() && (it.startsWith("content://") || File(it).exists()) }
+    }
+    val fallbackEmoji = resolveDefaultEmoji(context, item.name, item.type)
     Card(
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        shape = RoundedCornerShape(16.dp),
-        modifier = Modifier.fillMaxWidth().clickable { onEdit(item) }
+        elevation = CardDefaults.cardElevation(defaultElevation = if (isDarkTheme) 0.dp else 6.dp),
+        colors = CardDefaults.cardColors(containerColor = containerColor),
+        shape = RoundedCornerShape(18.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onEdit(item) }
     ) {
-        Row(
-            modifier = Modifier
-                .padding(start = 16.dp, top = 16.dp, bottom = 16.dp, end = 8.dp)
-                .fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // Icon
-            val isFood = item.type == "food"
-            val iconBg = if (isFood) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.secondaryContainer
-            val iconColor = if (isFood) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSecondaryContainer
-            val icon = if (isFood) Icons.Default.Restaurant else Icons.Default.FitnessCenter
-            
-            if (!imagePath.isNullOrBlank()) {
-                AsyncImage(
-                    model = File(imagePath),
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .size(48.dp)
-                        .clip(CircleShape)
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null
-                        ) {
-                            onImagePreview(imagePath)
-                        }
-                )
-            } else {
-                Box(
-                    modifier = Modifier
-                        .size(48.dp)
-                        .clip(CircleShape)
-                        .background(iconBg),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(icon, contentDescription = null, tint = iconColor, modifier = Modifier.size(24.dp))
-                }
-            }
-            
-            Spacer(modifier = Modifier.width(16.dp))
-            
-            Column(modifier = Modifier.weight(1f)) {
-                Text(item.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
-                Text(
-                    "${item.time} · ${if(isFood) "食物" else "运动"}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                if (notesText.isNotBlank()) {
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        notesText,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 2
-                    )
-                }
-            }
+        Box(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier
+                    .padding(start = 16.dp, top = 16.dp, bottom = 16.dp, end = 8.dp)
+                    .fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                val isFood = item.type == "food"
+                val iconBg = if (isFood) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.secondaryContainer
 
-            Text(
-                "${if (isFood) "+" else "-"}${item.calories}",
-                style = MaterialTheme.typography.titleMedium,
-                color = if (isFood) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary,
-                fontWeight = FontWeight.Bold
-            )
-            
-            IconButton(onClick = { onDelete(item) }) {
-                Icon(Icons.Default.Delete, "Delete", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp))
+                if (!imagePath.isNullOrBlank()) {
+                    val imageModel = if (imagePath.startsWith("content://")) Uri.parse(imagePath) else File(imagePath)
+                    AsyncImage(
+                        model = imageModel,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .size(48.dp)
+                            .clip(CircleShape)
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null
+                            ) {
+                                onImagePreview(imagePath)
+                            }
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .size(48.dp)
+                            .clip(CircleShape)
+                            .background(iconBg),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(text = fallbackEmoji, fontSize = 24.sp)
+                    }
+                }
+
+                Spacer(modifier = Modifier.width(16.dp))
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        item.name,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = onContainerColor
+                    )
+                    Text(
+                        "${item.time} · ${if(isFood) "食物" else "运动"}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = onContainerColor.copy(alpha = 0.72f)
+                    )
+                    if (notesText.isNotBlank()) {
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            notesText,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = onContainerColor.copy(alpha = 0.72f),
+                            maxLines = 2
+                        )
+                    }
+                }
+
+                Text(
+                    "${if (isFood) "+" else "-"}${item.calories}",
+                    modifier = Modifier.width(68.dp),
+                    textAlign = TextAlign.End,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = if (isFood) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+            if (showDeleteButton) {
+                IconButton(
+                    onClick = { onDelete(item) },
+                    modifier = Modifier.align(Alignment.TopEnd).size(30.dp).padding(top = 2.dp, end = 2.dp)
+                ) {
+                    Icon(Icons.Default.Delete, "Delete", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
+                }
             }
         }
     }
 }
 
 @Composable
-fun TimerStatusCard(name: String, startTime: Long) {
+fun TimerStatusCard(
+    name: String,
+    startTime: Long,
+    containerColor: Color,
+    onContainerColor: Color,
+    isDarkTheme: Boolean,
+    accentColor: Color
+) {
     var currentTime by remember { mutableLongStateOf(System.currentTimeMillis()) }
     
     LaunchedEffect(Unit) {
@@ -1240,7 +1627,8 @@ fun TimerStatusCard(name: String, startTime: Long) {
     val timeStr = String.format("%02d:%02d:%02d", hours, minutes, seconds)
 
     Card(
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+        colors = CardDefaults.cardColors(containerColor = containerColor),
+        elevation = CardDefaults.cardElevation(defaultElevation = if (isDarkTheme) 0.dp else 8.dp),
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp)
     ) {
@@ -1252,15 +1640,15 @@ fun TimerStatusCard(name: String, startTime: Long) {
                 modifier = Modifier
                     .size(40.dp)
                     .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.primary),
+                    .background(accentColor.copy(alpha = if (isDarkTheme) 0.85f else 1f)),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(Icons.Default.FitnessCenter, null, tint = MaterialTheme.colorScheme.onPrimary)
+                Icon(Icons.Default.FitnessCenter, null, tint = Color.White)
             }
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text("正在进行: $name", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
-                Text(timeStr, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                Text("正在进行: $name", style = MaterialTheme.typography.labelMedium, color = onContainerColor.copy(alpha = 0.75f))
+                Text(timeStr, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = onContainerColor)
             }
             // Pulse animation or icon could go here
         }
@@ -1273,7 +1661,10 @@ fun ExerciseTimerDialog(
     startTime: Long?,
     onDismiss: () -> Unit,
     onSave: (String, Int, String, String) -> Unit,
-    onDiscard: () -> Unit
+    onDiscard: () -> Unit,
+    containerColor: Color,
+    onContainerColor: Color,
+    accentColor: Color
 ) {
     var name by remember { mutableStateOf(initialName) }
     var calories by remember { mutableStateOf("") }
@@ -1285,14 +1676,23 @@ fun ExerciseTimerDialog(
             title = { Text("确认放弃") },
             text = { Text("确定要放弃本次运动记录吗？") },
             confirmButton = {
-                TextButton(onClick = {
-                    showDiscardConfirm = false
-                    onDiscard()
-                }) { Text("确定") }
+                TextButton(
+                    onClick = {
+                        showDiscardConfirm = false
+                        onDiscard()
+                    },
+                    colors = ButtonDefaults.textButtonColors(contentColor = accentColor)
+                ) { Text("确定") }
             },
             dismissButton = {
-                TextButton(onClick = { showDiscardConfirm = false }) { Text("取消") }
-            }
+                TextButton(
+                    onClick = { showDiscardConfirm = false },
+                    colors = ButtonDefaults.textButtonColors(contentColor = accentColor)
+                ) { Text("取消") }
+            },
+            containerColor = containerColor,
+            titleContentColor = onContainerColor,
+            textContentColor = onContainerColor
         )
     }
     
@@ -1315,22 +1715,22 @@ fun ExerciseTimerDialog(
     Dialog(onDismissRequest = onDismiss) {
         Card(
             shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            colors = CardDefaults.cardColors(containerColor = containerColor),
             modifier = Modifier.fillMaxWidth()
         ) {
             Column(modifier = Modifier.padding(24.dp)) {
-                Text("运动结束", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                Text("运动结束", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = onContainerColor)
                 Spacer(modifier = Modifier.height(16.dp))
                 
                 // Duration Display
-                Text("运动时长", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("运动时长", style = MaterialTheme.typography.labelMedium, color = onContainerColor.copy(alpha = 0.75f))
                 Text(
                     durationStr,
                     style = MaterialTheme.typography.displayMedium,
                     fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary
+                    color = accentColor
                 )
-                Text("$startStr - $endStr", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("$startStr - $endStr", style = MaterialTheme.typography.bodySmall, color = onContainerColor.copy(alpha = 0.75f))
                 
                 Spacer(modifier = Modifier.height(16.dp))
                 
@@ -1359,16 +1759,25 @@ fun ExerciseTimerDialog(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.End
                 ) {
-                    TextButton(onClick = { showDiscardConfirm = true }) {
+                    TextButton(
+                        onClick = { showDiscardConfirm = true },
+                        colors = ButtonDefaults.textButtonColors(contentColor = accentColor)
+                    ) {
                         Text("放弃")
                     }
                     Spacer(modifier = Modifier.width(8.dp))
-                    Button(onClick = {
-                        val cal = calories.toIntOrNull()
-                        if (name.isNotBlank() && cal != null && cal > 0) {
-                            onSave(name, cal, startStr, endStr)
-                        }
-                    }) {
+                    Button(
+                        onClick = {
+                            val cal = calories.toIntOrNull()
+                            if (name.isNotBlank() && cal != null && cal > 0) {
+                                onSave(name, cal, startStr, endStr)
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = accentColor,
+                            contentColor = Color.White
+                        )
+                    ) {
                         Text("保存记录")
                     }
                 }
@@ -1378,18 +1787,25 @@ fun ExerciseTimerDialog(
 }
 
 @Composable
-fun SleepDialog(currentDuration: Int, onDismiss: () -> Unit, onConfirm: (Int) -> Unit) {
+fun SleepDialog(
+    currentDuration: Int,
+    onDismiss: () -> Unit,
+    onConfirm: (Int) -> Unit,
+    containerColor: Color,
+    onContainerColor: Color,
+    accentColor: Color
+) {
     var hours by remember { mutableStateOf((currentDuration / 60).toString()) }
     var minutes by remember { mutableStateOf((currentDuration % 60).toString()) }
     
     Dialog(onDismissRequest = onDismiss) {
         Card(
             shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            colors = CardDefaults.cardColors(containerColor = containerColor),
             modifier = Modifier.fillMaxWidth()
         ) {
             Column(modifier = Modifier.padding(24.dp)) {
-                Text("记录睡眠", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                Text("记录睡眠", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = onContainerColor)
                 Spacer(modifier = Modifier.height(16.dp))
                 
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1429,7 +1845,7 @@ fun SleepDialog(currentDuration: Int, onDismiss: () -> Unit, onConfirm: (Int) ->
                             onConfirm(total)
                         }
                     }) {
-                        Text("保存")
+                        Text("保存", color = accentColor)
                     }
                 }
             }
@@ -1438,17 +1854,24 @@ fun SleepDialog(currentDuration: Int, onDismiss: () -> Unit, onConfirm: (Int) ->
 }
 
 @Composable
-fun WaterDialog(currentWater: Int, onDismiss: () -> Unit, onConfirm: (Int) -> Unit) {
+fun WaterDialog(
+    currentWater: Int,
+    onDismiss: () -> Unit,
+    onConfirm: (Int) -> Unit,
+    containerColor: Color,
+    onContainerColor: Color,
+    accentColor: Color
+) {
     var waterStr by remember { mutableStateOf(if (currentWater > 0) currentWater.toString() else "") }
     
     Dialog(onDismissRequest = onDismiss) {
         Card(
             shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            colors = CardDefaults.cardColors(containerColor = containerColor),
             modifier = Modifier.fillMaxWidth()
         ) {
             Column(modifier = Modifier.padding(24.dp)) {
-                Text("记录饮水", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                Text("记录饮水", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = onContainerColor)
                 Spacer(modifier = Modifier.height(16.dp))
                 
                 OutlinedTextField(
@@ -1494,7 +1917,7 @@ fun WaterDialog(currentWater: Int, onDismiss: () -> Unit, onConfirm: (Int) -> Un
                             onConfirm(w)
                         }
                     }) {
-                        Text("保存")
+                        Text("保存", color = accentColor)
                     }
                 }
             }
@@ -1503,17 +1926,24 @@ fun WaterDialog(currentWater: Int, onDismiss: () -> Unit, onConfirm: (Int) -> Un
 }
 
 @Composable
-fun WeightDialog(currentWeight: Float, onDismiss: () -> Unit, onConfirm: (Float) -> Unit) {
+fun WeightDialog(
+    currentWeight: Float,
+    onDismiss: () -> Unit,
+    onConfirm: (Float) -> Unit,
+    containerColor: Color,
+    onContainerColor: Color,
+    accentColor: Color
+) {
     var weightStr by remember { mutableStateOf(currentWeight.toString()) }
 
     Dialog(onDismissRequest = onDismiss) {
         Card(
             shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            colors = CardDefaults.cardColors(containerColor = containerColor),
             modifier = Modifier.fillMaxWidth()
         ) {
             Column(modifier = Modifier.padding(24.dp)) {
-                Text("记录今日体重", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                Text("记录今日体重", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = onContainerColor)
                 Spacer(modifier = Modifier.height(16.dp))
                 
                 OutlinedTextField(
@@ -1541,7 +1971,7 @@ fun WeightDialog(currentWeight: Float, onDismiss: () -> Unit, onConfirm: (Float)
                             onConfirm(w)
                         }
                     }) {
-                        Text("保存")
+                        Text("保存", color = accentColor)
                     }
                 }
             }
@@ -1555,7 +1985,10 @@ fun generateTodayLongScreenshot(
     dailyRecord: DailyRecordEntity?,
     allRecords: List<DailyRecordEntity>,
     items: List<CalorieItemEntity>,
-    selectedDate: String
+    selectedDate: String,
+    selectedThemeIndex: Int = 0,
+    showNotes: Boolean = true,
+    maskWeight: Boolean = false
 ): Bitmap {
     val effectiveWeight = CalorieUtils.getEffectiveWeight(selectedDate, allRecords, userProfile)
     val target = if (userProfile != null) {
@@ -1597,7 +2030,7 @@ fun generateTodayLongScreenshot(
     val metricsH = 192f
     val sectionHeaderH = 64f
     val itemH = 126f
-    val footerH = 260f
+    val footerH = 220f
     val sectionGap = 12f
 
     var contentH = headerH + summaryH + metricsH + footerH + 64f
@@ -1613,27 +2046,14 @@ fun generateTodayLongScreenshot(
 
     val paint = android.graphics.Paint().apply { isAntiAlias = true }
     val textPaint = android.text.TextPaint().apply { isAntiAlias = true }
-    data class ShareTheme(
-        val bgColor: Int,
-        val bgPatternEmoji: List<String>,
-        val primaryColor: Int
-    )
-    val themePool = listOf(
-        ShareTheme(android.graphics.Color.parseColor("#FFFDE7"), listOf("🍎", "🥗", "🍇", "🥑"), android.graphics.Color.parseColor("#FFF59D")),
-        ShareTheme(android.graphics.Color.parseColor("#FFEBEE"), listOf("🔥", "💪", "🏃", "✨"), android.graphics.Color.parseColor("#FFCDD2")),
-        ShareTheme(android.graphics.Color.parseColor("#E1F5FE"), listOf("💧", "🌊", "🧊", "💙"), android.graphics.Color.parseColor("#B3E5FC")),
-        ShareTheme(android.graphics.Color.parseColor("#F3E5F5"), listOf("💤", "🌙", "⭐", "🛌"), android.graphics.Color.parseColor("#E1BEE7")),
-        ShareTheme(android.graphics.Color.parseColor("#E8F5E9"), listOf("🐱", "🐾", "🌿", "🍀"), android.graphics.Color.parseColor("#C8E6C9")),
-        ShareTheme(android.graphics.Color.parseColor("#E0F7FA"), listOf("⚖️", "✨", "📉", "💪"), android.graphics.Color.parseColor("#B2EBF2"))
-    )
-    val randomTheme = themePool[java.util.Random().nextInt(themePool.size)]
-    canvas.drawColor(randomTheme.bgColor)
+    val selectedTheme = getTodayVisualTheme(selectedThemeIndex)
+    canvas.drawColor(selectedTheme.lightBgColor)
 
     val bgPaint = android.graphics.Paint().apply {
         shader = android.graphics.LinearGradient(
             0f, 0f, 0f, 420f,
-            randomTheme.primaryColor,
-            randomTheme.bgColor,
+            selectedTheme.lightTopGradientColor,
+            selectedTheme.lightBgColor,
             android.graphics.Shader.TileMode.CLAMP
         )
         isAntiAlias = true
@@ -1649,7 +2069,7 @@ fun generateTodayLongScreenshot(
     val bgRandom = java.util.Random()
     for (r in 0 until patternRows) {
         for (c in 0 until patternCols) {
-            val emoji = randomTheme.bgPatternEmoji[bgRandom.nextInt(randomTheme.bgPatternEmoji.size)]
+            val emoji = selectedTheme.patternEmoji[bgRandom.nextInt(selectedTheme.patternEmoji.size)]
             val x = c * patternGapX + patternGapX / 2 + (bgRandom.nextFloat() - 0.5f) * 50f
             val yPattern = r * patternGapY + patternGapY / 2 + (bgRandom.nextFloat() - 0.5f) * 50f
             val rotation = (bgRandom.nextFloat() - 0.5f) * 60f
@@ -1661,17 +2081,19 @@ fun generateTodayLongScreenshot(
     }
     paint.alpha = 255
 
-    var y = 88f
+    var y = 120f
     textPaint.color = android.graphics.Color.parseColor("#1F2A24")
-    textPaint.textSize = 52f
+    textPaint.textSize = 58f
     textPaint.typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
-    canvas.drawText("今日记录", padding, y, textPaint)
+    textPaint.textAlign = android.graphics.Paint.Align.CENTER
+    canvas.drawText("今日记录", width / 2f, y, textPaint)
 
     y += 66f
-    textPaint.textSize = 30f
+    textPaint.textSize = 34f
     textPaint.typeface = android.graphics.Typeface.DEFAULT
     textPaint.color = android.graphics.Color.parseColor("#4F5B56")
-    canvas.drawText(selectedDate, padding, y, textPaint)
+    canvas.drawText(selectedDate, width / 2f, y, textPaint)
+    textPaint.textAlign = android.graphics.Paint.Align.LEFT
 
     y += 54f
 
@@ -1790,7 +2212,7 @@ fun generateTodayLongScreenshot(
     val metricsTop = summaryTop + summaryH + 24f
     val metricGap = 20f
     val metricWidth = (width - padding * 2 - metricGap * 2) / 3f
-    val weightText = dailyRecord?.weight?.let { String.format(Locale.getDefault(), "%.1f kg", it) } ?: "记录"
+    val weightText = if (maskWeight) "****" else dailyRecord?.weight?.let { String.format(Locale.getDefault(), "%.1f kg", it) } ?: "记录"
     val waterText = "${dailyRecord?.totalWater ?: 0} ml"
     val sleepHour = (dailyRecord?.sleepDuration ?: 0) / 60
     val sleepMinute = (dailyRecord?.sleepDuration ?: 0) % 60
@@ -1834,15 +2256,18 @@ fun generateTodayLongScreenshot(
     }
 
     var currentY = metricsTop + metricsH + 34f
+    val caloriesRightX = width - padding - 12f
     fun drawSectionTitle(title: String, calories: Int, color: Int) {
         textPaint.color = color
-        textPaint.textSize = 32f
+        textPaint.textSize = 40f
         textPaint.typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
-        canvas.drawText(title, padding, currentY + 42f, textPaint)
+        canvas.drawText(title, padding, currentY + 46f, textPaint)
         textPaint.color = android.graphics.Color.parseColor("#6A7570")
-        textPaint.textSize = 28f
+        textPaint.textSize = 36f
         textPaint.typeface = android.graphics.Typeface.DEFAULT
-        canvas.drawText("${calories} kcal", width - padding - 190f, currentY + 42f, textPaint)
+        textPaint.textAlign = android.graphics.Paint.Align.RIGHT
+        canvas.drawText("${calories} kcal", caloriesRightX, currentY + 46f, textPaint)
+        textPaint.textAlign = android.graphics.Paint.Align.LEFT
         currentY += sectionHeaderH
     }
 
@@ -1871,8 +2296,50 @@ fun generateTodayLongScreenshot(
         return notes.substring(start, end).trim().takeIf { it.isNotBlank() }
     }
 
+    fun ellipsizeSingleLine(text: String, maxWidth: Float, paint: android.graphics.Paint): String {
+        if (text.isEmpty()) return text
+        if (paint.measureText(text) <= maxWidth) return text
+        val ellipsis = "…"
+        if (paint.measureText(ellipsis) >= maxWidth) return ellipsis
+        var low = 0
+        var high = text.length
+        var best = 0
+        while (low <= high) {
+            val mid = (low + high) / 2
+            val candidate = text.substring(0, mid) + ellipsis
+            if (paint.measureText(candidate) <= maxWidth) {
+                best = mid
+                low = mid + 1
+            } else {
+                high = mid - 1
+            }
+        }
+        return text.substring(0, best) + ellipsis
+    }
+
+    fun resolveDisplayNotes(item: CalorieItemEntity): String {
+        val notes = item.notes.orEmpty()
+        if (notes.isBlank()) return ""
+        val marker = "|img:"
+        val markerIndex = notes.indexOf(marker)
+        val cleaned = if (markerIndex >= 0) {
+            val pathStart = markerIndex + marker.length
+            val pathEnd = notes.indexOf('|', pathStart).takeIf { it >= 0 } ?: notes.length
+            val removeEnd = if (pathEnd < notes.length) pathEnd + 1 else pathEnd
+            notes.removeRange(markerIndex, removeEnd)
+        } else {
+            notes
+        }
+        return cleaned.replace("\r", " ").replace("\n", " ").replace(Regex("\\s+"), " ").trim()
+    }
+
     fun drawItemRow(item: CalorieItemEntity) {
-        val rect = android.graphics.RectF(padding, currentY, width - padding, currentY + itemH - 14f)
+        val rowGap = 14f
+        val iconR = (itemH - rowGap) / 2f - 2f
+        val iconCx = padding + iconR
+        val iconCy = currentY + (itemH - rowGap) / 2f
+        val rectLeft = iconCx + iconR + rowGap
+        val rect = android.graphics.RectF(rectLeft, currentY, width - padding, currentY + itemH - rowGap)
         paint.color = android.graphics.Color.argb(150, 255, 255, 255)
         paint.setShadowLayer(5f, 0f, 2f, android.graphics.Color.parseColor("#16000000"))
         canvas.drawRoundRect(rect, 24f, 24f, paint)
@@ -1880,8 +2347,10 @@ fun generateTodayLongScreenshot(
 
         val isFood = item.type == "food"
         val iconBg = if (isFood) android.graphics.Color.parseColor("#DDF7D8") else android.graphics.Color.parseColor("#D9ECFF")
-        val iconCx = padding + 44f
-        val iconCy = currentY + 54f
+        paint.color = iconBg
+        paint.setShadowLayer(5f, 0f, 2f, android.graphics.Color.parseColor("#16000000"))
+        canvas.drawCircle(iconCx, iconCy, iconR, paint)
+        paint.clearShadowLayer()
         val imagePath = resolveImagePath(item)
         var thumbnailDrawn = false
         if (!imagePath.isNullOrBlank()) {
@@ -1891,8 +2360,10 @@ fun generateTodayLongScreenshot(
                 val srcLeft = (srcBitmap.width - srcSide) / 2
                 val srcTop = (srcBitmap.height - srcSide) / 2
                 val srcRect = android.graphics.Rect(srcLeft, srcTop, srcLeft + srcSide, srcTop + srcSide)
-                val dstRect = android.graphics.RectF(iconCx - 30f, iconCy - 30f, iconCx + 30f, iconCy + 30f)
-                val clipPath = android.graphics.Path().apply { addCircle(iconCx, iconCy, 30f, android.graphics.Path.Direction.CW) }
+                val dstRect = android.graphics.RectF(iconCx - iconR, iconCy - iconR, iconCx + iconR, iconCy + iconR)
+                val clipPath = android.graphics.Path().apply { addCircle(iconCx, iconCy, iconR, android.graphics.Path.Direction.CW) }
+                paint.color = iconBg
+                canvas.drawCircle(iconCx, iconCy, iconR, paint)
                 canvas.save()
                 canvas.clipPath(clipPath)
                 canvas.drawBitmap(srcBitmap, srcRect, dstRect, null)
@@ -1903,29 +2374,59 @@ fun generateTodayLongScreenshot(
         if (!thumbnailDrawn) {
             paint.alpha = 255
             paint.color = iconBg
-            canvas.drawCircle(iconCx, iconCy, 30f, paint)
-            textPaint.textSize = 24f
+            canvas.drawCircle(iconCx, iconCy, iconR, paint)
+            textPaint.textSize = iconR * 1.15f
             textPaint.color = if (isFood) android.graphics.Color.parseColor("#2E7D32") else android.graphics.Color.parseColor("#1565C0")
-            canvas.drawText(if (isFood) "🍴" else "💪", iconCx - 17f, iconCy + 11f, textPaint)
+            textPaint.textAlign = android.graphics.Paint.Align.CENTER
+            val fm = textPaint.fontMetrics
+            val emojiY = iconCy - (fm.ascent + fm.descent) / 2f
+            canvas.drawText(resolveDefaultEmoji(context, item.name, item.type), iconCx, emojiY, textPaint)
+            textPaint.textAlign = android.graphics.Paint.Align.LEFT
         }
 
-        textPaint.textSize = 30f
+        textPaint.textSize = if (showNotes) 36f else 40f
         textPaint.typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
         textPaint.color = android.graphics.Color.parseColor("#222C27")
-        val name = if (item.name.length > 22) item.name.take(22) + "…" else item.name
-        canvas.drawText(name, padding + 94f, currentY + 52f, textPaint)
+        val nameLeft = rectLeft + 28f
+        val nameRightLimit = if (showNotes) width - padding - 154f else width - padding - 190f
+        val maxNameWidth = (nameRightLimit - nameLeft).coerceAtLeast(80f)
+        val name = ellipsizeSingleLine(item.name, maxNameWidth, textPaint)
+        val titleY = if (showNotes) {
+            currentY + 56f
+        } else {
+            val fm = textPaint.fontMetrics
+            val rectCenterY = currentY + (itemH - 14f) / 2f
+            rectCenterY - (fm.ascent + fm.descent) / 2f
+        }
+        canvas.drawText(name, nameLeft, titleY, textPaint)
 
-        textPaint.typeface = android.graphics.Typeface.DEFAULT
-        textPaint.textSize = 24f
-        textPaint.color = android.graphics.Color.parseColor("#7B8681")
-        canvas.drawText("${item.time} · ${if (isFood) "食物" else "运动"}", padding + 94f, currentY + 88f, textPaint)
+        if (showNotes) {
+            textPaint.typeface = android.graphics.Typeface.DEFAULT
+            textPaint.textSize = 29f
+            textPaint.color = android.graphics.Color.parseColor("#7B8681")
+            val metaLeft = rectLeft + 28f
+            val noteRightLimit = padding + (width - padding * 2f) * (5f / 6f)
+            val maxMetaWidth = (noteRightLimit - metaLeft).coerceAtLeast(80f)
+            val displayNotes = resolveDisplayNotes(item)
+            val metaRaw = if (displayNotes.isNotBlank()) "${item.time} · $displayNotes" else item.time
+            val metaText = ellipsizeSingleLine(metaRaw, maxMetaWidth, textPaint)
+            canvas.drawText(metaText, metaLeft, currentY + 92f, textPaint)
 
-        textPaint.textSize = 30f
+        }
+        textPaint.textSize = if (showNotes) 37f else 39f
         textPaint.typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
         textPaint.color = if (isFood) android.graphics.Color.parseColor("#2E7D32") else android.graphics.Color.parseColor("#1565C0")
         val calText = "${if (isFood) "+" else "-"}${item.calories}"
-        val calWidth = textPaint.measureText(calText)
-        canvas.drawText(calText, width - padding - calWidth - 12f, currentY + 70f, textPaint)
+        textPaint.textAlign = android.graphics.Paint.Align.RIGHT
+        val calY = if (showNotes) {
+            currentY + 76f
+        } else {
+            val fm = textPaint.fontMetrics
+            val rectCenterY = currentY + (itemH - 14f) / 2f
+            rectCenterY - (fm.ascent + fm.descent) / 2f
+        }
+        canvas.drawText(calText, caloriesRightX, calY, textPaint)
+        textPaint.textAlign = android.graphics.Paint.Align.LEFT
         textPaint.typeface = android.graphics.Typeface.DEFAULT
 
         currentY += itemH
@@ -1947,11 +2448,11 @@ fun generateTodayLongScreenshot(
     val footerTop = contentH - footerH
     paint.color = android.graphics.Color.parseColor("#CCD6D1")
     paint.strokeWidth = 2f
-    canvas.drawLine(padding, footerTop + 36f, width - padding, footerTop + 36f, paint)
+    canvas.drawLine(padding, footerTop + 28f, width - padding, footerTop + 16f, paint)
 
     val iconSize = 86f
     val iconX = width / 2f - 250f
-    val iconY = footerTop + 74f
+    val iconY = footerTop + 66f
     val iconId = context.resources.getIdentifier("app_icon", "drawable", context.packageName)
     if (iconId != 0) {
         val iconBitmap = BitmapFactory.decodeResource(context.resources, iconId)
@@ -1960,7 +2461,7 @@ fun generateTodayLongScreenshot(
             canvas.drawBitmap(scaled, iconX, iconY, null)
         }
     } else {
-        paint.color = randomTheme.primaryColor
+        paint.color = selectedTheme.lightTopGradientColor
         val iconRect = android.graphics.RectF(iconX, iconY, iconX + iconSize, iconY + iconSize)
         canvas.drawRoundRect(iconRect, 18f, 18f, paint)
         textPaint.color = android.graphics.Color.WHITE
@@ -1981,7 +2482,7 @@ fun generateTodayLongScreenshot(
     return bitmap
 }
 
-fun saveTodayBitmap(context: Context, bitmap: Bitmap) {
+fun saveTodayBitmap(context: Context, bitmap: Bitmap): Boolean {
     val filename = "MeowFit_Today_${System.currentTimeMillis()}.png"
     var outputStream: java.io.OutputStream? = null
     try {
@@ -2007,11 +2508,14 @@ fun saveTodayBitmap(context: Context, bitmap: Bitmap) {
             bitmap.compress(Bitmap.CompressFormat.PNG, 100, outputStream)
             outputStream.close()
             Toast.makeText(context, "图片已保存到相册", Toast.LENGTH_SHORT).show()
+            return true
         } else {
             Toast.makeText(context, "保存失败", Toast.LENGTH_SHORT).show()
+            return false
         }
     } catch (e: Exception) {
         Toast.makeText(context, "保存失败: ${e.message}", Toast.LENGTH_SHORT).show()
+        return false
     }
 }
 

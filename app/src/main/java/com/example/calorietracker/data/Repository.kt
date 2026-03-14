@@ -121,6 +121,13 @@ class CalorieRepository(private val userDao: UserDao, private val recordDao: Rec
         }
     }
 
+    suspend fun updateTodayThemeIndex(index: Int) {
+        val profile = userDao.getUserProfile().firstOrNull()
+        if (profile != null) {
+            userDao.insertUserProfile(profile.copy(selectedTodayThemeIndex = index, hasSelectedTodayTheme = true))
+        }
+    }
+
     private suspend fun updateDailyTotals(date: String) {
         val items = recordDao.getItemsForDate(date).first()
         val totalIntake = items.filter { it.type == "food" }.sumOf { it.calories }

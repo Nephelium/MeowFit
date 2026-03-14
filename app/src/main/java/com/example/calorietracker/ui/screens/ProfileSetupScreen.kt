@@ -1,6 +1,7 @@
 package com.example.calorietracker.ui.screens
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -19,6 +20,10 @@ fun ProfileSetupScreen(
     userProfile: UserProfileEntity? = null,
     onSave: (UserProfileEntity) -> Unit
 ) {
+    val isDarkTheme = isSystemInDarkTheme()
+    val selectedThemeIndex = userProfile?.selectedTodayThemeIndex ?: 0
+    val selectedTheme = remember(selectedThemeIndex) { getTodayVisualTheme(selectedThemeIndex) }
+    val accentColor = remember(selectedTheme, isDarkTheme) { themedAccentColor(selectedTheme, isDarkTheme) }
     var name by remember { mutableStateOf(userProfile?.name ?: "") }
     var gender by remember { mutableStateOf(userProfile?.gender ?: "male") }
     
@@ -78,10 +83,18 @@ fun ProfileSetupScreen(
             // Gender
             Text("性别")
             Row {
-                RadioButton(selected = gender == "male", onClick = { gender = "male" })
+                RadioButton(
+                    selected = gender == "male",
+                    onClick = { gender = "male" },
+                    colors = RadioButtonDefaults.colors(selectedColor = accentColor)
+                )
                 Text("男", modifier = Modifier.padding(top = 12.dp))
                 Spacer(modifier = Modifier.width(16.dp))
-                RadioButton(selected = gender == "female", onClick = { gender = "female" })
+                RadioButton(
+                    selected = gender == "female",
+                    onClick = { gender = "female" },
+                    colors = RadioButtonDefaults.colors(selectedColor = accentColor)
+                )
                 Text("女", modifier = Modifier.padding(top = 12.dp))
             }
 
@@ -149,18 +162,21 @@ fun ProfileSetupScreen(
                     text = "久坐",
                     selected = activityLevel == "sedentary",
                     onClick = { activityLevel = "sedentary" },
+                    accentColor = accentColor,
                     modifier = Modifier.weight(1f)
                 )
                 SelectionButton(
                     text = "适中",
                     selected = activityLevel == "moderate",
                     onClick = { activityLevel = "moderate" },
+                    accentColor = accentColor,
                     modifier = Modifier.weight(1f)
                 )
                 SelectionButton(
                     text = "活跃",
                     selected = activityLevel == "active",
                     onClick = { activityLevel = "active" },
+                    accentColor = accentColor,
                     modifier = Modifier.weight(1f)
                 )
             }
@@ -172,18 +188,21 @@ fun ProfileSetupScreen(
                     text = "减重",
                     selected = goal == "lose",
                     onClick = { goal = "lose" },
+                    accentColor = accentColor,
                     modifier = Modifier.weight(1f)
                 )
                 SelectionButton(
                     text = "保持",
                     selected = goal == "maintain",
                     onClick = { goal = "maintain" },
+                    accentColor = accentColor,
                     modifier = Modifier.weight(1f)
                 )
                 SelectionButton(
                     text = "增重",
                     selected = goal == "gain",
                     onClick = { goal = "gain" },
+                    accentColor = accentColor,
                     modifier = Modifier.weight(1f)
                 )
             }
@@ -215,11 +234,19 @@ fun ProfileSetupScreen(
                         goal = goal,
                         dailyCalorieTarget = dailyTarget,
                         sleepGoal = userProfile?.sleepGoal ?: 7.5f,
+                        showMacros = userProfile?.showMacros ?: false,
+                        selectedTodayThemeIndex = userProfile?.selectedTodayThemeIndex ?: 0,
+                        hasSelectedTodayTheme = userProfile?.hasSelectedTodayTheme ?: false,
+                        excludedExercises = userProfile?.excludedExercises ?: "",
                         createdAt = userProfile?.createdAt ?: java.util.Date().toString()
                     )
                     onSave(profile)
                 },
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = accentColor,
+                    contentColor = Color.White
+                )
             ) {
                 Text("保存并开始")
             }
@@ -232,14 +259,15 @@ fun SelectionButton(
     text: String,
     selected: Boolean,
     onClick: () -> Unit,
+    accentColor: Color = MaterialTheme.colorScheme.primary,
     modifier: Modifier = Modifier
 ) {
     Button(
         onClick = onClick,
         modifier = modifier,
         colors = ButtonDefaults.buttonColors(
-            containerColor = if (selected) MaterialTheme.colorScheme.primary else Color(0xFFE0E0E0),
-            contentColor = if (selected) MaterialTheme.colorScheme.onPrimary else Color.Black
+            containerColor = if (selected) accentColor else Color(0xFFE0E0E0),
+            contentColor = if (selected) Color.White else Color.Black
         ),
         elevation = ButtonDefaults.buttonElevation(
             defaultElevation = if (selected) 4.dp else 0.dp

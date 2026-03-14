@@ -2,12 +2,14 @@ package com.example.calorietracker.ui.screens
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.example.calorietracker.ui.BackupViewModel
 import java.text.SimpleDateFormat
@@ -18,11 +20,15 @@ import java.util.Locale
 @Composable
 fun BackupSettingsScreen(
     viewModel: BackupViewModel,
+    selectedThemeIndex: Int = 0,
     onBack: () -> Unit
 ) {
     val status by viewModel.status.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val lastAutoBackup by viewModel.lastAutoBackupTime.collectAsState()
+    val isDarkTheme = isSystemInDarkTheme()
+    val selectedTheme = remember(selectedThemeIndex) { getTodayVisualTheme(selectedThemeIndex) }
+    val accentColor = remember(selectedTheme, isDarkTheme) { themedAccentColor(selectedTheme, isDarkTheme) }
     val createDocumentLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/zip")
     ) { uri ->
@@ -65,22 +71,22 @@ fun BackupSettingsScreen(
                     Spacer(modifier = Modifier.height(8.dp))
                     Text("系统每天会自动备份当前数据，覆盖前一天的自动备份文件。", style = MaterialTheme.typography.bodyMedium)
                     Spacer(modifier = Modifier.height(8.dp))
-                    Text("上次自动备份: $lastAutoBackup", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                    Text("上次自动备份: $lastAutoBackup", style = MaterialTheme.typography.bodySmall, color = accentColor)
                 }
             }
 
             Divider()
 
             // Manual Actions
-            Text("手动操作", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+            Text("手动操作", style = MaterialTheme.typography.titleMedium, color = accentColor)
 
             if (isLoading) {
-                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth(), color = accentColor)
             }
 
             Text(
                 text = status,
-                color = if (status.contains("成功")) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                color = if (status.contains("成功")) accentColor else MaterialTheme.colorScheme.onSurface,
                 style = MaterialTheme.typography.bodyMedium
             )
 
@@ -89,7 +95,11 @@ fun BackupSettingsScreen(
                     viewModel.performQuickBackup()
                 },
                 modifier = Modifier.fillMaxWidth(),
-                enabled = !isLoading
+                enabled = !isLoading,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = accentColor,
+                    contentColor = Color.White
+                )
             ) {
                 Text("快速备份到 Downloads/MeowFit")
             }
@@ -100,7 +110,11 @@ fun BackupSettingsScreen(
                     createDocumentLauncher.launch("calorie_tracker_backup_$timestamp.zip")
                 },
                 modifier = Modifier.fillMaxWidth(),
-                enabled = !isLoading
+                enabled = !isLoading,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = accentColor,
+                    contentColor = Color.White
+                )
             ) {
                 Text("手动备份 (选择位置)")
             }
@@ -110,7 +124,10 @@ fun BackupSettingsScreen(
                     openDocumentLauncher.launch(arrayOf("application/zip", "application/octet-stream"))
                 },
                 modifier = Modifier.fillMaxWidth(),
-                enabled = !isLoading
+                enabled = !isLoading,
+                colors = ButtonDefaults.outlinedButtonColors(
+                    contentColor = accentColor
+                )
             ) {
                 Text("从文件恢复")
             }

@@ -7,6 +7,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -19,9 +21,13 @@ import kotlinx.coroutines.launch
 @Composable
 fun ApiSettingsScreen(
     viewModel: AiViewModel,
+    selectedThemeIndex: Int = 0,
     onBack: () -> Unit
 ) {
     val config by viewModel.config.collectAsState()
+    val isDarkTheme = isSystemInDarkTheme()
+    val selectedTheme = remember(selectedThemeIndex) { getTodayVisualTheme(selectedThemeIndex) }
+    val accentColor = remember(selectedTheme, isDarkTheme) { themedAccentColor(selectedTheme, isDarkTheme) }
     
     var apiKey by remember { mutableStateOf(config.apiKey) }
     var provider by remember { mutableStateOf(config.provider) }
@@ -38,7 +44,7 @@ fun ApiSettingsScreen(
         "Moonshot (Kimi)" to "https://api.moonshot.cn/v1/",
         "Aliyun (Qwen)" to "https://dashscope.aliyuncs.com/compatible-mode/v1/",
         "Zhipu (GLM)" to "https://open.bigmodel.cn/api/paas/v4/",
-        "01.AI (Yi)" to "https://api.lingyiwanwu.com/v1/",
+        "Volcengine Ark (Doubao)" to "https://ark.cn-beijing.volces.com/api/v3/",
         "Baidu (Ernie)" to "https://aip.baidubce.com/rpc/2.0/ai_custom/v1/wenxinworkshop/chat/", // Note: Baidu API usually requires access token flow, might not work directly with standard OpenAI client format. Keeping for reference or proxy usage.
         "SiliconFlow" to "https://api.siliconflow.cn/v1/",
         "Custom" to ""
@@ -46,22 +52,40 @@ fun ApiSettingsScreen(
 
     val models = mapOf(
         "OpenAI" to listOf(
-            "gpt-5", "gpt-5.4"
-        ),
-        "Anthropic" to listOf(
-            "claude-4.5-opus", "claude-4.6-opus", "claude-4.6-sonnet", "claude-4.6-haiku"
+            "gpt-5",
+            "gpt-4.1",
+            "gpt-4.1-mini",
+            "gpt-4o",
+            "gpt-4o-mini",
+            "o3",
+            "o4-mini"
         ),
         "DeepSeek" to listOf(
             "deepseek-chat", "deepseek-reasoner"
         ),
         "Moonshot (Kimi)" to listOf(
-            "moonshot-v1-32k", "moonshot-v1-128k","kimi-k2", "kimi-k2.5"
+            "kimi-k2.5", "kimi-k2", "moonshot-v1-32k", "moonshot-v1-128k"
         ),
         "Aliyun (Qwen)" to listOf(
-             "qwen-plus", "qwen-max", "qwen3.5-27b"
+            "qwen-max-latest", "qwen-plus-latest", "qwen-turbo-latest", "qwen3.5-plus"
         ),
         "Zhipu (GLM)" to listOf(
-            "glm-5", "glm-4.7", "glm-4.7-flash"
+            "glm-5", "glm-4.7-flash", "glm-4-plus", "glm-4-flash"
+        ),
+        "Volcengine Ark (Doubao)" to listOf(
+            "doubao-seed-2-0-lite-260215",
+            "doubao-seed-1-6-251015",
+            "doubao-1-5-pro-32k-250115",
+            "doubao-1-5-vision-pro-32k-250115"
+        ),
+        "Baidu (Ernie)" to listOf(
+            "ernie-4.5-turbo-128k", "ernie-4.0-8k"
+        ),
+        "SiliconFlow" to listOf(
+            "deepseek-ai/DeepSeek-V3.2",
+            "deepseek-ai/DeepSeek-R1",
+            "Qwen/Qwen3-32B",
+            "zai-org/GLM-4.7"
         ),
         "Custom" to emptyList()
     )
@@ -102,7 +126,7 @@ fun ApiSettingsScreen(
             Text(
                 "配置大语言模型 API",
                 style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.primary
+                color = accentColor
             )
             
             // Provider Dropdown
@@ -200,13 +224,16 @@ fun ApiSettingsScreen(
             }
 
             if (isTesting) {
-                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                LinearProgressIndicator(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = accentColor
+                )
             }
             
             if (testStatus.isNotEmpty()) {
                 Text(
                     text = testStatus,
-                    color = if (testStatus.startsWith("成功")) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+                    color = if (testStatus.startsWith("成功")) accentColor else MaterialTheme.colorScheme.error,
                     style = MaterialTheme.typography.bodySmall
                 )
             }
@@ -226,7 +253,11 @@ fun ApiSettingsScreen(
                     value = maxContext.toFloat(),
                     onValueChange = { maxContext = it.toInt() },
                     valueRange = 0f..20f,
-                    steps = 19
+                    steps = 19,
+                    colors = SliderDefaults.colors(
+                        thumbColor = accentColor,
+                        activeTrackColor = accentColor
+                    )
                 )
             }
 
@@ -247,7 +278,11 @@ fun ApiSettingsScreen(
                         }
                     },
                     modifier = Modifier.weight(1f),
-                    enabled = !isTesting
+                    enabled = !isTesting,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = accentColor,
+                        contentColor = Color.White
+                    )
                 ) {
                     Text("测试连接")
                 }
@@ -258,7 +293,11 @@ fun ApiSettingsScreen(
                         onBack()
                     },
                     modifier = Modifier.weight(1f),
-                    enabled = !isTesting
+                    enabled = !isTesting,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = accentColor,
+                        contentColor = Color.White
+                    )
                 ) {
                     Text("保存")
                 }

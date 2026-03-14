@@ -24,6 +24,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
@@ -32,12 +33,16 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import coil.compose.AsyncImage
 import com.example.calorietracker.data.CalorieItemEntity
 import com.example.calorietracker.util.CalorieUtils
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -57,10 +62,18 @@ enum class ChartMetric(val label: String) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun StatisticsScreen(
-    allItems: List<CalorieItemEntity>
+    allItems: List<CalorieItemEntity>,
+    selectedThemeIndex: Int
 ) {
+    val isDarkTheme = androidx.compose.foundation.isSystemInDarkTheme()
+    val selectedTheme = remember(selectedThemeIndex) { getTodayVisualTheme(selectedThemeIndex) }
+    val backgroundSeed = remember(selectedThemeIndex) { (selectedThemeIndex + 1) * 1031 }
+    val cardColor = remember(selectedTheme, isDarkTheme) { themedDashboardCardColor(selectedTheme, isDarkTheme) }
+    val onCardColor = if (isDarkTheme) Color.White else if (calculatePerceivedLuminance(cardColor) > 0.5f) Color(0xFF1E1E1E) else Color(0xFFF4F4F4)
+    val accentColor = remember(selectedTheme, isDarkTheme) { themedAccentColor(selectedTheme, isDarkTheme) }
     var selectedTab by remember { mutableStateOf(StatsTab.MONTH) }
     var chartMetric by remember { mutableStateOf(ChartMetric.DURATION) }
+    var previewImagePath by remember { mutableStateOf<String?>(null) }
     
     // Date navigation state
     var currentCalendar by remember { mutableStateOf(Calendar.getInstance()) }
@@ -79,200 +92,251 @@ fun StatisticsScreen(
     val totalCalories = filteredItems.sumOf { it.calories }
     
     val uniqueDays = filteredItems.map { it.date }.distinct().size
-    
-    Scaffold(
-        topBar = {
-            Column(
-                modifier = Modifier.background(MaterialTheme.colorScheme.background)
-            ) {
-                CenterAlignedTopAppBar(
-                    title = { 
-                        Text(
-                            "运动统计", 
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold
-                        ) 
-                    },
-                    colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.background
-                    )
-                )
-                
-                // Custom Tab Row
-                StatsTabRow(selectedTab, onTabSelected = { selectedTab = it })
-                Spacer(modifier = Modifier.height(8.dp))
-            }
-        },
-        containerColor = MaterialTheme.colorScheme.background
-    ) { padding ->
-        LazyColumn(
-            modifier = Modifier
-                .padding(padding)
-                .fillMaxSize()
-                .padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            item {
-                DateNavigator(selectedTab, currentCalendar) { dir ->
-                    val newCal = currentCalendar.clone() as Calendar
-                    when (selectedTab) {
-                        StatsTab.WEEK -> newCal.add(Calendar.WEEK_OF_YEAR, dir)
-                        StatsTab.MONTH -> newCal.add(Calendar.MONTH, dir)
-                        StatsTab.YEAR -> newCal.add(Calendar.YEAR, dir)
-                        else -> {}
-                    }
-                    currentCalendar = newCal
-                }
-            }
 
-            item {
-                // Bar Chart Section
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    shape = RoundedCornerShape(24.dp),
-                    elevation = CardDefaults.cardElevation(2.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(modifier = Modifier.padding(24.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                if (chartMetric == ChartMetric.DURATION) "运动时长趋势" else "运动热量趋势",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            
-                            // Metric Toggle
+    if (!previewImagePath.isNullOrBlank()) {
+        Dialog(onDismissRequest = { previewImagePath = null }) {
+            Card(
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = cardColor)
+            ) {
+                AsyncImage(
+                    model = File(previewImagePath!!),
+                    contentDescription = null,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 280.dp, max = 520.dp)
+                        .padding(12.dp)
+                )
+            }
+        }
+    }
+    
+    Box(modifier = Modifier.fillMaxSize()) {
+        TodayBackground(
+            theme = selectedTheme,
+            seed = backgroundSeed,
+            isDarkTheme = isDarkTheme,
+            modifier = Modifier
+                .matchParentSize()
+                .blur(if (isDarkTheme) 22.dp else 10.dp)
+        )
+        Scaffold(
+            containerColor = Color.Transparent,
+            contentWindowInsets = WindowInsets(0, 0, 0, 0)
+        ) { padding ->
+            LazyColumn(
+                modifier = Modifier
+                    .padding(padding)
+                    .fillMaxSize()
+                    .padding(top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding())
+                    .padding(horizontal = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                item {
+                    Spacer(modifier = Modifier.fillMaxWidth().height(32.dp))
+                }
+
+                item {
+                    StatsTabRow(
+                        selectedTab = selectedTab,
+                        onTabSelected = { selectedTab = it },
+                        cardColor = cardColor,
+                        accentColor = accentColor,
+                        textColor = onCardColor,
+                        isDarkTheme = isDarkTheme
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+
+                item {
+                    DateNavigator(selectedTab, currentCalendar, accentColor, onCardColor) { dir ->
+                        val newCal = currentCalendar.clone() as Calendar
+                        when (selectedTab) {
+                            StatsTab.WEEK -> newCal.add(Calendar.WEEK_OF_YEAR, dir)
+                            StatsTab.MONTH -> newCal.add(Calendar.MONTH, dir)
+                            StatsTab.YEAR -> newCal.add(Calendar.YEAR, dir)
+                            else -> {}
+                        }
+                        currentCalendar = newCal
+                    }
+                }
+
+                item {
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = cardColor),
+                        shape = RoundedCornerShape(24.dp),
+                        elevation = CardDefaults.cardElevation(2.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(24.dp)) {
                             Row(
-                                modifier = Modifier
-                                    .background(MaterialTheme.colorScheme.surfaceVariant, CircleShape)
-                                    .padding(2.dp)
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                ChartMetric.values().forEach { metric ->
-                                    val selected = chartMetric == metric
-                                    val bgColor = if (selected) MaterialTheme.colorScheme.primary else Color.Transparent
-                                    val contentColor = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
-                                    
-                                    Box(
-                                        modifier = Modifier
-                                            .clip(CircleShape)
-                                            .background(bgColor)
-                                            .clickable { chartMetric = metric }
-                                            .padding(horizontal = 12.dp, vertical = 6.dp)
-                                    ) {
-                                        Text(
-                                            text = metric.label,
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = contentColor
-                                        )
+                                Text(
+                                    if (chartMetric == ChartMetric.DURATION) "运动时长趋势" else "运动热量趋势",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = onCardColor
+                                )
+
+                                Row(
+                                    modifier = Modifier
+                                        .background(onCardColor.copy(alpha = 0.12f), CircleShape)
+                                        .padding(2.dp)
+                                ) {
+                                    ChartMetric.values().forEach { metric ->
+                                        val selected = chartMetric == metric
+                                        val bgColor = if (selected) accentColor else Color.Transparent
+                                        val contentColor = if (selected) Color.White else onCardColor.copy(alpha = 0.82f)
+
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(CircleShape)
+                                                .background(bgColor)
+                                                .clickable { chartMetric = metric }
+                                                .padding(horizontal = 12.dp, vertical = 6.dp)
+                                        ) {
+                                            Text(
+                                                text = metric.label,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = contentColor
+                                            )
+                                        }
                                     }
                                 }
                             }
-                        }
-                        
-                        Spacer(modifier = Modifier.height(24.dp))
-                        StatsBarChart(
-                            items = filteredItems,
-                            tab = selectedTab,
-                            currentDate = currentCalendar,
-                            metric = chartMetric,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(200.dp)
-                        )
-                    }
-                }
-            }
-            
-            item {
-                // Summary Box
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.4f)),
-                    shape = RoundedCornerShape(16.dp),
-                    elevation = CardDefaults.cardElevation(0.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier.padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            Icons.Default.FitnessCenter, 
-                            contentDescription = null, 
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(32.dp)
-                        )
-                        Spacer(modifier = Modifier.width(16.dp))
-                        Column {
-                            Text(
-                                text = buildString {
-                                    append("共运动 ")
-                                    append(uniqueDays)
-                                    append(" 天")
-                                },
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSecondaryContainer
-                            )
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                text = "保持运动习惯，继续加油！",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f)
-                            )
-                        }
-                    }
-                }
-            }
 
-            item {
-                // Detailed Grid
-                StatsGrid(
-                    totalDuration = totalDuration,
-                    totalSessions = totalSessions,
-                    totalCalories = totalCalories,
-                    avgDuration = if (uniqueDays > 0) totalDuration / uniqueDays else 0
-                )
-            }
-            
-            item {
-                Text(
-                    "详细记录",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(vertical = 8.dp)
-                )
-            }
-            
-            items(filteredItems.sortedByDescending { it.date + it.time }) { item ->
-                ExerciseHistoryItem(item)
-            }
-            
-            item {
-                Spacer(modifier = Modifier.height(32.dp))
+                            Spacer(modifier = Modifier.height(24.dp))
+                            StatsBarChart(
+                                items = filteredItems,
+                                tab = selectedTab,
+                                currentDate = currentCalendar,
+                                metric = chartMetric,
+                                barColor = accentColor,
+                                labelColor = onCardColor,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(200.dp)
+                            )
+                        }
+                    }
+                }
+
+                item {
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = cardColor),
+                        shape = RoundedCornerShape(16.dp),
+                        elevation = CardDefaults.cardElevation(0.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Default.FitnessCenter,
+                                contentDescription = null,
+                                tint = accentColor,
+                                modifier = Modifier.size(32.dp)
+                            )
+                            Spacer(modifier = Modifier.width(16.dp))
+                            Column {
+                                Text(
+                                    text = buildString {
+                                        append("共运动 ")
+                                        append(uniqueDays)
+                                        append(" 天")
+                                    },
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = onCardColor
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = "保持运动习惯，继续加油！",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = onCardColor.copy(alpha = 0.8f)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                item {
+                    StatsGrid(
+                        totalDuration = totalDuration,
+                        totalSessions = totalSessions,
+                        totalCalories = totalCalories,
+                        avgDuration = if (uniqueDays > 0) totalDuration / uniqueDays else 0,
+                        cardColor = cardColor,
+                        accentColor = accentColor,
+                        textColor = onCardColor
+                    )
+                }
+
+                item {
+                    Text(
+                        "详细记录",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = onCardColor,
+                        modifier = Modifier.padding(vertical = 8.dp)
+                    )
+                }
+
+                items(filteredItems.sortedByDescending { it.date + it.time }) { item ->
+                    RecordItem(
+                        item = item,
+                        onDelete = {},
+                        onEdit = {},
+                        onImagePreview = { previewImagePath = it },
+                        containerColor = cardColor,
+                        onContainerColor = onCardColor,
+                        isDarkTheme = isDarkTheme,
+                        showDeleteButton = false
+                    )
+                }
+
+                item {
+                    Spacer(modifier = Modifier.height(32.dp))
+                }
             }
         }
     }
 }
 
 @Composable
-fun StatsTabRow(selectedTab: StatsTab, onTabSelected: (StatsTab) -> Unit) {
+fun StatsTabRow(
+    selectedTab: StatsTab,
+    onTabSelected: (StatsTab) -> Unit,
+    cardColor: Color,
+    accentColor: Color,
+    textColor: Color,
+    isDarkTheme: Boolean
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp)
-            .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(24.dp))
+            .background(cardColor.copy(alpha = 0.82f), RoundedCornerShape(24.dp))
             .padding(4.dp),
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
         StatsTab.values().forEach { tab ->
             val isSelected = selectedTab == tab
-            val bgColor = if (isSelected) MaterialTheme.colorScheme.background else Color.Transparent
-            val textColor = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+            val bgColor = if (isSelected) {
+                if (isDarkTheme) accentColor.copy(alpha = 0.24f) else accentColor
+            } else {
+                Color.Transparent
+            }
+            val itemTextColor = if (isSelected) {
+                if (isDarkTheme) accentColor else Color.White
+            } else {
+                textColor.copy(alpha = 0.82f)
+            }
             val shadowElevation = if (isSelected) 2.dp else 0.dp
             
             Box(
@@ -290,7 +354,7 @@ fun StatsTabRow(selectedTab: StatsTab, onTabSelected: (StatsTab) -> Unit) {
                         text = tab.label,
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                        color = textColor
+                        color = itemTextColor
                     )
                 }
             }
@@ -299,7 +363,7 @@ fun StatsTabRow(selectedTab: StatsTab, onTabSelected: (StatsTab) -> Unit) {
 }
 
 @Composable
-fun DateNavigator(tab: StatsTab, calendar: Calendar, onNavigate: (Int) -> Unit) {
+fun DateNavigator(tab: StatsTab, calendar: Calendar, accentColor: Color, textColor: Color, onNavigate: (Int) -> Unit) {
     if (tab == StatsTab.TOTAL) return
     
     val format = when (tab) {
@@ -319,27 +383,35 @@ fun DateNavigator(tab: StatsTab, calendar: Calendar, onNavigate: (Int) -> Unit) 
             onClick = { onNavigate(-1) },
             modifier = Modifier.size(32.dp)
         ) {
-            Icon(Icons.Default.ChevronLeft, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            Icon(Icons.Default.ChevronLeft, null, tint = accentColor)
         }
         Spacer(modifier = Modifier.width(16.dp))
         Text(
             text = dateText,
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onSurface
+            color = textColor
         )
         Spacer(modifier = Modifier.width(16.dp))
         IconButton(
             onClick = { onNavigate(1) },
             modifier = Modifier.size(32.dp)
         ) {
-            Icon(Icons.Default.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            Icon(Icons.Default.ChevronRight, null, tint = accentColor)
         }
     }
 }
 
 @Composable
-fun StatsGrid(totalDuration: Int, totalSessions: Int, totalCalories: Int, avgDuration: Int) {
+fun StatsGrid(
+    totalDuration: Int,
+    totalSessions: Int,
+    totalCalories: Int,
+    avgDuration: Int,
+    cardColor: Color,
+    accentColor: Color,
+    textColor: Color
+) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             StatsCardItem(
@@ -347,14 +419,18 @@ fun StatsGrid(totalDuration: Int, totalSessions: Int, totalCalories: Int, avgDur
                 label = "总时长",
                 value = formatDuration(totalDuration),
                 icon = Icons.Default.Timer,
-                color = MaterialTheme.colorScheme.primary
+                color = accentColor,
+                cardColor = cardColor,
+                textColor = textColor
             )
             StatsCardItem(
                 modifier = Modifier.weight(1f),
                 label = "完成次数",
                 value = "$totalSessions 次",
                 icon = Icons.Default.Repeat,
-                color = MaterialTheme.colorScheme.secondary
+                color = accentColor,
+                cardColor = cardColor,
+                textColor = textColor
             )
         }
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -363,14 +439,18 @@ fun StatsGrid(totalDuration: Int, totalSessions: Int, totalCalories: Int, avgDur
                 label = "消耗热量",
                 value = "$totalCalories kcal",
                 icon = Icons.Default.Star,
-                color = MaterialTheme.colorScheme.tertiary
+                color = accentColor,
+                cardColor = cardColor,
+                textColor = textColor
             )
             StatsCardItem(
                 modifier = Modifier.weight(1f),
                 label = "日均时长",
                 value = formatDuration(avgDuration),
                 icon = Icons.Default.AccessTime,
-                color = MaterialTheme.colorScheme.primary
+                color = accentColor,
+                cardColor = cardColor,
+                textColor = textColor
             )
         }
     }
@@ -382,11 +462,13 @@ fun StatsCardItem(
     label: String, 
     value: String, 
     icon: androidx.compose.ui.graphics.vector.ImageVector,
-    color: Color
+    color: Color,
+    cardColor: Color,
+    textColor: Color
 ) {
     Card(
         modifier = modifier,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        colors = CardDefaults.cardColors(containerColor = cardColor),
         elevation = CardDefaults.cardElevation(2.dp),
         shape = RoundedCornerShape(16.dp)
     ) {
@@ -408,21 +490,21 @@ fun StatsCardItem(
                 text = value,
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface
+                color = textColor
             )
             Text(
                 text = label,
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = textColor.copy(alpha = 0.8f)
             )
         }
     }
 }
 
 @Composable
-fun ExerciseHistoryItem(item: CalorieItemEntity) {
+fun ExerciseHistoryItem(item: CalorieItemEntity, cardColor: Color, accentColor: Color, textColor: Color) {
     Card(
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        colors = CardDefaults.cardColors(containerColor = cardColor),
         elevation = CardDefaults.cardElevation(1.dp),
         shape = RoundedCornerShape(16.dp),
         modifier = Modifier.fillMaxWidth()
@@ -436,10 +518,10 @@ fun ExerciseHistoryItem(item: CalorieItemEntity) {
                 modifier = Modifier
                     .size(48.dp)
                     .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.primaryContainer),
+                    .background(accentColor.copy(alpha = 0.16f)),
                 contentAlignment = Alignment.Center
             ) {
-                 Icon(Icons.Default.FitnessCenter, null, tint = MaterialTheme.colorScheme.onPrimaryContainer)
+                 Icon(Icons.Default.FitnessCenter, null, tint = accentColor)
             }
             
             Spacer(modifier = Modifier.width(16.dp))
@@ -449,12 +531,12 @@ fun ExerciseHistoryItem(item: CalorieItemEntity) {
                     text = item.name,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface
+                    color = textColor
                 )
                 Text(
                     text = "${item.date} ${item.time}",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = textColor.copy(alpha = 0.78f)
                 )
             }
             
@@ -463,7 +545,7 @@ fun ExerciseHistoryItem(item: CalorieItemEntity) {
                     text = "-${item.calories} kcal",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.secondary
+                    color = accentColor
                 )
                 if (item.notes?.contains("时长") == true) {
                     val duration = CalorieUtils.parseDuration(item.notes)
@@ -471,7 +553,7 @@ fun ExerciseHistoryItem(item: CalorieItemEntity) {
                          Text(
                             text = formatDuration(duration),
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.primary
+                            color = accentColor.copy(alpha = 0.9f)
                         )
                     }
                 }
@@ -486,11 +568,11 @@ fun StatsBarChart(
     tab: StatsTab,
     currentDate: Calendar,
     metric: ChartMetric,
+    barColor: Color,
+    labelColor: Color,
     modifier: Modifier = Modifier
 ) {
-    val primaryColor = MaterialTheme.colorScheme.primary
-    val trackColor = MaterialTheme.colorScheme.surfaceVariant
-    val labelColor = MaterialTheme.colorScheme.onSurfaceVariant.toArgb()
+    val labelColorArgb = labelColor.copy(alpha = 0.85f).toArgb()
     
     // Generate data based on tab
     val data = remember(items, tab, currentDate.timeInMillis, metric) {
@@ -525,7 +607,7 @@ fun StatsBarChart(
             
             if (barHeight > 0) {
                 drawRoundRect(
-                    color = primaryColor,
+                    color = barColor,
                     topLeft = Offset(x, maxBarHeight - barHeight),
                     size = Size(barWidth, barHeight),
                     cornerRadius = cornerRadius
@@ -538,7 +620,7 @@ fun StatsBarChart(
                 x + barWidth / 2,
                 size.height,
                 android.graphics.Paint().apply {
-                    color = labelColor
+                    color = labelColorArgb
                     textSize = 10.sp.toPx()
                     textAlign = android.graphics.Paint.Align.CENTER
                 }
