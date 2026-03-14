@@ -36,6 +36,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.Dp
@@ -96,12 +97,14 @@ private object BottomNavTuning {
     val itemVerticalOffset = (-5).dp
     val iconVerticalOffset = 0.dp
     val iconBottomPadding = 1.dp
-    val labelVerticalOffset = 15.dp
+    val labelVerticalOffset = 14.dp
     val labelTopPadding = 1.dp
     val labelFontSize = 12.sp
     val labelLineHeight = 12.sp
-    const val selectedIndicatorAlphaLight = 0.18f
-    const val selectedIndicatorAlphaDark = 0.26f
+    const val selectedIndicatorBlendToWhiteLight = 0.05f
+    const val selectedIndicatorBlendToBlackDark = 0.05f
+    const val selectedIndicatorAlphaLight = 0.8f
+    const val selectedIndicatorAlphaDark = 0.8f
 }
 
 private object ScreenOffsetTuning {
@@ -136,6 +139,15 @@ fun MainApp(viewModel: MainViewModel, aiViewModel: AiViewModel, backupViewModel:
     val accentColor = remember(selectedTheme, isDarkTheme) { themedAccentColor(selectedTheme, isDarkTheme) }
     val navCardColor = remember(selectedTheme, isDarkTheme) { themedDashboardCardColor(selectedTheme, isDarkTheme) }
     val navOnCardColor = if (isDarkTheme) Color.White else if (calculatePerceivedLuminance(navCardColor) > 0.5f) Color(0xFF1E1E1E) else Color(0xFFF4F4F4)
+    val selectedIndicatorColor = remember(navCardColor, isDarkTheme) {
+        if (isDarkTheme) {
+            lerp(navCardColor, Color.Black, BottomNavTuning.selectedIndicatorBlendToBlackDark)
+                .copy(alpha = BottomNavTuning.selectedIndicatorAlphaDark)
+        } else {
+            lerp(navCardColor, Color.White, BottomNavTuning.selectedIndicatorBlendToWhiteLight)
+                .copy(alpha = BottomNavTuning.selectedIndicatorAlphaLight)
+        }
+    }
     val view = LocalView.current
     SideEffect {
         val window = (view.context as Activity).window
@@ -156,74 +168,72 @@ fun MainApp(viewModel: MainViewModel, aiViewModel: AiViewModel, backupViewModel:
         containerColor = Color.Transparent,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         bottomBar = {
-            NavigationBar(
-                containerColor = navCardColor.copy(alpha = 0.95f),
-                tonalElevation = 4.dp,
-                modifier = Modifier
-                    .height(BottomNavTuning.barHeight)
-                    .navigationBarsPadding(),
-                windowInsets = WindowInsets(0, 0, 0, 0)
-            ) {
-                val navBackStackEntry by navController.currentBackStackEntryAsState()
-                val currentRoute = navBackStackEntry?.destination?.route
-                
-                val items = listOf(
-                    Triple("today", "今日", Icons.Default.Home),
-                    Triple("stats", "运动统计", Icons.Default.FitnessCenter),
-                    Triple("overview", "日历", Icons.Default.DateRange),
-                    Triple("settings", "设置", Icons.Default.Settings)
-                )
-
-                items.forEach { (route, label, icon) ->
-                    val selected = currentRoute == route
+            Box(modifier = Modifier.navigationBarsPadding()) {
+                NavigationBar(
+                    containerColor = navCardColor.copy(alpha = 0.95f),
+                    tonalElevation = 4.dp,
+                    modifier = Modifier.height(BottomNavTuning.barHeight),
+                    windowInsets = WindowInsets(0, 0, 0, 0)
+                ) {
+                    val navBackStackEntry by navController.currentBackStackEntryAsState()
+                    val currentRoute = navBackStackEntry?.destination?.route
                     
-                    NavigationBarItem(
-                        selected = selected,
-                        onClick = {
-                            navController.navigate(route) {
-                                popUpTo(navController.graph.findStartDestination().id) {
-                                    saveState = true
-                                }
-                                launchSingleTop = true
-                                restoreState = true
-                            }
-                        },
-                        modifier = Modifier.offset(y = BottomNavTuning.itemVerticalOffset),
-                        icon = {
-                            Box(
-                                modifier = Modifier
-                                    .padding(bottom = BottomNavTuning.iconBottomPadding)
-                                    .offset(y = BottomNavTuning.iconVerticalOffset)
-                            ) {
-                                Icon(
-                                    icon,
-                                    contentDescription = label,
-                                    modifier = Modifier.size(BottomNavTuning.iconSize)
-                                )
-                            }
-                        },
-                        label = {
-                            Text(
-                                label,
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    fontSize = BottomNavTuning.labelFontSize,
-                                    lineHeight = BottomNavTuning.labelLineHeight
-                                ),
-                                modifier = Modifier
-                                    .padding(top = BottomNavTuning.labelTopPadding)
-                                    .offset(y = BottomNavTuning.labelVerticalOffset)
-                            )
-                        },
-                        colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = accentColor,
-                            selectedTextColor = accentColor,
-                            indicatorColor = accentColor.copy(
-                                alpha = if (isDarkTheme) BottomNavTuning.selectedIndicatorAlphaDark else BottomNavTuning.selectedIndicatorAlphaLight
-                            ),
-                            unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                            unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                    val items = listOf(
+                        Triple("today", "今日", Icons.Default.Home),
+                        Triple("stats", "运动统计", Icons.Default.FitnessCenter),
+                        Triple("overview", "日历", Icons.Default.DateRange),
+                        Triple("settings", "设置", Icons.Default.Settings)
                     )
+
+                    items.forEach { (route, label, icon) ->
+                        val selected = currentRoute == route
+                        
+                        NavigationBarItem(
+                            selected = selected,
+                            onClick = {
+                                navController.navigate(route) {
+                                    popUpTo(navController.graph.findStartDestination().id) {
+                                        saveState = true
+                                    }
+                                    launchSingleTop = true
+                                    restoreState = true
+                                }
+                            },
+                            modifier = Modifier.offset(y = BottomNavTuning.itemVerticalOffset),
+                            icon = {
+                                Box(
+                                    modifier = Modifier
+                                        .padding(bottom = BottomNavTuning.iconBottomPadding)
+                                        .offset(y = BottomNavTuning.iconVerticalOffset)
+                                ) {
+                                    Icon(
+                                        icon,
+                                        contentDescription = label,
+                                        modifier = Modifier.size(BottomNavTuning.iconSize)
+                                    )
+                                }
+                            },
+                            label = {
+                                Text(
+                                    label,
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontSize = BottomNavTuning.labelFontSize,
+                                        lineHeight = BottomNavTuning.labelLineHeight
+                                    ),
+                                    modifier = Modifier
+                                        .padding(top = BottomNavTuning.labelTopPadding)
+                                        .offset(y = BottomNavTuning.labelVerticalOffset)
+                                )
+                            },
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = navOnCardColor,
+                                selectedTextColor = accentColor,
+                                indicatorColor = selectedIndicatorColor,
+                                unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        )
+                    }
                 }
             }
         }
