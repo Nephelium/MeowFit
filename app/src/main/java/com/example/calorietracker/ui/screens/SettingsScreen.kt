@@ -53,7 +53,7 @@ fun SettingsScreen(
     onCheckUpdate: (String) -> Unit = {},
     onDismissUpdateDialog: () -> Unit = {}
 ) {
-    val currentVersion = "1.4.1"
+    val currentVersion = "1.4.2"
     val isDarkTheme = androidx.compose.foundation.isSystemInDarkTheme()
     val selectedThemeIndex = userProfile?.selectedTodayThemeIndex ?: 0
     val selectedTheme = remember(selectedThemeIndex) { getTodayVisualTheme(selectedThemeIndex) }

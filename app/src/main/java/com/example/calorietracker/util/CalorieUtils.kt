@@ -5,6 +5,9 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.UUID
+import kotlin.math.ceil
+import kotlin.math.min
+import kotlin.math.roundToInt
 
 object CalorieUtils {
     enum class MealCategory(val label: String) {
@@ -63,12 +66,18 @@ object CalorieUtils {
         "very_active" to 1.9f
     )
 
-    // Goal Adjustments
-    val GOAL_ADJUSTMENTS = mapOf(
-        "lose" to -500,
-        "maintain" to 0,
-        "gain" to 300
-    )
+    private fun normalizeGoal(goal: String): String {
+        return when (goal.trim().lowercase(Locale.getDefault())) {
+            "loss", "lose", "减重", "减脂" -> "lose"
+            "gain", "增重", "增肌" -> "gain"
+            else -> "maintain"
+        }
+    }
+
+    private fun normalizeActivityLevel(activityLevel: String): String {
+        val normalized = activityLevel.trim().lowercase(Locale.getDefault())
+        return if (normalized in ACTIVITY_MULTIPLIERS.keys) normalized else "sedentary"
+    }
 
     fun calculateBMR(gender: String, weight: Float, height: Float, age: Int): Int {
         return if (gender == "male") {
@@ -87,10 +96,16 @@ object CalorieUtils {
         goal: String
     ): Int {
         val bmr = calculateBMR(gender, weight, height, age)
-        val multiplier = ACTIVITY_MULTIPLIERS[activityLevel] ?: 1.2f
+        val multiplier = ACTIVITY_MULTIPLIERS[normalizeActivityLevel(activityLevel)] ?: 1.2f
         val tdee = bmr * multiplier
-        val adjustment = GOAL_ADJUSTMENTS[goal] ?: 0
-        return (tdee + adjustment).toInt()
+        val normalizedGoal = normalizeGoal(goal)
+        val adjustment = when (normalizedGoal) {
+            "lose" -> (-tdee * 0.15f).coerceIn(-700f, -250f)
+            "gain" -> (tdee * 0.10f).coerceIn(120f, 450f)
+            else -> 0f
+        }
+        val minSafeTarget = if (gender.trim().lowercase(Locale.getDefault()) == "male") 1400f else 1200f
+        return (tdee + adjustment).coerceAtLeast(minSafeTarget).roundToInt()
     }
 
     fun parseDuration(notes: String?): Int {
@@ -142,44 +157,98 @@ object CalorieUtils {
     // Calculate Macro Targets (Carbs, Protein, Fat) in grams
     // Returns Triple(Carbs, Protein, Fat)
     fun calculateMacroTargets(
+        gender: String,
+        age: Int,
         weight: Float, // kg
+        activityLevel: String,
         goal: String, // "loss" (减重), "maintain" (保持), "gain" (增重)
         dailyCalorieTarget: Int
     ): Triple<Int, Int, Int> {
-        // Strategy: Protein & Fat based on body weight, Carbs is remainder
-        // Protein: Loss=2.0, Maintain=1.5, Gain=1.8 (g/kg)
-        // Fat: Loss=0.8, Maintain=1.0, Gain=1.0 (g/kg)
-        
-        val proteinPerKg = when(goal) {
-            "loss", "减重" -> 2.0f
-            "gain", "增重" -> 1.8f
-            else -> 1.5f
+        val normalizedGoal = normalizeGoal(goal)
+        val normalizedActivity = normalizeActivityLevel(activityLevel)
+        val normalizedGender = gender.trim().lowercase(Locale.getDefault())
+
+        val goalProteinPerKg = when (normalizedGoal) {
+            "lose" -> 2.0f
+            "gain" -> 1.8f
+            else -> 1.6f
         }
-        
-        val fatPerKg = when(goal) {
-            "loss", "减重" -> 0.8f
-            else -> 1.0f
+        val activityProteinAdj = when (normalizedActivity) {
+            "sedentary" -> -0.1f
+            "light" -> 0f
+            "moderate" -> 0.1f
+            "active" -> 0.2f
+            "very_active" -> 0.25f
+            else -> 0f
         }
-        
-        var protein = (weight * proteinPerKg).toInt()
-        var fat = (weight * fatPerKg).toInt()
-        
-        // Calories from P & F
-        val proteinCals = protein * 4
-        val fatCals = fat * 9
-        
-        // Remaining for Carbs
-        val remainingCals = dailyCalorieTarget - proteinCals - fatCals
-        var carbs = (remainingCals / 4).coerceAtLeast(0) // Ensure not negative
-        
-        // Safety check: if calculation is weird, fallback to percentages
-        if (carbs == 0 && dailyCalorieTarget > 0) {
-             // Fallback: 50/30/20 ratio
-             carbs = (dailyCalorieTarget * 0.5 / 4).toInt()
-             protein = (dailyCalorieTarget * 0.3 / 4).toInt()
-             fat = (dailyCalorieTarget * 0.2 / 9).toInt()
+        val ageProteinAdj = when {
+            age >= 60 -> 0.2f
+            age >= 45 -> 0.1f
+            age <= 25 -> 0.05f
+            else -> 0f
         }
-        
+        val genderProteinAdj = if (normalizedGender == "male") 0.05f else 0f
+
+        val proteinPerKg = (goalProteinPerKg + activityProteinAdj + ageProteinAdj + genderProteinAdj)
+            .coerceIn(1.3f, 2.4f)
+        var protein = (weight * proteinPerKg).roundToInt()
+
+        var fatRatio = when (normalizedGoal) {
+            "lose" -> 0.25f
+            "gain" -> 0.27f
+            else -> 0.28f
+        }
+        fatRatio += when {
+            age >= 50 -> 0.02f
+            age <= 25 -> -0.01f
+            else -> 0f
+        }
+        fatRatio += if (normalizedGender == "female") 0.01f else 0f
+        fatRatio += when (normalizedActivity) {
+            "active" -> -0.01f
+            "very_active" -> -0.02f
+            else -> 0f
+        }
+        fatRatio = fatRatio.coerceIn(0.20f, 0.35f)
+
+        var fat = ((dailyCalorieTarget * fatRatio) / 9f).roundToInt()
+        val minFat = (weight * if (normalizedGender == "female") 0.65f else 0.60f).roundToInt()
+        fat = fat.coerceAtLeast(minFat)
+
+        var carbs = ((dailyCalorieTarget - protein * 4 - fat * 9) / 4f).roundToInt()
+
+        val minCarbsPerKg = when (normalizedActivity) {
+            "sedentary" -> 1.5f
+            "light" -> 2.0f
+            "moderate" -> 2.5f
+            "active" -> 3.0f
+            "very_active" -> 3.5f
+            else -> 2.0f
+        }
+        val minCarbs = (weight * minCarbsPerKg).roundToInt()
+
+        if (carbs < minCarbs) {
+            var neededCalories = (minCarbs - carbs) * 4
+
+            val maxFatReduction = (fat - minFat).coerceAtLeast(0)
+            val fatReduction = min(maxFatReduction, ceil(neededCalories / 9f).toInt())
+            fat -= fatReduction
+            neededCalories -= fatReduction * 9
+
+            if (neededCalories > 0) {
+                val minProteinPerKg = if (normalizedGoal == "lose") 1.6f else 1.4f
+                val minProtein = (weight * minProteinPerKg).roundToInt()
+                val maxProteinReduction = (protein - minProtein).coerceAtLeast(0)
+                val proteinReduction = min(maxProteinReduction, ceil(neededCalories / 4f).toInt())
+                protein -= proteinReduction
+            }
+
+            carbs = ((dailyCalorieTarget - protein * 4 - fat * 9) / 4f).roundToInt()
+        }
+
+        carbs = carbs.coerceAtLeast(0)
+        protein = protein.coerceAtLeast(0)
+        fat = fat.coerceAtLeast(0)
         return Triple(carbs, protein, fat)
     }
 }

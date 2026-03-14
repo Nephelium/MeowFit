@@ -1086,12 +1086,17 @@ fun SummaryCard(
     ) {
         Column(modifier = Modifier.padding(24.dp)) {
             // Target is treated as BMR/Base TDEE, calculated dynamically based on effective weight
+            val age = if (userProfile != null && userProfile.birthDate.isNotBlank()) {
+                CalorieUtils.calculateAge(userProfile.birthDate)
+            } else {
+                userProfile?.age ?: 0
+            }
             val target = if (userProfile != null) {
                 CalorieUtils.calculateDailyTarget(
                     gender = userProfile.gender,
                     weight = effectiveWeight,
                     height = userProfile.height,
-                    age = userProfile.age,
+                    age = age,
                     activityLevel = userProfile.activityLevel,
                     goal = userProfile.goal
                 )
@@ -1166,7 +1171,10 @@ fun SummaryCard(
                     Spacer(modifier = Modifier.height(16.dp))
                     
                     val macroTargets = CalorieUtils.calculateMacroTargets(
+                        gender = userProfile.gender,
+                        age = age,
                         weight = effectiveWeight,
+                        activityLevel = userProfile.activityLevel,
                         goal = userProfile.goal,
                         dailyCalorieTarget = target
                     )
@@ -1210,7 +1218,7 @@ fun SummaryCard(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                StatItem("基础消耗", "$target", MaterialTheme.colorScheme.secondary)
+                StatItem("目标消耗", "$target", MaterialTheme.colorScheme.secondary)
                 StatItem("运动消耗", "$burned", MaterialTheme.colorScheme.tertiary)
                 StatItem("总摄入", "$intake", MaterialTheme.colorScheme.primary)
             }
@@ -2033,12 +2041,17 @@ fun generateTodayLongScreenshot(
     maskWeight: Boolean = false
 ): Bitmap {
     val effectiveWeight = CalorieUtils.getEffectiveWeight(selectedDate, allRecords, userProfile)
+    val age = if (userProfile != null && userProfile.birthDate.isNotBlank()) {
+        CalorieUtils.calculateAge(userProfile.birthDate)
+    } else {
+        userProfile?.age ?: 0
+    }
     val target = if (userProfile != null) {
         CalorieUtils.calculateDailyTarget(
             gender = userProfile.gender,
             weight = effectiveWeight,
             height = userProfile.height,
-            age = userProfile.age,
+            age = age,
             activityLevel = userProfile.activityLevel,
             goal = userProfile.goal
         )
@@ -2197,7 +2210,10 @@ fun generateTodayLongScreenshot(
     var blockBottom = barTop + 34f
     if (showMacros) {
         val macroTargets = CalorieUtils.calculateMacroTargets(
+            gender = userProfile?.gender ?: "male",
+            age = age,
             weight = effectiveWeight,
+            activityLevel = userProfile?.activityLevel ?: "sedentary",
             goal = userProfile?.goal ?: "maintain",
             dailyCalorieTarget = target
         )
@@ -2235,7 +2251,7 @@ fun generateTodayLongScreenshot(
     val statsTop = blockBottom + 18f
     val statWidth = (barRight - barLeft) / 3f
     val statData = listOf(
-        Triple("基础消耗", target.toString(), android.graphics.Color.parseColor("#F9A825")),
+        Triple("目标消耗", target.toString(), android.graphics.Color.parseColor("#F9A825")),
         Triple("运动消耗", burned.toString(), android.graphics.Color.parseColor("#2196F3")),
         Triple("总摄入", intake.toString(), android.graphics.Color.parseColor("#43A047"))
     )

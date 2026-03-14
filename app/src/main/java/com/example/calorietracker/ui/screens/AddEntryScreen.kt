@@ -1161,7 +1161,7 @@ fun RecognizedItemCard(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                Text(item.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(item.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = onCardColor)
                 val timeInfo = if (item.time.isNotBlank()) " · ${item.time}" else ""
                 val notesInfo = if (item.notes.isNotBlank()) " · ${item.notes}" else ""
                 val imageInfo = if (!item.imagePath.isNullOrBlank()) " · 已附图" else ""
