@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -35,7 +36,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
@@ -107,6 +110,21 @@ private object ScreenOffsetTuning {
     val settingsPageOffsetY = (-10).dp
 }
 
+private fun Modifier.upwardOffsetWithoutBottomGap(offsetY: Dp): Modifier = this.then(
+    Modifier.layout { measurable, constraints ->
+        val offsetPx = offsetY.roundToPx()
+        val extraHeight = if (offsetPx < 0) -offsetPx else 0
+        val expandedConstraints = constraints.copy(
+            minHeight = constraints.minHeight + extraHeight,
+            maxHeight = constraints.maxHeight + extraHeight
+        )
+        val placeable = measurable.measure(expandedConstraints)
+        layout(constraints.maxWidth, constraints.maxHeight) {
+            placeable.placeRelative(0, offsetPx)
+        }
+    }
+)
+
 @Composable
 fun MainApp(viewModel: MainViewModel, aiViewModel: AiViewModel, backupViewModel: BackupViewModel) {
     val navController = rememberNavController()
@@ -141,7 +159,9 @@ fun MainApp(viewModel: MainViewModel, aiViewModel: AiViewModel, backupViewModel:
             NavigationBar(
                 containerColor = navCardColor.copy(alpha = 0.95f),
                 tonalElevation = 4.dp,
-                modifier = Modifier.height(BottomNavTuning.barHeight),
+                modifier = Modifier
+                    .height(BottomNavTuning.barHeight)
+                    .navigationBarsPadding(),
                 windowInsets = WindowInsets(0, 0, 0, 0)
             ) {
                 val navBackStackEntry by navController.currentBackStackEntryAsState()
@@ -267,7 +287,7 @@ fun MainApp(viewModel: MainViewModel, aiViewModel: AiViewModel, backupViewModel:
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .offset(y = ScreenOffsetTuning.statsPageOffsetY)
+                        .upwardOffsetWithoutBottomGap(ScreenOffsetTuning.statsPageOffsetY)
                 ) {
                     StatisticsScreen(
                         allItems = allItems,
@@ -296,7 +316,7 @@ fun MainApp(viewModel: MainViewModel, aiViewModel: AiViewModel, backupViewModel:
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .offset(y = ScreenOffsetTuning.overviewPageOffsetY)
+                        .upwardOffsetWithoutBottomGap(ScreenOffsetTuning.overviewPageOffsetY)
                 ) {
                     OverviewScreen(
                         records = allRecords,
@@ -328,7 +348,7 @@ fun MainApp(viewModel: MainViewModel, aiViewModel: AiViewModel, backupViewModel:
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .offset(y = ScreenOffsetTuning.settingsPageOffsetY)
+                        .upwardOffsetWithoutBottomGap(ScreenOffsetTuning.settingsPageOffsetY)
                 ) {
                     SettingsScreen(
                         userProfile = userProfile,

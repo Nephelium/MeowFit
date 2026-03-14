@@ -213,6 +213,7 @@ fun TodayScreen(
     var editingItem by remember { mutableStateOf<CalorieItemEntity?>(null) }
     var previewImagePath by remember { mutableStateOf<String?>(null) }
     var previewSavedBitmap by remember { mutableStateOf<Bitmap?>(null) }
+    var previewShareBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var showShareDialog by remember { mutableStateOf(false) }
     var shareShowNotes by remember { mutableStateOf(true) }
     var shareMaskWeight by remember { mutableStateOf(false) }
@@ -266,13 +267,54 @@ fun TodayScreen(
         }
     }
 
+    if (previewShareBitmap != null) {
+        Dialog(onDismissRequest = { previewShareBitmap = null }) {
+            Card(
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            ) {
+                Column(
+                    modifier = Modifier.padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Image(
+                        bitmap = previewShareBitmap!!.asImageBitmap(),
+                        contentDescription = null,
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 280.dp, max = 520.dp)
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End
+                    ) {
+                        TextButton(onClick = { previewShareBitmap = null }) {
+                            Text("取消")
+                        }
+                        TextButton(onClick = {
+                            try {
+                                shareTodayBitmap(context, previewShareBitmap!!)
+                            } catch (e: Exception) {
+                                Toast.makeText(context, "分享失败: ${e.message}", Toast.LENGTH_SHORT).show()
+                            }
+                            previewShareBitmap = null
+                        }) {
+                            Text("分享给朋友")
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     if (showShareDialog) {
         AlertDialog(
             onDismissRequest = { showShareDialog = false },
             title = { Text("分享今日记录") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("可保存为图片，或直接分享给好友")
+                    Text("可保存为图片，或先预览后分享给好友")
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
@@ -336,7 +378,7 @@ fun TodayScreen(
                                 showNotes = shareShowNotes,
                                 maskWeight = shareMaskWeight
                             )
-                            shareTodayBitmap(context, bitmap)
+                            previewShareBitmap = bitmap
                         } catch (e: Exception) {
                             Toast.makeText(context, "分享失败: ${e.message}", Toast.LENGTH_SHORT).show()
                         }
