@@ -431,6 +431,7 @@ fun MainApp(viewModel: MainViewModel, aiViewModel: AiViewModel, backupViewModel:
                                 protein = item.protein,
                                 fat = item.fat,
                                 time = item.time,
+                                mealCategory = item.mealCategory,
                                 notes = item.notes,
                                 imageUrl = item.imagePath,
                                 targetDate = date

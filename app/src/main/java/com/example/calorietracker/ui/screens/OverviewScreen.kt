@@ -62,6 +62,7 @@ import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
 import android.widget.Toast
+import kotlin.math.roundToInt
 
 enum class HeatmapMetric(val label: String) {
     Sleep("睡眠"),
@@ -70,6 +71,49 @@ enum class HeatmapMetric(val label: String) {
     Intake("饮食"),
     Burned("运动"),
     Weight("体重")
+}
+
+private data class ParsedDate(val year: Int, val month: Int, val day: Int)
+
+private fun parseDate(date: String?): ParsedDate? {
+    val raw = date?.trim().orEmpty()
+    if (raw.isBlank()) return null
+    val parts = raw.split(Regex("[^0-9]+")).filter { it.isNotBlank() }
+    if (parts.size < 3) return null
+    val year = parts[0].toIntOrNull() ?: return null
+    val month = parts[1].toIntOrNull() ?: return null
+    val day = parts[2].toIntOrNull() ?: return null
+    if (month !in 1..12 || day !in 1..31) return null
+    return ParsedDate(year, month, day)
+}
+
+private fun toCanonicalDate(date: String?): String? {
+    val parsed = parseDate(date) ?: return null
+    return String.format("%04d-%02d-%02d", parsed.year, parsed.month, parsed.day)
+}
+
+private fun normalizeWeightForCalendar(weight: Float): Float {
+    return (weight * 100f).roundToInt() / 100f
+}
+
+private fun encodeWeightForCalendar(weight: Float): Int {
+    return (normalizeWeightForCalendar(weight) * 100f).roundToInt()
+}
+
+private fun decodeWeightForCalendar(value: Int): Float {
+    return value / 100f
+}
+
+private fun formatWeightForCalendar(weight: Float): String {
+    val normalized = normalizeWeightForCalendar(weight)
+    val oneDecimalScaled = normalized * 10f
+    val fractional = oneDecimalScaled - oneDecimalScaled.roundToInt()
+    val isOneDecimal = if (fractional >= 0f) fractional < 0.0001f else -fractional < 0.0001f
+    return if (isOneDecimal) {
+        String.format(Locale.getDefault(), "%.1f", normalized)
+    } else {
+        String.format(Locale.getDefault(), "%.2f", normalized)
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -101,7 +145,12 @@ fun OverviewScreen(
     var heatmapMetric by remember { mutableStateOf(HeatmapMetric.Net) }
     var previewCalendarBitmap by remember { mutableStateOf<Bitmap?>(null) }
     
-    val recordMap = remember(records) { records.associateBy { it.date } }
+    val recordMap = remember(records) {
+        records.mapNotNull { record ->
+            val key = toCanonicalDate(record.date) ?: return@mapNotNull null
+            key to record
+        }.toMap()
+    }
     val context = LocalContext.current
 
     if (detailDate != null) {
@@ -417,21 +466,16 @@ fun generateCalendarBitmap(
     }
 
     val relevantRecords = records.filter { record ->
-        val parts = record.date.split("-")
-        if (parts.size == 3) {
-            val rYear = parts[0].toInt()
-            val rMonth = parts[1].toInt() - 1
-            if (month == null) rYear == year else rYear == year && rMonth == month
-        } else false
+        val parsed = parseDate(record.date) ?: return@filter false
+        val rYear = parsed.year
+        val rMonth = parsed.month - 1
+        if (month == null) rYear == year else rYear == year && rMonth == month
     }
 
     // Weight Stats
-    val validWeights = records.filter { 
-        val parts = it.date.split("-")
-        if (parts.size == 3) {
-            parts[0].toInt() == year
-        } else false
-    }.mapNotNull { it.weight }.filter { it > 0 }
+    val validWeights = records.filter {
+        (parseDate(it.date)?.year == year)
+    }.mapNotNull { it.weight }.filter { it.isFinite() && it > 0 }
     val minWeight = if (validWeights.isNotEmpty()) validWeights.minOrNull()!! else 0f
     val maxWeight = if (validWeights.isNotEmpty()) validWeights.maxOrNull()!! else 100f
     val weightRange = if (maxWeight > minWeight) maxWeight - minWeight else 1f
@@ -753,9 +797,7 @@ fun generateCalendarBitmap(
             HeatmapMetric.Intake -> lerp(android.graphics.Color.parseColor("#FFF8E1"), android.graphics.Color.parseColor("#F57F17"), value/3000f)
             HeatmapMetric.Burned -> lerp(android.graphics.Color.parseColor("#FCE4EC"), android.graphics.Color.parseColor("#AD1457"), value/3000f)
             HeatmapMetric.Weight -> {
-                // value is encoded weight * 10 or just raw weight cast to Int?
-                // Actually getColor takes Int. We'll pass weight * 10
-                val weight = value / 10f
+                val weight = decodeWeightForCalendar(value)
                 val progress = if (weightRange > 0) (weight - minWeight) / weightRange else 0.5f
                 lerp(android.graphics.Color.parseColor("#E0F7FA"), android.graphics.Color.parseColor("#006064"), progress)
             }
@@ -805,7 +847,10 @@ fun generateCalendarBitmap(
         paint.pathEffect = originalEffect // Restore
     }
 
-    val recordMap = records.associateBy { it.date }
+    val recordMap = records.mapNotNull { record ->
+        val key = toCanonicalDate(record.date) ?: return@mapNotNull null
+        key to record
+    }.toMap()
 
     
     // --- Draw Content ---
@@ -864,7 +909,7 @@ fun generateCalendarBitmap(
                         }
                         HeatmapMetric.Weight -> {
                             val w = record?.weight ?: 0f
-                            (w * 10).toInt()
+                            if (w.isFinite() && w > 0f) encodeWeightForCalendar(w) else 0
                         }
                     }
                     
@@ -874,7 +919,10 @@ fun generateCalendarBitmap(
                         HeatmapMetric.Intake -> (record?.totalIntake ?: 0) > 0
                         HeatmapMetric.Burned -> value > 0 // Use calculated value
                         HeatmapMetric.Net -> (record?.totalIntake ?: 0) > 0 || (record?.totalBurned ?: 0) > 0
-                        HeatmapMetric.Weight -> (record?.weight ?: 0f) > 0f
+                        HeatmapMetric.Weight -> {
+                            val w = record?.weight ?: 0f
+                            w.isFinite() && w > 0f
+                        }
                     }
                     
                     val color = if (!hasDataForMetric) getColor(0, metric) else getColor(value, metric)
@@ -963,7 +1011,7 @@ fun generateCalendarBitmap(
                 }
                 HeatmapMetric.Weight -> {
                     val w = record?.weight ?: 0f
-                    (w * 10).toInt()
+                    if (w.isFinite() && w > 0f) encodeWeightForCalendar(w) else 0
                 }
             }
             
@@ -973,7 +1021,10 @@ fun generateCalendarBitmap(
                 HeatmapMetric.Intake -> (record?.totalIntake ?: 0) > 0
                 HeatmapMetric.Burned -> value > 0 // Use calculated value
                 HeatmapMetric.Net -> (record?.totalIntake ?: 0) > 0 || (record?.totalBurned ?: 0) > 0
-                HeatmapMetric.Weight -> (record?.weight ?: 0f) > 0f
+                HeatmapMetric.Weight -> {
+                    val w = record?.weight ?: 0f
+                    w.isFinite() && w > 0f
+                }
             }
             
             val color = if (!hasDataForMetric) getColor(0, metric) else getColor(value, metric)
@@ -1015,7 +1066,7 @@ fun generateCalendarBitmap(
                 } else if (metric == HeatmapMetric.Net) {
                     if (value > 0) "+$value" else "$value"
                 } else if (metric == HeatmapMetric.Weight) {
-                    "${value/10f}"
+                    formatWeightForCalendar(decodeWeightForCalendar(value))
                 } else {
                     "$value"
                 }
@@ -1066,15 +1117,11 @@ fun generateCalendarBitmap(
         legendColors.add(getColor(540, metric)) // 9h
         legendColors.add(getColor(720, metric)) // 12h (Dark)
     } else if (metric == HeatmapMetric.Weight) {
-         // Weight legend
-         // We pass normalized values scaled by 10 (since we use int * 10)
-         // minWeight and weightRange are calculated at top of function
-         // We want 4 steps: Min, Min+33%, Min+66%, Max
          val step = weightRange / 3
-         legendColors.add(getColor(((minWeight) * 10).toInt(), metric))
-         legendColors.add(getColor(((minWeight + step) * 10).toInt(), metric))
-         legendColors.add(getColor(((minWeight + step * 2) * 10).toInt(), metric))
-         legendColors.add(getColor(((minWeight + weightRange) * 10).toInt(), metric))
+         legendColors.add(getColor(encodeWeightForCalendar(minWeight), metric))
+         legendColors.add(getColor(encodeWeightForCalendar(minWeight + step), metric))
+         legendColors.add(getColor(encodeWeightForCalendar(minWeight + step * 2), metric))
+         legendColors.add(getColor(encodeWeightForCalendar(minWeight + weightRange), metric))
     } else {
         // Gradient for others
         val baseColor = getColor(3000, metric) // Max value approx
@@ -1302,7 +1349,7 @@ fun getHeatmapColor(
             )
         }
         HeatmapMetric.Weight -> {
-             val weight = value / 10f
+             val weight = decodeWeightForCalendar(value)
              val range = if (max > min) max - min else 1f
              val progress = if (range > 0) (weight - min) / range else 0.5f
              androidx.compose.ui.graphics.lerp(
@@ -1343,7 +1390,9 @@ fun YearHeatmapView(
     onDayClick: (String) -> Unit
 ) {
     // Calculate year-based min/max for weight
-    val weights = records.filter { it.date.startsWith("$year-") && it.weight != null && it.weight > 0 }.mapNotNull { it.weight }
+    val weights = records.filter {
+        parseDate(it.date)?.year == year && it.weight != null && it.weight.isFinite() && it.weight > 0
+    }.mapNotNull { it.weight }
     val minWeight = if (weights.isNotEmpty()) weights.minOrNull()!! else 0f
     val maxWeight = if (weights.isNotEmpty()) weights.maxOrNull()!! else 100f
 
@@ -1438,7 +1487,7 @@ fun MonthCalendarMini(
                                 }
                                 HeatmapMetric.Weight -> {
                                     val w = record?.weight ?: 0f
-                                    (w * 10).toInt()
+                                    if (w.isFinite() && w > 0f) encodeWeightForCalendar(w) else 0
                                 }
                             }
                             
@@ -1448,7 +1497,10 @@ fun MonthCalendarMini(
                                 HeatmapMetric.Intake -> (record?.totalIntake ?: 0) > 0
                                 HeatmapMetric.Burned -> value > 0 // Use calculated value
                                 HeatmapMetric.Net -> (record?.totalIntake ?: 0) > 0 || (record?.totalBurned ?: 0) > 0
-                                HeatmapMetric.Weight -> (record?.weight ?: 0f) > 0f
+                                HeatmapMetric.Weight -> {
+                                    val w = record?.weight ?: 0f
+                                    w.isFinite() && w > 0f
+                                }
                             }
                             
                             // Use raw value for color calculation now
@@ -1538,7 +1590,9 @@ fun MonthHeatmapView(
     val firstDayOfWeek = calendar.get(Calendar.DAY_OF_WEEK)
     
     // Calculate year-based min/max for weight for consistent coloring
-    val weights = records.filter { it.date.startsWith("$year-") && it.weight != null && it.weight > 0 }.mapNotNull { it.weight }
+    val weights = records.filter {
+        parseDate(it.date)?.year == year && it.weight != null && it.weight.isFinite() && it.weight > 0
+    }.mapNotNull { it.weight }
     val minWeight = if (weights.isNotEmpty()) weights.minOrNull()!! else 0f
     val maxWeight = if (weights.isNotEmpty()) weights.maxOrNull()!! else 100f
     
@@ -1603,7 +1657,7 @@ fun MonthHeatmapView(
                                 }
                                 HeatmapMetric.Weight -> {
                                     val w = record?.weight ?: 0f
-                                    (w * 10).toInt()
+                                    if (w.isFinite() && w > 0f) encodeWeightForCalendar(w) else 0
                                 }
                             }
                             
@@ -1613,7 +1667,10 @@ fun MonthHeatmapView(
                                 HeatmapMetric.Intake -> (record?.totalIntake ?: 0) > 0
                                 HeatmapMetric.Burned -> value > 0 // Use calculated value
                                 HeatmapMetric.Net -> (record?.totalIntake ?: 0) > 0 || (record?.totalBurned ?: 0) > 0
-                                HeatmapMetric.Weight -> (record?.weight ?: 0f) > 0f
+                                HeatmapMetric.Weight -> {
+                                    val w = record?.weight ?: 0f
+                                    w.isFinite() && w > 0f
+                                }
                             }
                             
                             // Use raw value for color
@@ -1685,7 +1742,7 @@ fun MonthHeatmapView(
                                         val m = value % 60
                                         "${h}h${m}m"
                                     }
-                                    HeatmapMetric.Weight -> "${value/10f}"
+                                    HeatmapMetric.Weight -> formatWeightForCalendar(decodeWeightForCalendar(value))
                                     else -> "${Math.abs(value)}"
                                 }
                                 
@@ -1783,7 +1840,7 @@ fun DayDetailDialog(
     onUpdateSleep: (Int) -> Unit
 ) {
     var showWeightEdit by remember { mutableStateOf(false) }
-    var weightInput by remember { mutableStateOf(record?.weight?.toString() ?: "") }
+    var weightInput by remember { mutableStateOf(record?.weight?.let { formatWeightForCalendar(it) } ?: "") }
     
     // States for Water/Sleep editing
     var showWaterEdit by remember { mutableStateOf(false) }
@@ -1971,7 +2028,7 @@ fun DayDetailDialog(
                                     )
                                 } else {
                                     Text(
-                                        text = if (record?.weight != null) "${record.weight} kg" else "未记录",
+                                        text = if (record?.weight != null) "${formatWeightForCalendar(record.weight)} kg" else "未记录",
                                         style = MaterialTheme.typography.titleMedium,
                                         fontWeight = FontWeight.SemiBold,
                                         color = onCardColor
@@ -1983,7 +2040,9 @@ fun DayDetailDialog(
                                 if (showWeightEdit) {
                                     val w = weightInput.toFloatOrNull()
                                     if (w != null && w > 0) {
-                                        onUpdateWeight(w)
+                                        val normalizedWeight = normalizeWeightForCalendar(w)
+                                        onUpdateWeight(normalizedWeight)
+                                        weightInput = formatWeightForCalendar(normalizedWeight)
                                         showWeightEdit = false
                                     }
                                 } else {
@@ -2000,26 +2059,25 @@ fun DayDetailDialog(
                         Text("记录详情", style = MaterialTheme.typography.labelMedium, color = onCardColor.copy(alpha = 0.72f))
                         Spacer(modifier = Modifier.height(8.dp))
                         
-                        val breakfastItems = remember(items) {
-                            items
-                                .filter { it.type == "food" && CalorieUtils.getMealCategoryByTime(it.time) == CalorieUtils.MealCategory.BREAKFAST }
-                                .sortedBy { it.time }
-                        }
-                        val lunchItems = remember(items) {
-                            items
-                                .filter { it.type == "food" && CalorieUtils.getMealCategoryByTime(it.time) == CalorieUtils.MealCategory.LUNCH }
-                                .sortedBy { it.time }
-                        }
-                        val dinnerItems = remember(items) {
-                            items
-                                .filter { it.type == "food" && CalorieUtils.getMealCategoryByTime(it.time) == CalorieUtils.MealCategory.DINNER }
-                                .sortedBy { it.time }
-                        }
-                        val nightSnackItems = remember(items) {
-                            items
-                                .filter { it.type == "food" && CalorieUtils.getMealCategoryByTime(it.time) == CalorieUtils.MealCategory.NIGHT_SNACK }
-                                .sortedBy { it.time }
-                        }
+                        val foodSections = listOf(
+                            Triple(CalorieUtils.MealCategory.BREAKFAST, "早餐", MaterialTheme.colorScheme.primary),
+                            Triple(CalorieUtils.MealCategory.MORNING_EXTRA, "早加餐", Color(0xFF6D4C41)),
+                            Triple(CalorieUtils.MealCategory.LUNCH, "午餐", Color(0xFF26A69A)),
+                            Triple(CalorieUtils.MealCategory.AFTERNOON_EXTRA, "午加餐", Color(0xFF00897B)),
+                            Triple(CalorieUtils.MealCategory.AFTERNOON_TEA, "下午茶", Color(0xFFFFB300)),
+                            Triple(CalorieUtils.MealCategory.DINNER, "晚餐", Color(0xFFFF7043)),
+                            Triple(CalorieUtils.MealCategory.EVENING_EXTRA, "晚加餐", Color(0xFF5D4037)),
+                            Triple(CalorieUtils.MealCategory.SNACK, "零食", Color(0xFF8E24AA)),
+                            Triple(CalorieUtils.MealCategory.NIGHT_SNACK, "夜宵", Color(0xFF7E57C2))
+                        ).map { (category, title, color) ->
+                            Triple(
+                                title,
+                                color,
+                                items.filter {
+                                    it.type == "food" && CalorieUtils.resolveMealCategory(it.mealCategory, it.time) == category
+                                }.sortedBy { it.time }
+                            )
+                        }.filter { it.third.isNotEmpty() }
                         val exerciseItems = remember(items) {
                             items
                                 .filter { it.type == "exercise" }
@@ -2030,44 +2088,16 @@ fun DayDetailDialog(
                             Text("无饮食运动记录", style = MaterialTheme.typography.bodySmall, color = onCardColor.copy(alpha = 0.68f), modifier = Modifier.padding(bottom = 16.dp))
                         } else {
                             LazyColumn(modifier = Modifier.weight(1f, fill = false)) {
-                                if (breakfastItems.isNotEmpty()) {
+                                foodSections.forEach { section ->
                                     item {
                                         DetailRecordSectionHeader(
-                                            title = "早餐",
-                                            calories = breakfastItems.sumOf { it.calories },
-                                            accentColor = MaterialTheme.colorScheme.primary,
+                                            title = section.first,
+                                            calories = section.third.sumOf { it.calories },
+                                            accentColor = section.second,
                                             textColor = onCardColor
                                         )
                                     }
-                                    items(breakfastItems) { item ->
-                                        DetailRecordRow(item, textColor = onCardColor)
-                                        Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-                                    }
-                                }
-                                if (lunchItems.isNotEmpty()) {
-                                    item {
-                                        DetailRecordSectionHeader(
-                                            title = "午餐",
-                                            calories = lunchItems.sumOf { it.calories },
-                                            accentColor = Color(0xFF26A69A),
-                                            textColor = onCardColor
-                                        )
-                                    }
-                                    items(lunchItems) { item ->
-                                        DetailRecordRow(item, textColor = onCardColor)
-                                        Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-                                    }
-                                }
-                                if (dinnerItems.isNotEmpty()) {
-                                    item {
-                                        DetailRecordSectionHeader(
-                                            title = "晚餐",
-                                            calories = dinnerItems.sumOf { it.calories },
-                                            accentColor = Color(0xFFFF7043),
-                                            textColor = onCardColor
-                                        )
-                                    }
-                                    items(dinnerItems) { item ->
+                                    items(section.third) { item ->
                                         DetailRecordRow(item, textColor = onCardColor)
                                         Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                                     }
@@ -2082,20 +2112,6 @@ fun DayDetailDialog(
                                         )
                                     }
                                     items(exerciseItems) { item ->
-                                        DetailRecordRow(item, textColor = onCardColor)
-                                        Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-                                    }
-                                }
-                                if (nightSnackItems.isNotEmpty()) {
-                                    item {
-                                        DetailRecordSectionHeader(
-                                            title = "宵夜",
-                                            calories = nightSnackItems.sumOf { it.calories },
-                                            accentColor = Color(0xFF7E57C2),
-                                            textColor = onCardColor
-                                        )
-                                    }
-                                    items(nightSnackItems) { item ->
                                         DetailRecordRow(item, textColor = onCardColor)
                                         Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                                     }
@@ -2147,30 +2163,23 @@ fun SmoothWeightChart(
         
         val filteredRecords = remember(records, year, month, viewMode) {
             records.filter { 
-                val cal = Calendar.getInstance()
-                val parts = it.date.split("-")
-                if (parts.size == 3) {
-                    val rYear = parts[0].toInt()
-                    val rMonth = parts[1].toInt() - 1 
-                    
-                    if (viewMode == "Year") {
+                val parsed = parseDate(it.date) ?: return@filter false
+                val rYear = parsed.year
+                val rMonth = parsed.month - 1
+
+                if (viewMode == "Year") {
+                    rYear == year
+                } else if (viewMode == "Quarter") {
+                    if (month != null) {
+                        val qStart = (month / 3) * 3
+                        rYear == year && rMonth in qStart..(qStart + 2)
+                    } else {
                         rYear == year
-                    } else if (viewMode == "Quarter") {
-                        val currentMonth = month ?: 0 // Default to Jan if no month selected? Or better logic
-                        // If month is selected, show that quarter. If not, show whole year?
-                        // Let's assume month is always selected for Month view.
-                        // For Quarter, we need a reference month.
-                        if (month != null) {
-                            val qStart = (month / 3) * 3
-                            rYear == year && rMonth in qStart..(qStart + 2)
-                        } else {
-                            rYear == year // Fallback
-                        }
-                    } else { // Month
-                        rYear == year && (month == null || rMonth == month)
                     }
-                } else false
-            }.filter { it.weight != null && it.weight > 0 }.sortedBy { it.date }
+                } else {
+                    rYear == year && (month == null || rMonth == month)
+                }
+            }.filter { it.weight != null && it.weight.isFinite() && it.weight > 0 }.sortedBy { it.date }
         }
 
         val lineColor = accentColor
@@ -2223,7 +2232,7 @@ fun SmoothWeightChart(
                 )
                 
                 drawContext.canvas.nativeCanvas.drawText(
-                    "%.1f".format(weightVal),
+                    formatWeightForCalendar(weightVal),
                     -8.dp.toPx(),
                     y + 4.dp.toPx(),
                     textPaint
@@ -2249,7 +2258,12 @@ fun SmoothWeightChart(
                 
                 // X-Axis Labels (Date) - Draw sparsely
                 if (filteredRecords.size < 10 || index % (filteredRecords.size / 5) == 0) {
-                    val dateLabel = record.date.substring(5) // MM-DD
+                    val parsed = parseDate(record.date)
+                    val dateLabel = if (parsed != null) {
+                        String.format("%02d-%02d", parsed.month, parsed.day)
+                    } else {
+                        runCatching { record.date }.getOrNull()?.takeLast(5) ?: "-- --"
+                    }
                     textPaint.textAlign = android.graphics.Paint.Align.CENTER
                     drawContext.canvas.nativeCanvas.drawText(
                         dateLabel,

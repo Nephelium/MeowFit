@@ -223,10 +223,25 @@ fun TodayScreen(
     val effectiveWeight = remember(dailyRecord, allRecords, selectedDate, userProfile) {
         CalorieUtils.getEffectiveWeight(selectedDate, allRecords, userProfile)
     }
-    val breakfastItems = remember(items) { items.filter { it.type == "food" && CalorieUtils.getMealCategoryByTime(it.time) == CalorieUtils.MealCategory.BREAKFAST }.sortedBy { it.time } }
-    val lunchItems = remember(items) { items.filter { it.type == "food" && CalorieUtils.getMealCategoryByTime(it.time) == CalorieUtils.MealCategory.LUNCH }.sortedBy { it.time } }
-    val dinnerItems = remember(items) { items.filter { it.type == "food" && CalorieUtils.getMealCategoryByTime(it.time) == CalorieUtils.MealCategory.DINNER }.sortedBy { it.time } }
-    val nightSnackItems = remember(items) { items.filter { it.type == "food" && CalorieUtils.getMealCategoryByTime(it.time) == CalorieUtils.MealCategory.NIGHT_SNACK }.sortedBy { it.time } }
+    val foodSections = listOf(
+        Triple(CalorieUtils.MealCategory.BREAKFAST, "早餐", MaterialTheme.colorScheme.primary),
+        Triple(CalorieUtils.MealCategory.MORNING_EXTRA, "早加餐", Color(0xFF6D4C41)),
+        Triple(CalorieUtils.MealCategory.LUNCH, "午餐", Color(0xFF26A69A)),
+        Triple(CalorieUtils.MealCategory.AFTERNOON_EXTRA, "午加餐", Color(0xFF00897B)),
+        Triple(CalorieUtils.MealCategory.AFTERNOON_TEA, "下午茶", Color(0xFFFFB300)),
+        Triple(CalorieUtils.MealCategory.DINNER, "晚餐", Color(0xFFFF7043)),
+        Triple(CalorieUtils.MealCategory.EVENING_EXTRA, "晚加餐", Color(0xFF5D4037)),
+        Triple(CalorieUtils.MealCategory.SNACK, "零食", Color(0xFF8E24AA)),
+        Triple(CalorieUtils.MealCategory.NIGHT_SNACK, "夜宵", Color(0xFF7E57C2))
+    ).map { (category, title, color) ->
+        Triple(
+            title,
+            color,
+            items.filter {
+                it.type == "food" && CalorieUtils.resolveMealCategory(it.mealCategory, it.time) == category
+            }.sortedBy { it.time }
+        )
+    }.filter { it.third.isNotEmpty() }
     val exerciseItems = remember(items) { items.filter { it.type == "exercise" }.sortedByDescending { it.time } }
 
     if (!previewImagePath.isNullOrBlank()) {
@@ -762,27 +777,9 @@ fun TodayScreen(
                     EmptyState()
                 }
             }
-            if (breakfastItems.isNotEmpty()) {
-                item { RecordSectionHeader("早餐", breakfastItems.sumOf { it.calories }, MaterialTheme.colorScheme.primary) }
-                items(breakfastItems) { item ->
-                    RecordItem(item = item, onDelete = onDeleteItem, onEdit = { editingItem = it }, onImagePreview = { previewImagePath = it }, containerColor = dashboardCardColor, onContainerColor = dashboardOnCardColor, isDarkTheme = isDarkTheme)
-                }
-            }
-            if (lunchItems.isNotEmpty()) {
-                item { RecordSectionHeader("午餐", lunchItems.sumOf { it.calories }, Color(0xFF26A69A)) }
-                items(lunchItems) { item ->
-                    RecordItem(item = item, onDelete = onDeleteItem, onEdit = { editingItem = it }, onImagePreview = { previewImagePath = it }, containerColor = dashboardCardColor, onContainerColor = dashboardOnCardColor, isDarkTheme = isDarkTheme)
-                }
-            }
-            if (dinnerItems.isNotEmpty()) {
-                item { RecordSectionHeader("晚餐", dinnerItems.sumOf { it.calories }, Color(0xFFFF7043)) }
-                items(dinnerItems) { item ->
-                    RecordItem(item = item, onDelete = onDeleteItem, onEdit = { editingItem = it }, onImagePreview = { previewImagePath = it }, containerColor = dashboardCardColor, onContainerColor = dashboardOnCardColor, isDarkTheme = isDarkTheme)
-                }
-            }
-            if (nightSnackItems.isNotEmpty()) {
-                item { RecordSectionHeader("宵夜", nightSnackItems.sumOf { it.calories }, Color(0xFF7E57C2)) }
-                items(nightSnackItems) { item ->
+            foodSections.forEach { section ->
+                item { RecordSectionHeader(section.first, section.third.sumOf { it.calories }, section.second) }
+                items(section.third) { item ->
                     RecordItem(item = item, onDelete = onDeleteItem, onEdit = { editingItem = it }, onImagePreview = { previewImagePath = it }, containerColor = dashboardCardColor, onContainerColor = dashboardOnCardColor, isDarkTheme = isDarkTheme)
                 }
             }
@@ -828,6 +825,15 @@ fun EditRecordDialog(
     
     // Check if it's an exercise with duration
     val isExercise = item.type == "exercise"
+    val mealCategoryOptions = remember {
+        CalorieUtils.manualSelectableMealCategories.map { it.label }
+    }
+    var selectedMealCategory by remember {
+        mutableStateOf(
+            if (isExercise) null else CalorieUtils.resolveMealCategory(item.mealCategory, item.time).label
+        )
+    }
+    var showMealCategoryDialog by remember { mutableStateOf(false) }
     // Try to parse start/end time from notes if available or just use 'time' as start
     // Typically exercise items might store "Start" in time, and "Duration" in notes.
     // If we want to edit Start and End, we need to know End.
@@ -943,6 +949,23 @@ fun EditRecordDialog(
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
+                    Box {
+                        OutlinedTextField(
+                            value = selectedMealCategory ?: "",
+                            onValueChange = { },
+                            readOnly = true,
+                            label = { Text("类别") },
+                            placeholder = { Text("请选择类别") },
+                            modifier = Modifier.fillMaxWidth(),
+                            leadingIcon = { Icon(Icons.Default.Restaurant, null) },
+                            singleLine = true
+                        )
+                        Box(
+                            modifier = Modifier
+                                .matchParentSize()
+                                .clickable { showMealCategoryDialog = true }
+                        )
+                    }
                 }
                 
                 OutlinedTextField(
@@ -1047,9 +1070,9 @@ fun EditRecordDialog(
                                     }
                                 } catch (e: Exception) {}
                                 
-                                onConfirm(item.copy(name = name, calories = cal, carbs = 0, protein = 0, fat = 0, time = startTimeStr, notes = newNotes, imageUrl = finalImagePath))
+                                onConfirm(item.copy(name = name, calories = cal, carbs = 0, protein = 0, fat = 0, time = startTimeStr, mealCategory = null, notes = newNotes, imageUrl = finalImagePath))
                             } else {
-                                onConfirm(item.copy(name = name, calories = cal, carbs = c, protein = p, fat = f, time = time, notes = notes, imageUrl = finalImagePath))
+                                onConfirm(item.copy(name = name, calories = cal, carbs = c, protein = p, fat = f, time = time, mealCategory = selectedMealCategory, notes = notes, imageUrl = finalImagePath))
                             }
                         }
                     },
@@ -1063,6 +1086,72 @@ fun EditRecordDialog(
                 }
             }
         }
+    }
+
+    if (showMealCategoryDialog && !isExercise) {
+        AlertDialog(
+            onDismissRequest = { showMealCategoryDialog = false },
+            containerColor = containerColor,
+            titleContentColor = onContainerColor,
+            textContentColor = onContainerColor,
+            title = { Text("选择类别", color = onContainerColor) },
+            text = {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 360.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(mealCategoryOptions) { label ->
+                        val selected = selectedMealCategory == label
+                        Surface(
+                            onClick = {
+                                selectedMealCategory = label
+                                showMealCategoryDialog = false
+                            },
+                            shape = RoundedCornerShape(14.dp),
+                            color = if (selected) accentColor.copy(alpha = 0.14f) else MaterialTheme.colorScheme.surface.copy(alpha = 0.45f),
+                            border = BorderStroke(
+                                width = 1.dp,
+                                color = if (selected) accentColor.copy(alpha = 0.7f) else onContainerColor.copy(alpha = 0.2f)
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = label,
+                                    color = if (selected) accentColor else onContainerColor.copy(alpha = 0.92f),
+                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
+                                )
+                                RadioButton(
+                                    selected = selected,
+                                    onClick = null,
+                                    colors = RadioButtonDefaults.colors(
+                                        selectedColor = accentColor,
+                                        unselectedColor = onContainerColor.copy(alpha = 0.48f)
+                                    )
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(
+                    onClick = { showMealCategoryDialog = false },
+                    colors = ButtonDefaults.textButtonColors(contentColor = accentColor)
+                ) {
+                    Text("取消", color = accentColor)
+                }
+            }
+        )
     }
 }
 
@@ -2062,20 +2151,31 @@ fun generateTodayLongScreenshot(
     val burned = dailyRecord?.totalBurned ?: 0
     val balance = intake - (target + burned)
 
-    val breakfastItems = items.filter { it.type == "food" && CalorieUtils.getMealCategoryByTime(it.time) == CalorieUtils.MealCategory.BREAKFAST }.sortedBy { it.time }
-    val lunchItems = items.filter { it.type == "food" && CalorieUtils.getMealCategoryByTime(it.time) == CalorieUtils.MealCategory.LUNCH }.sortedBy { it.time }
-    val dinnerItems = items.filter { it.type == "food" && CalorieUtils.getMealCategoryByTime(it.time) == CalorieUtils.MealCategory.DINNER }.sortedBy { it.time }
-    val nightSnackItems = items.filter { it.type == "food" && CalorieUtils.getMealCategoryByTime(it.time) == CalorieUtils.MealCategory.NIGHT_SNACK }.sortedBy { it.time }
+    val foodSections = listOf(
+        Triple(CalorieUtils.MealCategory.BREAKFAST, "早餐", android.graphics.Color.parseColor("#4CAF50")),
+        Triple(CalorieUtils.MealCategory.MORNING_EXTRA, "早加餐", android.graphics.Color.parseColor("#6D4C41")),
+        Triple(CalorieUtils.MealCategory.LUNCH, "午餐", android.graphics.Color.parseColor("#26A69A")),
+        Triple(CalorieUtils.MealCategory.AFTERNOON_EXTRA, "午加餐", android.graphics.Color.parseColor("#00897B")),
+        Triple(CalorieUtils.MealCategory.AFTERNOON_TEA, "下午茶", android.graphics.Color.parseColor("#FFB300")),
+        Triple(CalorieUtils.MealCategory.DINNER, "晚餐", android.graphics.Color.parseColor("#FF7043")),
+        Triple(CalorieUtils.MealCategory.EVENING_EXTRA, "晚加餐", android.graphics.Color.parseColor("#5D4037")),
+        Triple(CalorieUtils.MealCategory.SNACK, "零食", android.graphics.Color.parseColor("#8E24AA")),
+        Triple(CalorieUtils.MealCategory.NIGHT_SNACK, "夜宵", android.graphics.Color.parseColor("#7E57C2"))
+    ).map { (category, title, color) ->
+        Triple(
+            title,
+            color,
+            items.filter {
+                it.type == "food" && CalorieUtils.resolveMealCategory(it.mealCategory, it.time) == category
+            }.sortedBy { it.time }
+        )
+    }.filter { it.third.isNotEmpty() }
     val exerciseItems = items.filter { it.type == "exercise" }.sortedByDescending { it.time }
 
     data class ShareSection(val title: String, val color: Int, val list: List<CalorieItemEntity>)
-    val sections = listOf(
-        ShareSection("早餐", android.graphics.Color.parseColor("#4CAF50"), breakfastItems),
-        ShareSection("午餐", android.graphics.Color.parseColor("#26A69A"), lunchItems),
-        ShareSection("晚餐", android.graphics.Color.parseColor("#FF7043"), dinnerItems),
-        ShareSection("宵夜", android.graphics.Color.parseColor("#7E57C2"), nightSnackItems),
-        ShareSection("运动", android.graphics.Color.parseColor("#2196F3"), exerciseItems)
-    ).filter { it.list.isNotEmpty() }
+    val sections = (foodSections.map { ShareSection(it.first, it.second, it.third) } +
+        listOf(ShareSection("运动", android.graphics.Color.parseColor("#2196F3"), exerciseItems)))
+        .filter { it.list.isNotEmpty() }
 
     val width = 1080f
     val padding = 52f

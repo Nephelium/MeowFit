@@ -68,6 +68,7 @@ data class EntryItem(
     val protein: Int = 0,
     val fat: Int = 0,
     val time: String = "",
+    val mealCategory: String? = null,
     val notes: String = "",
     val imagePath: String? = null
 )
@@ -194,6 +195,27 @@ fun ManualInputTab(
     val calendar = Calendar.getInstance()
     val hour = calendar.get(Calendar.HOUR_OF_DAY)
     val minute = calendar.get(Calendar.MINUTE)
+    val defaultNowTime = String.format("%02d:%02d", hour, minute)
+    val mealCategoryOptions = remember {
+        CalorieUtils.manualSelectableMealCategories.map { it.label }
+    }
+    var selectedMealCategory by remember { mutableStateOf<String?>(null) }
+    var mealCategoryTouched by remember { mutableStateOf(false) }
+    var showMealCategoryDialog by remember { mutableStateOf(false) }
+
+    LaunchedEffect(type) {
+        if (type == "exercise") {
+            selectedMealCategory = null
+            mealCategoryTouched = false
+        }
+    }
+
+    LaunchedEffect(type, time) {
+        if (type == "food" && !mealCategoryTouched) {
+            val categoryTime = if (time.isBlank()) defaultNowTime else time
+            selectedMealCategory = CalorieUtils.getMealCategoryByTime(categoryTime).label
+        }
+    }
 
     fun showTimePicker(onTimeSelected: (String) -> Unit) {
         android.app.TimePickerDialog(
@@ -361,6 +383,25 @@ fun ManualInputTab(
                                     .clickable { showTimePicker { time = it } }
                             )
                         }
+
+                        Box {
+                            OutlinedTextField(
+                                value = selectedMealCategory ?: "",
+                                onValueChange = { },
+                                readOnly = true,
+                                label = { Text("类别") },
+                                placeholder = { Text("请选择类别") },
+                                modifier = Modifier.fillMaxWidth(),
+                                leadingIcon = { Icon(Icons.Default.Restaurant, null) },
+                                shape = RoundedCornerShape(12.dp),
+                                singleLine = true
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .matchParentSize()
+                                    .clickable { showMealCategoryDialog = true }
+                            )
+                        }
                     } else {
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Box(modifier = Modifier.weight(1f)) {
@@ -481,7 +522,20 @@ fun ManualInputTab(
                             
                             onSave(EntryItem(type = type, name = name, calories = calInt, time = recordTime, notes = finalNotes, imagePath = compressedImagePath))
                         } else {
-                            onSave(EntryItem(type = type, name = name, calories = calInt, carbs = carbsInt, protein = proteinInt, fat = fatInt, time = time, notes = notes, imagePath = compressedImagePath))
+                            onSave(
+                                EntryItem(
+                                    type = type,
+                                    name = name,
+                                    calories = calInt,
+                                    carbs = carbsInt,
+                                    protein = proteinInt,
+                                    fat = fatInt,
+                                    time = time,
+                                    mealCategory = selectedMealCategory,
+                                    notes = notes,
+                                    imagePath = compressedImagePath
+                                )
+                            )
                         }
                     }
                 },
@@ -492,6 +546,73 @@ fun ManualInputTab(
                 Text("保存记录", style = MaterialTheme.typography.titleMedium)
             }
         }
+    }
+
+    if (showMealCategoryDialog) {
+        AlertDialog(
+            onDismissRequest = { showMealCategoryDialog = false },
+            containerColor = cardColor,
+            titleContentColor = onCardColor,
+            textContentColor = onCardColor,
+            title = { Text("选择类别") },
+            text = {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 360.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(mealCategoryOptions) { label ->
+                        val selected = selectedMealCategory == label
+                        Surface(
+                            onClick = {
+                                selectedMealCategory = label
+                                mealCategoryTouched = true
+                                showMealCategoryDialog = false
+                            },
+                            shape = RoundedCornerShape(14.dp),
+                            color = if (selected) accentColor.copy(alpha = 0.14f) else MaterialTheme.colorScheme.surface.copy(alpha = 0.45f),
+                            border = BorderStroke(
+                                width = 1.dp,
+                                color = if (selected) accentColor.copy(alpha = 0.7f) else onCardColor.copy(alpha = 0.18f)
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = label,
+                                    color = if (selected) accentColor else onCardColor.copy(alpha = 0.9f),
+                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
+                                )
+                                RadioButton(
+                                    selected = selected,
+                                    onClick = null,
+                                    colors = RadioButtonDefaults.colors(
+                                        selectedColor = accentColor,
+                                        unselectedColor = onCardColor.copy(alpha = 0.45f)
+                                    )
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(
+                    onClick = { showMealCategoryDialog = false },
+                    colors = ButtonDefaults.textButtonColors(contentColor = accentColor)
+                ) {
+                    Text("取消", color = accentColor)
+                }
+            }
+        )
     }
 }
 

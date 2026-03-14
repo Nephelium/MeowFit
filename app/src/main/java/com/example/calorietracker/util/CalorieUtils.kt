@@ -12,10 +12,34 @@ import kotlin.math.roundToInt
 object CalorieUtils {
     enum class MealCategory(val label: String) {
         BREAKFAST("早餐"),
+        MORNING_EXTRA("早加餐"),
         LUNCH("午餐"),
+        AFTERNOON_EXTRA("午加餐"),
+        AFTERNOON_TEA("下午茶"),
         DINNER("晚餐"),
-        NIGHT_SNACK("宵夜")
+        EVENING_EXTRA("晚加餐"),
+        SNACK("零食"),
+        NIGHT_SNACK("夜宵");
+
+        companion object {
+            fun fromLabel(label: String?): MealCategory? {
+                if (label.isNullOrBlank()) return null
+                return entries.firstOrNull { it.label == label.trim() }
+            }
+        }
     }
+
+    val manualSelectableMealCategories = listOf(
+        MealCategory.BREAKFAST,
+        MealCategory.MORNING_EXTRA,
+        MealCategory.LUNCH,
+        MealCategory.AFTERNOON_EXTRA,
+        MealCategory.AFTERNOON_TEA,
+        MealCategory.DINNER,
+        MealCategory.EVENING_EXTRA,
+        MealCategory.SNACK,
+        MealCategory.NIGHT_SNACK
+    )
     
     fun generateId(): String {
         return "${System.currentTimeMillis()}-${UUID.randomUUID().toString().substring(0, 9)}"
@@ -119,14 +143,45 @@ object CalorieUtils {
     }
 
     fun getMealCategoryByTime(time: String): MealCategory {
-        val hour = time.takeIf { it.contains(":") }?.split(":")?.firstOrNull()?.toIntOrNull()
+        val minuteOfDay = parseMinuteOfDay(time) ?: return MealCategory.DINNER
         return when {
-            hour == null -> MealCategory.DINNER
-            hour in 4..10 -> MealCategory.BREAKFAST
-            hour in 11..16 -> MealCategory.LUNCH
-            hour in 17..21 -> MealCategory.DINNER
+            minuteOfDay in 240 until 600 -> MealCategory.BREAKFAST
+            minuteOfDay in 600 until 840 -> MealCategory.LUNCH
+            minuteOfDay in 840 until 1020 -> MealCategory.AFTERNOON_TEA
+            minuteOfDay in 1020 until 1320 -> MealCategory.DINNER
             else -> MealCategory.NIGHT_SNACK
         }
+    }
+
+    fun resolveMealCategory(mealCategoryLabel: String?, time: String): MealCategory {
+        return MealCategory.fromLabel(mealCategoryLabel) ?: getMealCategoryByTime(time)
+    }
+
+    private fun parseMinuteOfDay(time: String): Int? {
+        val parts = time.split(":")
+        if (parts.size < 2) return null
+        val hour = parts[0].toIntOrNull() ?: return null
+        val minute = parts[1].toIntOrNull() ?: return null
+        if (hour !in 0..23 || minute !in 0..59) return null
+        return hour * 60 + minute
+    }
+
+    private data class ParsedDate(val year: Int, val month: Int, val day: Int)
+
+    private fun parseDateParts(date: String?): ParsedDate? {
+        val raw = date?.trim().orEmpty()
+        if (raw.isBlank()) return null
+        val parts = raw.split(Regex("[^0-9]+")).filter { it.isNotBlank() }
+        if (parts.size < 3) return null
+        val year = parts[0].toIntOrNull() ?: return null
+        val month = parts[1].toIntOrNull() ?: return null
+        val day = parts[2].toIntOrNull() ?: return null
+        if (month !in 1..12 || day !in 1..31) return null
+        return ParsedDate(year, month, day)
+    }
+
+    private fun dateOrderValue(date: ParsedDate): Int {
+        return date.year * 10000 + date.month * 100 + date.day
     }
 
     fun getEffectiveWeight(
@@ -134,23 +189,32 @@ object CalorieUtils {
         records: List<com.example.calorietracker.data.DailyRecordEntity>,
         userProfile: UserProfileEntity?
     ): Float {
-        // 1. Try to find weight for the specific date
-        val record = records.find { it.date == dateStr }
-        if (record != null && record.weight != null && record.weight > 0) {
+        val targetDate = parseDateParts(dateStr)
+        val record = records.firstOrNull {
+            val parsed = parseDateParts(it.date) ?: return@firstOrNull false
+            val target = targetDate ?: return@firstOrNull false
+            parsed.year == target.year && parsed.month == target.month && parsed.day == target.day
+        }
+        if (record != null && record.weight != null && record.weight.isFinite() && record.weight > 0) {
             return record.weight
         }
 
-        // 2. Fallback to most recent previous weight
-        // Sort records by date descending, filter those before dateStr
-        val previousRecord = records
-            .filter { it.date < dateStr && it.weight != null && it.weight > 0 }
-            .maxByOrNull { it.date }
-            
-        if (previousRecord != null) {
-            return previousRecord.weight!!
+        val targetValue = targetDate?.let { dateOrderValue(it) }
+        if (targetValue != null) {
+            val previousRecord = records
+                .mapNotNull {
+                    val parsed = parseDateParts(it.date) ?: return@mapNotNull null
+                    val weight = it.weight ?: return@mapNotNull null
+                    if (!weight.isFinite() || weight <= 0f) return@mapNotNull null
+                    dateOrderValue(parsed) to weight
+                }
+                .filter { (dateValue, _) -> dateValue < targetValue }
+                .maxByOrNull { it.first }
+            if (previousRecord != null) {
+                return previousRecord.second
+            }
         }
 
-        // 3. Fallback to user profile weight
         return userProfile?.weight ?: 70f
     }
 

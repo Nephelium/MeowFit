@@ -8,10 +8,12 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.example.calorietracker.data.AppDatabase
 import com.example.calorietracker.data.backup.BackupManager
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -104,6 +106,29 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
             try {
                 val success = backupManager.restoreFromUri(uri)
                 _status.value = if (success) "恢复成功" else "恢复失败"
+            } catch (e: Exception) {
+                _status.value = "错误: ${e.localizedMessage}"
+            } finally {
+                _isLoading.value = false
+            }
+        }
+    }
+
+    fun clearAllDataAndCache() {
+        viewModelScope.launch {
+            _isLoading.value = true
+            _status.value = "正在清空数据与缓存..."
+            try {
+                withContext(Dispatchers.IO) {
+                    db.clearAllTables()
+                }
+                val cacheCleared = backupManager.clearAllCacheFiles()
+                _lastAutoBackupTime.value = formatTime(backupManager.getAutoBackupTime())
+                _status.value = if (cacheCleared) {
+                    "已清空所有数据与缓存，请从备份恢复"
+                } else {
+                    "数据已清空，部分缓存清理失败"
+                }
             } catch (e: Exception) {
                 _status.value = "错误: ${e.localizedMessage}"
             } finally {

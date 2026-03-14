@@ -12,6 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.example.calorietracker.ui.BackupViewModel
+import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -29,6 +30,8 @@ fun BackupSettingsScreen(
     val isDarkTheme = isSystemInDarkTheme()
     val selectedTheme = remember(selectedThemeIndex) { getTodayVisualTheme(selectedThemeIndex) }
     val accentColor = remember(selectedTheme, isDarkTheme) { themedAccentColor(selectedTheme, isDarkTheme) }
+    var showClearDialog by remember { mutableStateOf(false) }
+    var clearCountdown by remember { mutableIntStateOf(0) }
     val createDocumentLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/zip")
     ) { uri ->
@@ -40,6 +43,16 @@ fun BackupSettingsScreen(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri ->
         uri?.let { viewModel.restoreBackup(it) }
+    }
+
+    LaunchedEffect(showClearDialog) {
+        if (showClearDialog) {
+            clearCountdown = 5
+            while (clearCountdown > 0) {
+                delay(1000)
+                clearCountdown--
+            }
+        }
     }
 
     Scaffold(
@@ -136,6 +149,62 @@ fun BackupSettingsScreen(
                 text = "注意：恢复操作将覆盖当前的同名记录，请谨慎操作。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.error
+            )
+
+            Button(
+                onClick = { showClearDialog = true },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !isLoading,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.errorContainer,
+                    contentColor = MaterialTheme.colorScheme.onErrorContainer
+                )
+            ) {
+                Text("清空所有数据及缓存")
+            }
+
+            Text(
+                text = "清空后将只能从备份恢复。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error
+            )
+        }
+
+        if (showClearDialog) {
+            AlertDialog(
+                onDismissRequest = { showClearDialog = false },
+                containerColor = MaterialTheme.colorScheme.surface,
+                title = { Text("确认清空所有数据？", color = MaterialTheme.colorScheme.onSurface) },
+                text = {
+                    Text(
+                        text = "此操作会清空所有记录、用户资料、聊天记录与本地缓存，且不可撤销。",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            showClearDialog = false
+                            viewModel.clearAllDataAndCache()
+                        },
+                        enabled = clearCountdown == 0 && !isLoading,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.error,
+                            contentColor = MaterialTheme.colorScheme.onError
+                        )
+                    ) {
+                        if (clearCountdown > 0) {
+                            Text("再次确认 (${clearCountdown}s)")
+                        } else {
+                            Text("再次确认并清空")
+                        }
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showClearDialog = false }) {
+                        Text("取消", color = accentColor)
+                    }
+                }
             )
         }
     }

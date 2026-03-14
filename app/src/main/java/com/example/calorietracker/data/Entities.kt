@@ -62,6 +62,7 @@ data class CalorieItemEntity(
     val protein: Int = 0, // grams
     val fat: Int = 0, // grams
     val time: String,
+    val mealCategory: String? = null,
     val imageUrl: String? = null,
     val notes: String? = null,
     val createdAt: String

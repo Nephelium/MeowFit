@@ -105,7 +105,17 @@ class AiViewModel(application: Application) : AndroidViewModel(application) {
             try {
                 val response = aiService.analyzeImage(bitmaps, userWeight, notes)
                 val newItems = response.items.map { 
-                    com.example.calorietracker.ui.screens.EntryItem(it.type, it.name, it.calories, it.carbs, it.protein, it.fat, it.time ?: "", it.notes ?: "") 
+                    com.example.calorietracker.ui.screens.EntryItem(
+                        type = it.type,
+                        name = it.name,
+                        calories = it.calories,
+                        carbs = it.carbs,
+                        protein = it.protein,
+                        fat = it.fat,
+                        time = it.time ?: "",
+                        mealCategory = null,
+                        notes = it.notes ?: ""
+                    )
                 }
                 // Update the persistent list
                 val current = _photoItemsFlow.value.toMutableList()
@@ -139,7 +149,17 @@ class AiViewModel(application: Application) : AndroidViewModel(application) {
                 
                 // Add to chat recognized items
                 val newItems = response.items.map { 
-                    com.example.calorietracker.ui.screens.EntryItem(it.type, it.name, it.calories, it.carbs, it.protein, it.fat, it.time ?: "", it.notes ?: "") 
+                    com.example.calorietracker.ui.screens.EntryItem(
+                        type = it.type,
+                        name = it.name,
+                        calories = it.calories,
+                        carbs = it.carbs,
+                        protein = it.protein,
+                        fat = it.fat,
+                        time = it.time ?: "",
+                        mealCategory = null,
+                        notes = it.notes ?: ""
+                    )
                 }
                 if (newItems.isNotEmpty()) {
                     val current = _chatItemsFlow.value.toMutableList()
@@ -186,7 +206,17 @@ class AiViewModel(application: Application) : AndroidViewModel(application) {
                 
                 // Add to chat recognized items
                 val newItems = response.items.map { 
-                    com.example.calorietracker.ui.screens.EntryItem(it.type, it.name, it.calories, it.carbs, it.protein, it.fat, it.time ?: "", it.notes ?: "") 
+                    com.example.calorietracker.ui.screens.EntryItem(
+                        type = it.type,
+                        name = it.name,
+                        calories = it.calories,
+                        carbs = it.carbs,
+                        protein = it.protein,
+                        fat = it.fat,
+                        time = it.time ?: "",
+                        mealCategory = null,
+                        notes = it.notes ?: ""
+                    )
                 }
                 if (newItems.isNotEmpty()) {
                     val current = _chatItemsFlow.value.toMutableList()
