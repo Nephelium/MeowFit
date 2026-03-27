@@ -1,8 +1,10 @@
 package com.example.calorietracker.ui.screens
 
+import android.Manifest
 import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
@@ -15,6 +17,7 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -35,6 +38,8 @@ import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material.icons.filled.FitnessCenter
 import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -54,6 +59,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.core.graphics.toColorInt
 import coil.compose.AsyncImage
@@ -104,6 +110,268 @@ fun getTodayVisualTheme(index: Int): TodayVisualTheme {
 
 fun calculatePerceivedLuminance(color: Color): Float {
     return 0.299f * color.red + 0.587f * color.green + 0.114f * color.blue
+}
+
+private fun createTempCameraUri(context: Context): Uri? {
+    return runCatching {
+        val file = File.createTempFile("meowfit_edit_", ".jpg", context.cacheDir)
+        FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+    }.getOrNull()
+}
+
+private fun allowDecimalInput(text: String): Boolean {
+    if (text.isEmpty()) return true
+    return text.matches(Regex("\\d*(\\.\\d{0,2})?"))
+}
+
+private fun toDateString(year: Int, month: Int, day: Int): String {
+    return String.format(Locale.getDefault(), "%04d-%02d-%02d", year, month + 1, day)
+}
+
+private fun parseDateSafe(date: String): Triple<Int, Int, Int>? {
+    return try {
+        val parts = date.split("-")
+        if (parts.size != 3) return null
+        val y = parts[0].toIntOrNull() ?: return null
+        val m = (parts[1].toIntOrNull() ?: return null) - 1
+        val d = parts[2].toIntOrNull() ?: return null
+        Triple(y, m, d)
+    } catch (_: Exception) {
+        null
+    }
+}
+
+@Composable
+private fun ThemedCalendarPickerDialog(
+    initialDate: String,
+    recordedDates: Set<String>,
+    weekStartDay: Int,
+    containerColor: Color,
+    textColor: Color,
+    accentColor: Color,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit
+) {
+    val parsed = parseDateSafe(initialDate) ?: run {
+        val now = Calendar.getInstance()
+        Triple(now.get(Calendar.YEAR), now.get(Calendar.MONTH), now.get(Calendar.DAY_OF_MONTH))
+    }
+    var displayedYear by remember(initialDate) { mutableIntStateOf(parsed.first) }
+    var displayedMonth by remember(initialDate) { mutableIntStateOf(parsed.second) }
+    var selectedDate by remember(initialDate) { mutableStateOf(initialDate) }
+
+    val today = remember {
+        val c = Calendar.getInstance()
+        toDateString(c.get(Calendar.YEAR), c.get(Calendar.MONTH), c.get(Calendar.DAY_OF_MONTH))
+    }
+    val weeks = if (weekStartDay == Calendar.MONDAY) {
+        listOf("一", "二", "三", "四", "五", "六", "日")
+    } else {
+        listOf("日", "一", "二", "三", "四", "五", "六")
+    }
+
+    val monthCalendar = remember(displayedYear, displayedMonth) {
+        Calendar.getInstance().apply {
+            set(Calendar.YEAR, displayedYear)
+            set(Calendar.MONTH, displayedMonth)
+            set(Calendar.DAY_OF_MONTH, 1)
+        }
+    }
+    val firstDayOfWeek = monthCalendar.get(Calendar.DAY_OF_WEEK)
+    val startOffset = (firstDayOfWeek - weekStartDay + 7) % 7
+    val daysInMonth = monthCalendar.getActualMaximum(Calendar.DAY_OF_MONTH)
+    val totalCells = startOffset + daysInMonth
+    val rows = (totalCells + 6) / 7
+
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(containerColor = containerColor),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text("选择日期", style = MaterialTheme.typography.titleMedium, color = textColor)
+                Text(
+                    text = runCatching {
+                        CalorieUtils.formatDate(selectedDate).replace("月", "月").replace("日", "日")
+                    }.getOrDefault(selectedDate),
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = textColor,
+                    fontWeight = FontWeight.Bold
+                )
+                Divider(color = textColor.copy(alpha = 0.16f))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "${displayedYear}年${displayedMonth + 1}月",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = textColor,
+                        modifier = Modifier.weight(1f)
+                    )
+                    IconButton(onClick = {
+                        if (displayedMonth == 0) {
+                            displayedMonth = 11
+                            displayedYear -= 1
+                        } else {
+                            displayedMonth -= 1
+                        }
+                    }) {
+                        Icon(Icons.Default.ArrowBack, null, tint = textColor)
+                    }
+                    IconButton(onClick = {
+                        if (displayedMonth == 11) {
+                            displayedMonth = 0
+                            displayedYear += 1
+                        } else {
+                            displayedMonth += 1
+                        }
+                    }) {
+                        Icon(Icons.Default.ArrowForward, null, tint = textColor)
+                    }
+                }
+                Row(modifier = Modifier.fillMaxWidth()) {
+                    weeks.forEach { label ->
+                        Box(
+                            modifier = Modifier.weight(1f),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(label, color = textColor.copy(alpha = 0.8f), style = MaterialTheme.typography.bodyMedium)
+                        }
+                    }
+                }
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    repeat(rows) { row ->
+                        Row(modifier = Modifier.fillMaxWidth()) {
+                            repeat(7) { col ->
+                                val index = row * 7 + col
+                                val day = index - startOffset + 1
+                                if (day !in 1..daysInMonth) {
+                                    Box(modifier = Modifier.weight(1f).height(42.dp))
+                                } else {
+                                    val dateStr = toDateString(displayedYear, displayedMonth, day)
+                                    val isSelected = selectedDate == dateStr
+                                    val isToday = today == dateStr
+                                    val hasData = dateStr in recordedDates
+                                    Box(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(42.dp)
+                                            .padding(horizontal = 2.dp)
+                                            .clip(CircleShape)
+                                            .background(if (isSelected) accentColor else Color.Transparent)
+                                            .clickable { selectedDate = dateStr },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                            Text(
+                                                text = day.toString(),
+                                                color = when {
+                                                    isSelected -> Color.White
+                                                    else -> textColor
+                                                },
+                                                style = MaterialTheme.typography.bodyLarge,
+                                                fontWeight = if (isToday || isSelected) FontWeight.Bold else FontWeight.Normal
+                                            )
+                                            if (hasData) {
+                                                Spacer(modifier = Modifier.height(2.dp))
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(5.dp)
+                                                        .clip(CircleShape)
+                                                        .background(if (isSelected) Color.White else accentColor)
+                                                )
+                                            } else {
+                                                Spacer(modifier = Modifier.height(7.dp))
+                                            }
+                                        }
+                                        if (isToday && !isSelected) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .matchParentSize()
+                                                    .padding(1.dp)
+                                                    .border(1.dp, accentColor.copy(alpha = 0.8f), CircleShape)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    TextButton(onClick = onDismiss) {
+                        Text("取消", color = textColor.copy(alpha = 0.82f))
+                    }
+                    TextButton(onClick = { onConfirm(selectedDate) }) {
+                        Text("确定", color = accentColor)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ImageSourceDialog(
+    containerColor: Color,
+    textColor: Color,
+    accentColor: Color,
+    onDismiss: () -> Unit,
+    onPickAlbum: () -> Unit,
+    onTakePhoto: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = containerColor,
+        titleContentColor = textColor,
+        textContentColor = textColor,
+        title = { Text("选择图片来源") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(
+                    onClick = onPickAlbum,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        containerColor = containerColor.copy(alpha = 0.96f),
+                        contentColor = accentColor
+                    ),
+                    border = BorderStroke(1.dp, accentColor.copy(alpha = 0.56f))
+                ) {
+                    Text("从相册选择", color = accentColor)
+                }
+                OutlinedButton(
+                    onClick = onTakePhoto,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        containerColor = containerColor.copy(alpha = 0.96f),
+                        contentColor = accentColor
+                    ),
+                    border = BorderStroke(1.dp, accentColor.copy(alpha = 0.56f))
+                ) {
+                    Text("拍照", color = accentColor)
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(
+                onClick = onDismiss,
+                colors = ButtonDefaults.textButtonColors(contentColor = accentColor)
+            ) {
+                Text("取消", color = accentColor)
+            }
+        }
+    )
 }
 
 @Composable
@@ -175,13 +443,14 @@ fun TodayScreen(
     dailyRecord: DailyRecordEntity?,
     allRecords: List<DailyRecordEntity>,
     items: List<CalorieItemEntity>,
+    allItems: List<CalorieItemEntity>,
     selectedDate: String,
     onDateChange: (String) -> Unit,
     onAddClick: (String) -> Unit,
     onDeleteItem: (CalorieItemEntity) -> Unit,
     onUpdateItem: (CalorieItemEntity) -> Unit,
     onUpdateWeight: (Float) -> Unit,
-    onSaveExercise: (String, Int, String, String) -> Unit, // name, calories, startTime, endTime
+    onSaveExercise: (String, Double, String, String) -> Unit, // name, calories, startTime, endTime
     onUpdateWater: (Int) -> Unit,
     onUpdateSleep: (Int) -> Unit // minutes
 ) {
@@ -217,6 +486,24 @@ fun TodayScreen(
     var showShareDialog by remember { mutableStateOf(false) }
     var shareShowNotes by remember { mutableStateOf(true) }
     var shareMaskWeight by remember { mutableStateOf(false) }
+    var showSearchDialog by remember { mutableStateOf(false) }
+    var searchKeyword by remember { mutableStateOf("") }
+    var pendingSearchItemId by remember { mutableStateOf<String?>(null) }
+
+    val searchResults = remember(searchKeyword, allItems) {
+        val keyword = searchKeyword.trim()
+        if (keyword.isBlank()) {
+            emptyList()
+        } else {
+            allItems.filter {
+                it.name.contains(keyword, ignoreCase = true) ||
+                    it.notes.orEmpty().contains(keyword, ignoreCase = true) ||
+                    it.time.contains(keyword, ignoreCase = true) ||
+                    it.date.contains(keyword, ignoreCase = true) ||
+                    it.mealCategory.orEmpty().contains(keyword, ignoreCase = true)
+            }.sortedWith(compareByDescending<CalorieItemEntity> { it.date }.thenByDescending { it.time }).take(120)
+        }
+    }
 
     // Calculate effective weight for today (or selected date)
     // If dailyRecord.weight is set, use it. Otherwise find previous.
@@ -243,6 +530,13 @@ fun TodayScreen(
         )
     }.filter { it.third.isNotEmpty() }
     val exerciseItems = remember(items) { items.filter { it.type == "exercise" }.sortedByDescending { it.time } }
+
+    LaunchedEffect(items, pendingSearchItemId) {
+        val targetId = pendingSearchItemId ?: return@LaunchedEffect
+        val target = items.firstOrNull { it.id == targetId } ?: return@LaunchedEffect
+        editingItem = target
+        pendingSearchItemId = null
+    }
 
     if (!previewImagePath.isNullOrBlank()) {
         Dialog(onDismissRequest = { previewImagePath = null }) {
@@ -537,57 +831,37 @@ fun TodayScreen(
     }
 
     var showDatePicker by remember { mutableStateOf(false) }
+    val weekStartDay = if (userProfile?.weekStartDay == Calendar.MONDAY) Calendar.MONDAY else Calendar.SUNDAY
+    val recordedDates = remember(allRecords, allItems) {
+        val fromRecords = allRecords.filter { record ->
+            (record.weight ?: 0f) > 0f ||
+                record.totalWater > 0 ||
+                record.sleepDuration > 0 ||
+                record.totalIntake > 0 ||
+                record.totalBurned > 0 ||
+                record.netCalories != 0 ||
+                record.totalCarbs > 0 ||
+                record.totalProtein > 0 ||
+                record.totalFat > 0
+        }.map { it.date }.toSet()
+        val fromItems = allItems.map { it.date }.toSet()
+        fromRecords + fromItems
+    }
 
     if (showDatePicker) {
-        val calendar = Calendar.getInstance()
-        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-        try {
-            calendar.time = sdf.parse(selectedDate)!!
-        } catch (e: Exception) {}
-        
-        val datePickerState = rememberDatePickerState(
-            initialSelectedDateMillis = calendar.timeInMillis
-        )
-        
-        DatePickerDialog(
-            onDismissRequest = { showDatePicker = false },
-            colors = DatePickerDefaults.colors(
-                containerColor = dashboardCardColor,
-                titleContentColor = dashboardOnCardColor,
-                headlineContentColor = dialogAccentColor,
-                weekdayContentColor = dashboardOnCardColor.copy(alpha = 0.75f),
-                subheadContentColor = dashboardOnCardColor.copy(alpha = 0.75f),
-                yearContentColor = dashboardOnCardColor,
-                currentYearContentColor = dialogAccentColor,
-                selectedYearContentColor = dashboardOnCardColor,
-                selectedYearContainerColor = dialogAccentColor.copy(alpha = 0.24f),
-                dayContentColor = dashboardOnCardColor,
-                selectedDayContentColor = dashboardOnCardColor,
-                selectedDayContainerColor = dialogAccentColor,
-                todayContentColor = dialogAccentColor,
-                todayDateBorderColor = dialogAccentColor
-            ),
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        datePickerState.selectedDateMillis?.let { millis ->
-                            calendar.timeInMillis = millis
-                            onDateChange(sdf.format(calendar.time))
-                        }
-                        showDatePicker = false
-                    }
-                ) {
-                    Text("确定", color = dialogAccentColor)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDatePicker = false }) {
-                    Text("取消", color = dashboardOnCardColor.copy(alpha = 0.82f))
-                }
+        ThemedCalendarPickerDialog(
+            initialDate = selectedDate,
+            recordedDates = recordedDates,
+            weekStartDay = weekStartDay,
+            containerColor = dashboardCardColor,
+            textColor = dashboardOnCardColor,
+            accentColor = dialogAccentColor,
+            onDismiss = { showDatePicker = false },
+            onConfirm = {
+                onDateChange(it)
+                showDatePicker = false
             }
-        ) {
-            DatePicker(state = datePickerState)
-        }
+        )
     }
 
     Scaffold(
@@ -696,6 +970,16 @@ fun TodayScreen(
                         Icon(Icons.Default.Share, "Share Today", tint = dateNavColor)
                     }
                     IconButton(onClick = {
+                        showSearchDialog = true
+                    }) {
+                        Icon(Icons.Default.Search, "Search Records", tint = dateNavColor)
+                    }
+                    IconButton(onClick = {
+                        onDateChange(CalorieUtils.getTodayString())
+                    }) {
+                        Icon(Icons.Default.Home, "Back To Today", tint = dateNavColor)
+                    }
+                    IconButton(onClick = {
                         val cal = Calendar.getInstance()
                         val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
                         try {
@@ -796,6 +1080,94 @@ fun TodayScreen(
             }
         }
     }
+
+    if (showSearchDialog) {
+        Dialog(onDismissRequest = { showSearchDialog = false }) {
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = dashboardCardColor),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 560.dp)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text("搜索记录", style = MaterialTheme.typography.titleMedium, color = dashboardOnCardColor)
+                    OutlinedTextField(
+                        value = searchKeyword,
+                        onValueChange = { searchKeyword = it },
+                        label = { Text("输入关键词", color = dashboardOnCardColor.copy(alpha = 0.75f)) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedContainerColor = dashboardCardColor.copy(alpha = 0.96f),
+                            unfocusedContainerColor = dashboardCardColor.copy(alpha = 0.9f),
+                            focusedBorderColor = dialogAccentColor,
+                            unfocusedBorderColor = dashboardOnCardColor.copy(alpha = 0.26f),
+                            focusedTextColor = dashboardOnCardColor,
+                            unfocusedTextColor = dashboardOnCardColor,
+                            focusedLabelColor = dialogAccentColor,
+                            unfocusedLabelColor = dashboardOnCardColor.copy(alpha = 0.75f),
+                            cursorColor = dialogAccentColor
+                        )
+                    )
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 380.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(searchResults) { item ->
+                            Surface(
+                                onClick = {
+                                    showSearchDialog = false
+                                    onDateChange(item.date)
+                                    pendingSearchItemId = item.id
+                                },
+                                shape = RoundedCornerShape(10.dp),
+                                color = dashboardCardColor.copy(alpha = 0.86f),
+                                border = BorderStroke(1.dp, dashboardOnCardColor.copy(alpha = 0.2f)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Text(item.name, color = dashboardOnCardColor, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
+                                    Text("${item.date} ${item.time} · ${if (item.type == "food") "食物" else "运动"} · ${CalorieUtils.formatNumber(item.calories)} kcal", color = dashboardOnCardColor.copy(alpha = 0.72f), style = MaterialTheme.typography.bodySmall)
+                                }
+                            }
+                        }
+                        if (searchKeyword.isNotBlank() && searchResults.isEmpty()) {
+                            item {
+                                Text(
+                                    text = "没有找到相关记录",
+                                    color = dashboardOnCardColor.copy(alpha = 0.62f),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    modifier = Modifier.padding(vertical = 12.dp)
+                                )
+                            }
+                        }
+                    }
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                        TextButton(
+                            onClick = { showSearchDialog = false },
+                            colors = ButtonDefaults.textButtonColors(contentColor = dialogAccentColor)
+                        ) {
+                            Text("关闭", color = dialogAccentColor)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
 }
 
 @Composable
@@ -808,21 +1180,44 @@ fun EditRecordDialog(
     accentColor: Color
 ) {
     var name by remember { mutableStateOf(item.name) }
-    var calories by remember { mutableStateOf(item.calories.toString()) }
-    var carbs by remember { mutableStateOf(item.carbs.toString()) }
-    var protein by remember { mutableStateOf(item.protein.toString()) }
-    var fat by remember { mutableStateOf(item.fat.toString()) }
+    var calories by remember { mutableStateOf(CalorieUtils.formatNumber(item.calories)) }
+    var carbs by remember { mutableStateOf(CalorieUtils.formatNumber(item.carbs)) }
+    var protein by remember { mutableStateOf(CalorieUtils.formatNumber(item.protein)) }
+    var fat by remember { mutableStateOf(CalorieUtils.formatNumber(item.fat)) }
     var time by remember { mutableStateOf(item.time) }
     var notes by remember { mutableStateOf(item.notes ?: "") }
     var selectedImageUri by remember { mutableStateOf<android.net.Uri?>(null) }
+    var pendingCameraUri by remember { mutableStateOf<Uri?>(null) }
+    var showMediaSourceDialog by remember { mutableStateOf(false) }
     var currentImagePath by remember { mutableStateOf(item.imageUrl) }
+    val context = LocalContext.current
     val imagePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
     ) { uri ->
         selectedImageUri = uri
     }
-    val context = LocalContext.current
-    
+    val cameraLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicture()
+    ) { success ->
+        if (success) {
+            selectedImageUri = pendingCameraUri
+        }
+    }
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            val uri = createTempCameraUri(context)
+            if (uri == null) {
+                Toast.makeText(context, "无法创建拍照文件", Toast.LENGTH_SHORT).show()
+            } else {
+                pendingCameraUri = uri
+                cameraLauncher.launch(uri)
+            }
+        } else {
+            Toast.makeText(context, "相机权限被拒绝", Toast.LENGTH_SHORT).show()
+        }
+    }
     // Check if it's an exercise with duration
     val isExercise = item.type == "exercise"
     val mealCategoryOptions = remember {
@@ -888,10 +1283,10 @@ fun EditRecordDialog(
                 
                 OutlinedTextField(
                     value = calories,
-                    onValueChange = { calories = it },
+                    onValueChange = { if (allowDecimalInput(it)) calories = it },
                     label = { Text("卡路里 (kcal)") },
                     singleLine = true,
-                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal),
                     modifier = Modifier.fillMaxWidth()
                 )
                 
@@ -899,26 +1294,26 @@ fun EditRecordDialog(
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedTextField(
                             value = carbs,
-                            onValueChange = { if (it.all { char -> char.isDigit() }) carbs = it },
+                            onValueChange = { if (allowDecimalInput(it)) carbs = it },
                             label = { Text("碳水") },
                             singleLine = true,
-                            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
+                            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal),
                             modifier = Modifier.weight(1f)
                         )
                         OutlinedTextField(
                             value = protein,
-                            onValueChange = { if (it.all { char -> char.isDigit() }) protein = it },
+                            onValueChange = { if (allowDecimalInput(it)) protein = it },
                             label = { Text("蛋白质") },
                             singleLine = true,
-                            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
+                            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal),
                             modifier = Modifier.weight(1f)
                         )
                         OutlinedTextField(
                             value = fat,
-                            onValueChange = { if (it.all { char -> char.isDigit() }) fat = it },
+                            onValueChange = { if (allowDecimalInput(it)) fat = it },
                             label = { Text("脂肪") },
                             singleLine = true,
-                            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
+                            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal),
                             modifier = Modifier.weight(1f)
                         )
                     }
@@ -984,9 +1379,7 @@ fun EditRecordDialog(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     OutlinedButton(
-                        onClick = {
-                            imagePickerLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-                        },
+                        onClick = { showMediaSourceDialog = true },
                         colors = ButtonDefaults.outlinedButtonColors(
                             containerColor = containerColor.copy(alpha = 0.96f),
                             contentColor = accentColor
@@ -1042,10 +1435,10 @@ fun EditRecordDialog(
                     Spacer(modifier = Modifier.width(8.dp))
                     Button(
                         onClick = {
-                        val cal = calories.toIntOrNull()
-                        val c = carbs.toIntOrNull() ?: 0
-                        val p = protein.toIntOrNull() ?: 0
-                        val f = fat.toIntOrNull() ?: 0
+                        val cal = CalorieUtils.parseDecimalInput(calories)
+                        val c = CalorieUtils.parseDecimalInput(carbs) ?: 0.0
+                        val p = CalorieUtils.parseDecimalInput(protein) ?: 0.0
+                        val f = CalorieUtils.parseDecimalInput(fat) ?: 0.0
                         val finalImagePath = selectedImageUri?.let { ImageStorageUtils.compressAndSaveImage(context, it) } ?: currentImagePath
                         
                         if (name.isNotBlank() && cal != null) {
@@ -1070,7 +1463,7 @@ fun EditRecordDialog(
                                     }
                                 } catch (e: Exception) {}
                                 
-                                onConfirm(item.copy(name = name, calories = cal, carbs = 0, protein = 0, fat = 0, time = startTimeStr, mealCategory = null, notes = newNotes, imageUrl = finalImagePath))
+                                onConfirm(item.copy(name = name, calories = cal, carbs = 0.0, protein = 0.0, fat = 0.0, time = startTimeStr, mealCategory = null, notes = newNotes, imageUrl = finalImagePath))
                             } else {
                                 onConfirm(item.copy(name = name, calories = cal, carbs = c, protein = p, fat = f, time = time, mealCategory = selectedMealCategory, notes = notes, imageUrl = finalImagePath))
                             }
@@ -1086,6 +1479,33 @@ fun EditRecordDialog(
                 }
             }
         }
+    }
+
+    if (showMediaSourceDialog) {
+        ImageSourceDialog(
+            containerColor = containerColor,
+            textColor = onContainerColor,
+            accentColor = accentColor,
+            onDismiss = { showMediaSourceDialog = false },
+            onPickAlbum = {
+                showMediaSourceDialog = false
+                imagePickerLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+            },
+            onTakePhoto = {
+                showMediaSourceDialog = false
+                if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+                    val uri = createTempCameraUri(context)
+                    if (uri == null) {
+                        Toast.makeText(context, "无法创建拍照文件", Toast.LENGTH_SHORT).show()
+                    } else {
+                        pendingCameraUri = uri
+                        cameraLauncher.launch(uri)
+                    }
+                } else {
+                    cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                }
+            }
+        )
     }
 
     if (showMealCategoryDialog && !isExercise) {
@@ -1543,7 +1963,7 @@ fun EmptyState() {
 }
 
 @Composable
-fun RecordSectionHeader(title: String, calories: Int, accentColor: Color) {
+fun RecordSectionHeader(title: String, calories: Double, accentColor: Color) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -1558,7 +1978,7 @@ fun RecordSectionHeader(title: String, calories: Int, accentColor: Color) {
             fontWeight = FontWeight.SemiBold
         )
         Text(
-            text = "${calories} kcal",
+            text = "${CalorieUtils.formatNumber(calories)} kcal",
             style = MaterialTheme.typography.labelLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -1721,7 +2141,7 @@ fun RecordItem(
                 }
 
                 Text(
-                    "${if (isFood) "+" else "-"}${item.calories}",
+                    "${if (isFood) "+" else "-"}${CalorieUtils.formatNumber(item.calories)}",
                     modifier = Modifier.width(68.dp),
                     textAlign = TextAlign.End,
                     style = MaterialTheme.typography.titleMedium,
@@ -1799,7 +2219,7 @@ fun ExerciseTimerDialog(
     initialName: String,
     startTime: Long?,
     onDismiss: () -> Unit,
-    onSave: (String, Int, String, String) -> Unit,
+    onSave: (String, Double, String, String) -> Unit,
     onDiscard: () -> Unit,
     containerColor: Color,
     onContainerColor: Color,
@@ -1885,10 +2305,10 @@ fun ExerciseTimerDialog(
                 
                 OutlinedTextField(
                     value = calories,
-                    onValueChange = { calories = it },
+                    onValueChange = { if (allowDecimalInput(it)) calories = it },
                     label = { Text("消耗卡路里 (kcal)") },
                     singleLine = true,
-                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal),
                     modifier = Modifier.fillMaxWidth()
                 )
                 
@@ -1907,8 +2327,8 @@ fun ExerciseTimerDialog(
                     Spacer(modifier = Modifier.width(8.dp))
                     Button(
                         onClick = {
-                            val cal = calories.toIntOrNull()
-                            if (name.isNotBlank() && cal != null && cal > 0) {
+                            val cal = CalorieUtils.parseDecimalInput(calories)
+                            if (name.isNotBlank() && cal != null && cal > 0.0) {
                                 onSave(name, cal, startStr, endStr)
                             }
                         },
@@ -2415,7 +2835,7 @@ fun generateTodayLongScreenshot(
 
     var currentY = metricsTop + metricsH + 34f
     val caloriesRightX = width - padding - 12f
-    fun drawSectionTitle(title: String, calories: Int, color: Int) {
+    fun drawSectionTitle(title: String, calories: Double, color: Int) {
         textPaint.color = color
         textPaint.textSize = 40f
         textPaint.typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
@@ -2424,7 +2844,7 @@ fun generateTodayLongScreenshot(
         textPaint.textSize = 36f
         textPaint.typeface = android.graphics.Typeface.DEFAULT
         textPaint.textAlign = android.graphics.Paint.Align.RIGHT
-        canvas.drawText("${calories} kcal", caloriesRightX, currentY + 46f, textPaint)
+        canvas.drawText("${CalorieUtils.formatNumber(calories)} kcal", caloriesRightX, currentY + 46f, textPaint)
         textPaint.textAlign = android.graphics.Paint.Align.LEFT
         currentY += sectionHeaderH
     }
@@ -2574,7 +2994,7 @@ fun generateTodayLongScreenshot(
         textPaint.textSize = if (showNotes) 37f else 39f
         textPaint.typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
         textPaint.color = if (isFood) android.graphics.Color.parseColor("#2E7D32") else android.graphics.Color.parseColor("#1565C0")
-        val calText = "${if (isFood) "+" else "-"}${item.calories}"
+        val calText = "${if (isFood) "+" else "-"}${CalorieUtils.formatNumber(item.calories)}"
         textPaint.textAlign = android.graphics.Paint.Align.RIGHT
         val calY = if (showNotes) {
             currentY + 76f

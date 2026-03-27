@@ -7,7 +7,7 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [UserProfileEntity::class, DailyRecordEntity::class, CalorieItemEntity::class, AiChatMessageEntity::class], version = 11, exportSchema = false)
+@Database(entities = [UserProfileEntity::class, DailyRecordEntity::class, CalorieItemEntity::class, AiChatMessageEntity::class], version = 12, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun userDao(): UserDao
     abstract fun recordDao(): RecordDao
@@ -62,6 +62,75 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_11_12 = object : Migration(11, 12) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                fun tableExists(tableName: String): Boolean {
+                    database.query("SELECT name FROM sqlite_master WHERE type='table' AND name=?", arrayOf(tableName)).use { cursor ->
+                        return cursor.moveToFirst()
+                    }
+                }
+
+                fun columnExists(tableName: String, columnName: String): Boolean {
+                    database.query("PRAGMA table_info(`$tableName`)").use { cursor ->
+                        val nameIndex = cursor.getColumnIndex("name")
+                        while (cursor.moveToNext()) {
+                            if (nameIndex >= 0 && cursor.getString(nameIndex) == columnName) return true
+                        }
+                        return false
+                    }
+                }
+
+                if (!columnExists("user_profile", "weekStartDay")) {
+                    database.execSQL("ALTER TABLE user_profile ADD COLUMN weekStartDay INTEGER NOT NULL DEFAULT 1")
+                }
+
+                if (tableExists("calorie_items_new")) {
+                    database.execSQL("DROP TABLE calorie_items_new")
+                }
+
+                database.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS calorie_items_new (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        date TEXT NOT NULL,
+                        type TEXT NOT NULL,
+                        name TEXT NOT NULL,
+                        calories REAL NOT NULL,
+                        carbs REAL NOT NULL,
+                        protein REAL NOT NULL,
+                        fat REAL NOT NULL,
+                        time TEXT NOT NULL,
+                        mealCategory TEXT,
+                        imageUrl TEXT,
+                        notes TEXT,
+                        createdAt TEXT NOT NULL,
+                        FOREIGN KEY(date) REFERENCES daily_records(date) ON DELETE CASCADE
+                    )
+                    """.trimIndent()
+                )
+                val hasMealCategory = columnExists("calorie_items", "mealCategory")
+                database.execSQL(
+                    """
+                    INSERT INTO calorie_items_new (id, date, type, name, calories, carbs, protein, fat, time, mealCategory, imageUrl, notes, createdAt)
+                    SELECT id, date, type, name,
+                           CAST(calories AS REAL),
+                           CAST(COALESCE(carbs, 0) AS REAL),
+                           CAST(COALESCE(protein, 0) AS REAL),
+                           CAST(COALESCE(fat, 0) AS REAL),
+                           COALESCE(time, ''),
+                           ${if (hasMealCategory) "mealCategory" else "NULL"},
+                           imageUrl,
+                           notes,
+                           COALESCE(createdAt, '')
+                    FROM calorie_items
+                    """.trimIndent()
+                )
+                database.execSQL("DROP TABLE calorie_items")
+                database.execSQL("ALTER TABLE calorie_items_new RENAME TO calorie_items")
+                database.execSQL("CREATE INDEX IF NOT EXISTS index_calorie_items_date ON calorie_items(date)")
+            }
+        }
+
         @Volatile
         private var INSTANCE: AppDatabase? = null
 
@@ -72,7 +141,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "calorie_tracker_database"
                 )
-                .addMigrations(MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11)
+                .addMigrations(MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12)
                 .fallbackToDestructiveMigration()
                 .build()
                 INSTANCE = instance

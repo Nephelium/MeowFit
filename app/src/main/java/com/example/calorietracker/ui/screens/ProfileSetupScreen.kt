@@ -235,6 +235,7 @@ fun ProfileSetupScreen(
                         dailyCalorieTarget = dailyTarget,
                         sleepGoal = userProfile?.sleepGoal ?: 7.5f,
                         showMacros = userProfile?.showMacros ?: false,
+                        weekStartDay = userProfile?.weekStartDay ?: java.util.Calendar.SUNDAY,
                         selectedTodayThemeIndex = userProfile?.selectedTodayThemeIndex ?: 0,
                         hasSelectedTodayTheme = userProfile?.hasSelectedTodayTheme ?: false,
                         excludedExercises = userProfile?.excludedExercises ?: "",

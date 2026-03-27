@@ -61,4 +61,31 @@ interface RecordDao {
 
     @Query("SELECT * FROM calorie_items")
     suspend fun getAllCalorieItemsSync(): List<CalorieItemEntity>
+
+    @Query(
+        """
+        SELECT * FROM calorie_items
+        WHERE type = :type AND name LIKE '%' || :keyword || '%'
+        ORDER BY date DESC, time DESC
+        LIMIT :limit
+        """
+    )
+    suspend fun searchRecentItemsByTypeAndKeyword(
+        type: String,
+        keyword: String,
+        limit: Int
+    ): List<CalorieItemEntity>
+
+    @Query(
+        """
+        SELECT * FROM calorie_items
+        WHERE name LIKE '%' || :keyword || '%'
+        ORDER BY date DESC, time DESC
+        LIMIT :limit
+        """
+    )
+    suspend fun searchItemsByKeyword(
+        keyword: String,
+        limit: Int
+    ): List<CalorieItemEntity>
 }

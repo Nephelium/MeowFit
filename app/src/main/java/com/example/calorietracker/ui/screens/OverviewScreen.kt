@@ -116,6 +116,23 @@ private fun formatWeightForCalendar(weight: Float): String {
     }
 }
 
+private fun normalizeWeekStartDay(value: Int): Int {
+    return if (value == Calendar.MONDAY) Calendar.MONDAY else Calendar.SUNDAY
+}
+
+private fun calendarStartOffset(firstDayOfMonth: Int, weekStartDay: Int): Int {
+    val normalizedWeekStart = normalizeWeekStartDay(weekStartDay)
+    return (firstDayOfMonth - normalizedWeekStart + 7) % 7
+}
+
+private fun weekLabels(weekStartDay: Int): List<String> {
+    return if (normalizeWeekStartDay(weekStartDay) == Calendar.MONDAY) {
+        listOf("一", "二", "三", "四", "五", "六", "日")
+    } else {
+        listOf("日", "一", "二", "三", "四", "五", "六")
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun OverviewScreen(
@@ -137,6 +154,7 @@ fun OverviewScreen(
     val cardColor = remember(selectedTheme, isDarkTheme) { themedDashboardCardColor(selectedTheme, isDarkTheme) }
     val onCardColor = if (isDarkTheme) Color.White else if (calculatePerceivedLuminance(cardColor) > 0.5f) Color(0xFF1E1E1E) else Color(0xFFF4F4F4)
     val accentColor = remember(selectedTheme, isDarkTheme) { themedAccentColor(selectedTheme, isDarkTheme) }
+    val weekStartDay = normalizeWeekStartDay(userProfile?.weekStartDay ?: Calendar.SUNDAY)
 
     var selectedYear by remember { mutableIntStateOf(Calendar.getInstance().get(Calendar.YEAR)) }
     // Default to current month
@@ -253,7 +271,8 @@ fun OverviewScreen(
                         records = records,
                         allItems = allItems,
                         metric = heatmapMetric,
-                        userProfile = userProfile
+                        userProfile = userProfile,
+                        weekStartDay = weekStartDay
                     )
                 },
                 containerColor = Color.Transparent,
@@ -317,6 +336,7 @@ fun OverviewScreen(
                             recordMap = recordMap,
                             userProfile = userProfile,
                             metric = heatmapMetric,
+                            weekStartDay = weekStartDay,
                             onMonthClick = { selectedMonth = it },
                             onDayClick = { onDetailDateChange(it) }
                         )
@@ -329,6 +349,7 @@ fun OverviewScreen(
                             recordMap = recordMap,
                             userProfile = userProfile,
                             metric = heatmapMetric,
+                            weekStartDay = weekStartDay,
                             onDayClick = { onDetailDateChange(it) }
                         )
                     }
@@ -448,7 +469,8 @@ fun generateCalendarBitmap(
     records: List<DailyRecordEntity>,
     allItems: List<CalorieItemEntity>,
     metric: HeatmapMetric,
-    userProfile: UserProfileEntity?
+    userProfile: UserProfileEntity?,
+    weekStartDay: Int
 ): Bitmap {
     // 1. Calculate stats
     fun getTarget(date: String): Int {
@@ -876,11 +898,12 @@ fun generateCalendarBitmap(
                 cal.set(year, mIndex, 1)
                 val daysInMonth = cal.getActualMaximum(Calendar.DAY_OF_MONTH)
                 val firstDayOfWeek = cal.get(Calendar.DAY_OF_WEEK)
+                val startOffset = calendarStartOffset(firstDayOfWeek, weekStartDay)
                 
                 val gridOffsetY = startY + 40f // Space between month title and grid
                 
                 for (day in 1..daysInMonth) {
-                    val offsetDay = day + (firstDayOfWeek - 1) - 1
+                    val offsetDay = day + startOffset - 1
                     val r = offsetDay / 7
                     val c = offsetDay % 7
                     
@@ -899,7 +922,7 @@ fun generateCalendarBitmap(
                              val excludedList = userProfile?.excludedExercises?.split(",")?.map { it.trim() } ?: emptyList()
                              val dayItems = allItems.filter { it.date == dateStr && it.type == "exercise" }
                              val validItems = dayItems.filter { !excludedList.contains(it.name) }
-                             validItems.sumOf { it.calories }
+                             validItems.sumOf { it.calories }.roundToInt()
                         }
                         HeatmapMetric.Net -> {
                             val intake = record?.totalIntake ?: 0
@@ -961,7 +984,7 @@ fun generateCalendarBitmap(
     } else {
         // --- Month View ---
         // Draw Week Headers
-        val weeks = listOf("日", "一", "二", "三", "四", "五", "六")
+        val weeks = weekLabels(weekStartDay)
         paint.textSize = 40f
         paint.color = android.graphics.Color.GRAY
         paint.typeface = android.graphics.Typeface.SERIF
@@ -978,11 +1001,12 @@ fun generateCalendarBitmap(
         cal.set(year, month, 1)
         val daysInMonth = cal.getActualMaximum(Calendar.DAY_OF_MONTH)
         val firstDayOfWeek = cal.get(Calendar.DAY_OF_WEEK)
+        val startOffset = calendarStartOffset(firstDayOfWeek, weekStartDay)
         
         paint.textSize = 36f
         
         for (day in 1..daysInMonth) {
-            val offsetDay = day + (firstDayOfWeek - 1) - 1
+            val offsetDay = day + startOffset - 1
             val r = offsetDay / 7
             val c = offsetDay % 7
             
@@ -1001,7 +1025,7 @@ fun generateCalendarBitmap(
                      val excludedList = userProfile?.excludedExercises?.split(",")?.map { it.trim() } ?: emptyList()
                      val dayItems = allItems.filter { it.date == dateStr && it.type == "exercise" }
                      val validItems = dayItems.filter { !excludedList.contains(it.name) }
-                     validItems.sumOf { it.calories }
+                     validItems.sumOf { it.calories }.roundToInt()
                 }
                 HeatmapMetric.Net -> {
                     val intake = record?.totalIntake ?: 0
@@ -1386,6 +1410,7 @@ fun YearHeatmapView(
     recordMap: Map<String, DailyRecordEntity>,
     userProfile: UserProfileEntity?,
     metric: HeatmapMetric,
+    weekStartDay: Int,
     onMonthClick: (Int) -> Unit,
     onDayClick: (String) -> Unit
 ) {
@@ -1402,10 +1427,10 @@ fun YearHeatmapView(
                 val m1 = row * 2
                 val m2 = row * 2 + 1
                 Box(modifier = Modifier.weight(1f)) {
-                    MonthCalendarMini(year, m1, records, allItems, recordMap, userProfile, metric, minWeight, maxWeight, onMonthClick, onDayClick)
+                    MonthCalendarMini(year, m1, records, allItems, recordMap, userProfile, metric, minWeight, maxWeight, weekStartDay, onMonthClick, onDayClick)
                 }
                 Box(modifier = Modifier.weight(1f)) {
-                    MonthCalendarMini(year, m2, records, allItems, recordMap, userProfile, metric, minWeight, maxWeight, onMonthClick, onDayClick)
+                    MonthCalendarMini(year, m2, records, allItems, recordMap, userProfile, metric, minWeight, maxWeight, weekStartDay, onMonthClick, onDayClick)
                 }
             }
         }
@@ -1423,6 +1448,7 @@ fun MonthCalendarMini(
     metric: HeatmapMetric,
     minWeight: Float,
     maxWeight: Float,
+    weekStartDay: Int,
     onHeaderClick: (Int) -> Unit,
     onDayClick: (String) -> Unit
 ) {
@@ -1440,17 +1466,17 @@ fun MonthCalendarMini(
         val calendar = Calendar.getInstance()
         calendar.set(year, month, 1)
         val daysInMonth = calendar.getActualMaximum(Calendar.DAY_OF_MONTH)
-        val firstDayOfWeek = calendar.get(Calendar.DAY_OF_WEEK) // 1=Sun
+        val startOffset = calendarStartOffset(calendar.get(Calendar.DAY_OF_WEEK), weekStartDay)
         
         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            val totalCells = daysInMonth + (firstDayOfWeek - 1)
+            val totalCells = daysInMonth + startOffset
             val rows = (totalCells + 6) / 7
             
             for (r in 0 until rows) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                     for (c in 0 until 7) {
                         val index = r * 7 + c
-                        val day = index - (firstDayOfWeek - 1) + 1
+                        val day = index - startOffset + 1
                         
                         if (day in 1..daysInMonth) {
                             val dateStr = String.format("%04d-%02d-%02d", year, month + 1, day)
@@ -1465,7 +1491,7 @@ fun MonthCalendarMini(
                                      val excludedList = userProfile?.excludedExercises?.split(",")?.map { it.trim() } ?: emptyList()
                                      val dayItems = allItems.filter { it.date == dateStr && it.type == "exercise" }
                                      val validItems = dayItems.filter { !excludedList.contains(it.name) }
-                                     validItems.sumOf { it.calories }
+                                     validItems.sumOf { it.calories }.roundToInt()
                                 }
                                 HeatmapMetric.Net -> {
                                     // Calculate dynamic net
@@ -1582,12 +1608,13 @@ fun MonthHeatmapView(
     recordMap: Map<String, DailyRecordEntity>,
     userProfile: UserProfileEntity?,
     metric: HeatmapMetric,
+    weekStartDay: Int,
     onDayClick: (String) -> Unit
 ) {
     val calendar = Calendar.getInstance()
     calendar.set(year, month, 1)
     val daysInMonth = calendar.getActualMaximum(Calendar.DAY_OF_MONTH)
-    val firstDayOfWeek = calendar.get(Calendar.DAY_OF_WEEK)
+    val startOffset = calendarStartOffset(calendar.get(Calendar.DAY_OF_WEEK), weekStartDay)
     
     // Calculate year-based min/max for weight for consistent coloring
     val weights = records.filter {
@@ -1596,7 +1623,7 @@ fun MonthHeatmapView(
     val minWeight = if (weights.isNotEmpty()) weights.minOrNull()!! else 0f
     val maxWeight = if (weights.isNotEmpty()) weights.maxOrNull()!! else 100f
     
-    val weeks = listOf("日", "一", "二", "三", "四", "五", "六")
+    val weeks = weekLabels(weekStartDay)
     
     Column {
         Row(modifier = Modifier.fillMaxWidth()) {
@@ -1612,7 +1639,7 @@ fun MonthHeatmapView(
         }
         Spacer(modifier = Modifier.height(8.dp))
         
-        val totalCells = daysInMonth + (firstDayOfWeek - 1)
+        val totalCells = daysInMonth + startOffset
         val rows = (totalCells + 6) / 7
 
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -1620,7 +1647,7 @@ fun MonthHeatmapView(
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     for (c in 0 until 7) {
                         val index = r * 7 + c
-                        val day = index - (firstDayOfWeek - 1) + 1
+                        val day = index - startOffset + 1
                         
                         if (day in 1..daysInMonth) {
                             val dateStr = String.format("%04d-%02d-%02d", year, month + 1, day)
@@ -1635,7 +1662,7 @@ fun MonthHeatmapView(
                                      val excludedList = userProfile?.excludedExercises?.split(",")?.map { it.trim() } ?: emptyList()
                                      val dayItems = allItems.filter { it.date == dateStr && it.type == "exercise" }
                                      val validItems = dayItems.filter { !excludedList.contains(it.name) }
-                                     validItems.sumOf { it.calories }
+                                     validItems.sumOf { it.calories }.roundToInt()
                                 }
                                 HeatmapMetric.Net -> {
                                     // Calculate dynamic net
@@ -1773,7 +1800,7 @@ fun StatBox(label: String, value: String, color: Color) {
 }
 
 @Composable
-fun DetailRecordSectionHeader(title: String, calories: Int, accentColor: Color, textColor: Color) {
+fun DetailRecordSectionHeader(title: String, calories: Double, accentColor: Color, textColor: Color) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -1788,7 +1815,7 @@ fun DetailRecordSectionHeader(title: String, calories: Int, accentColor: Color, 
             fontWeight = FontWeight.SemiBold
         )
         Text(
-            text = "${calories} kcal",
+            text = "${CalorieUtils.formatNumber(calories)} kcal",
             style = MaterialTheme.typography.labelLarge,
             color = textColor.copy(alpha = 0.78f),
             fontWeight = FontWeight.Medium
@@ -1814,7 +1841,7 @@ fun DetailRecordRow(item: CalorieItemEntity, textColor: Color) {
         Spacer(modifier = Modifier.width(8.dp))
         Text(item.name, style = MaterialTheme.typography.bodyMedium, color = textColor, modifier = Modifier.weight(1f))
         Text(
-            "${if (isFood) "+" else "-"}${item.calories}",
+            "${if (isFood) "+" else "-"}${CalorieUtils.formatNumber(item.calories)}",
             style = MaterialTheme.typography.bodyMedium,
             fontWeight = FontWeight.Bold,
             color = if (isFood) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary

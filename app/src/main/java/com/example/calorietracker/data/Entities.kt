@@ -20,6 +20,7 @@ data class UserProfileEntity(
     val dailyCalorieTarget: Int,
     val sleepGoal: Float = 7.5f, // Hours, default 7.5
     val showMacros: Boolean = false, // Whether to show carbs/protein/fat
+    val weekStartDay: Int = java.util.Calendar.SUNDAY, // Calendar.SUNDAY or Calendar.MONDAY
     val selectedTodayThemeIndex: Int = 0, // Selected Today page background theme
     val hasSelectedTodayTheme: Boolean = false, // Whether user has explicitly selected a theme
     val excludedExercises: String = "", // Comma-separated list of excluded exercises
@@ -57,10 +58,10 @@ data class CalorieItemEntity(
     val date: String, // Foreign key to DailyRecordEntity
     val type: String, // "food", "exercise"
     val name: String,
-    val calories: Int,
-    val carbs: Int = 0, // grams
-    val protein: Int = 0, // grams
-    val fat: Int = 0, // grams
+    val calories: Double,
+    val carbs: Double = 0.0, // grams
+    val protein: Double = 0.0, // grams
+    val fat: Double = 0.0, // grams
     val time: String,
     val mealCategory: String? = null,
     val imageUrl: String? = null,

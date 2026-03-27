@@ -249,12 +249,14 @@ fun MainApp(viewModel: MainViewModel, aiViewModel: AiViewModel, backupViewModel:
                 val selectedDate by viewModel.selectedDate.collectAsState()
                 val userProfile by viewModel.userProfile.collectAsState()
                 val allRecords by viewModel.allRecords.collectAsState()
+                val allItems by viewModel.allCalorieItems.collectAsState()
 
                 TodayScreen(
                     userProfile = userProfile,
                     dailyRecord = dailyRecord,
                     allRecords = allRecords,
                     items = items,
+                    allItems = allItems,
                     selectedDate = selectedDate,
                     onDateChange = { viewModel.setDate(it) },
                     onAddClick = { date -> navController.navigate("add_entry?date=$date") },
@@ -283,7 +285,7 @@ fun MainApp(viewModel: MainViewModel, aiViewModel: AiViewModel, backupViewModel:
                         viewModel.addRecordItem(
                             type = "exercise",
                             name = name,
-                            calories = calories,
+                            calories = calories.toDouble(),
                             time = startTime,
                             notes = notes,
                             targetDate = selectedDate
@@ -376,6 +378,7 @@ fun MainApp(viewModel: MainViewModel, aiViewModel: AiViewModel, backupViewModel:
                         onUpdateExcludedExercises = { viewModel.updateExcludedExercises(it) },
                         onUpdateShowMacros = { viewModel.updateShowMacros(it) },
                         onUpdateTodayThemeIndex = { viewModel.updateTodayThemeIndex(it) },
+                        onUpdateWeekStartDay = { viewModel.updateWeekStartDay(it) },
                         onCheckUpdate = { currentVersion -> viewModel.checkForUpdate(currentVersion) },
                         onDismissUpdateDialog = { viewModel.resetUpdateStatus() }
                     )

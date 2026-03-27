@@ -81,6 +81,21 @@ object CalorieUtils {
         }
     }
 
+    fun parseDecimalInput(raw: String): Double? {
+        val normalized = raw.trim().replace('，', '.')
+        if (normalized.isBlank()) return null
+        if (!normalized.matches(Regex("\\d+(\\.\\d+)?"))) return null
+        return normalized.toDoubleOrNull()
+    }
+
+    fun formatNumber(value: Double, maxDecimals: Int = 2): String {
+        if (!value.isFinite()) return "0"
+        val clipped = if (value == -0.0) 0.0 else value
+        val pattern = "%.${maxDecimals}f"
+        val raw = String.format(Locale.US, pattern, clipped)
+        return raw.trimEnd('0').trimEnd('.')
+    }
+
     // Activity Multipliers
     val ACTIVITY_MULTIPLIERS = mapOf(
         "sedentary" to 1.2f,

@@ -12,8 +12,8 @@ android {
         applicationId = "com.example.calorietracker"
         minSdk = 26
         targetSdk = 34
-        versionCode = 9
-        versionName = "1.4.1"
+        versionCode = 11
+        versionName = "1.4.4"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {

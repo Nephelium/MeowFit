@@ -28,10 +28,10 @@ data class AiConfig(
 
 data class AiResponseItem(
     val name: String,
-    val calories: Int,
-    val carbs: Int = 0,
-    val protein: Int = 0,
-    val fat: Int = 0,
+    val calories: Double,
+    val carbs: Double = 0.0,
+    val protein: Double = 0.0,
+    val fat: Double = 0.0,
     val type: String, // "food" or "exercise"
     val time: String? = null,
     val notes: String? = null
@@ -68,10 +68,10 @@ class AiService(context: Context) {
 
 "items" 数组中的每个对象应包含以下字段：
 - "name": (字符串) 食物或运动的名称（尽量具体）。
-- "calories": (整数) 估算的卡路里数值（食物为正数，运动消耗也为正数）。
-- "carbs": (整数) 碳水化合物（克），运动为0。
-- "protein": (整数) 蛋白质（克），运动为0。
-- "fat": (整数) 脂肪（克），运动为0。
+- "calories": (数字) 估算的卡路里数值（食物为正数，运动消耗也为正数，支持小数）。
+- "carbs": (数字) 碳水化合物（克），运动为0，支持小数。
+- "protein": (数字) 蛋白质（克），运动为0，支持小数。
+- "fat": (数字) 脂肪（克），运动为0，支持小数。
 - "type": (字符串) "food" 或 "exercise"。
 - "time": (字符串) 可选，时间（格式 HH:mm）。
 - "notes": (字符串) 可选，备注信息（份量、强度等）。

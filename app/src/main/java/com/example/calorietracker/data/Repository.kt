@@ -4,6 +4,7 @@ import com.example.calorietracker.util.CalorieUtils
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.firstOrNull
+import kotlin.math.roundToInt
 
 class CalorieRepository(private val userDao: UserDao, private val recordDao: RecordDao, private val aiDao: AiDao) {
 
@@ -128,6 +129,26 @@ class CalorieRepository(private val userDao: UserDao, private val recordDao: Rec
         }
     }
 
+    suspend fun updateWeekStartDay(weekStartDay: Int) {
+        val profile = userDao.getUserProfile().firstOrNull()
+        if (profile != null) {
+            userDao.insertUserProfile(profile.copy(weekStartDay = weekStartDay))
+        }
+    }
+
+    suspend fun searchRecentItemsByTypeAndPrefix(type: String, prefix: String, limit: Int = 8): List<CalorieItemEntity> {
+        val normalizedType = if (type == "exercise") "exercise" else "food"
+        val normalizedPrefix = prefix.trim()
+        if (normalizedPrefix.isBlank()) return emptyList()
+        return recordDao.searchRecentItemsByTypeAndKeyword(normalizedType, normalizedPrefix, limit)
+    }
+
+    suspend fun searchItemsByKeyword(keyword: String, limit: Int = 120): List<CalorieItemEntity> {
+        val normalizedKeyword = keyword.trim()
+        if (normalizedKeyword.isBlank()) return emptyList()
+        return recordDao.searchItemsByKeyword(normalizedKeyword, limit)
+    }
+
     private suspend fun updateDailyTotals(date: String) {
         val items = recordDao.getItemsForDate(date).first()
         val totalIntake = items.filter { it.type == "food" }.sumOf { it.calories }
@@ -147,12 +168,12 @@ class CalorieRepository(private val userDao: UserDao, private val recordDao: Rec
         }
         
         recordDao.updateDailyRecord(record.copy(
-            totalIntake = totalIntake,
-            totalBurned = totalBurned,
-            netCalories = net,
-            totalCarbs = totalCarbs,
-            totalProtein = totalProtein,
-            totalFat = totalFat
+            totalIntake = totalIntake.roundToInt(),
+            totalBurned = totalBurned.roundToInt(),
+            netCalories = net.roundToInt(),
+            totalCarbs = totalCarbs.roundToInt(),
+            totalProtein = totalProtein.roundToInt(),
+            totalFat = totalFat.roundToInt()
         ))
     }
 }

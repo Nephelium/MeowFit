@@ -20,6 +20,7 @@ import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.Calendar
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
@@ -39,6 +40,7 @@ data class BackupUserProfile(
     val dailyCalorieTarget: Int? = null,
     val sleepGoal: Float? = null,
     val showMacros: Boolean? = null,
+    val weekStartDay: Int? = null,
     val selectedTodayThemeIndex: Int? = null,
     val hasSelectedTodayTheme: Boolean? = null,
     val excludedExercises: String? = null,
@@ -59,6 +61,7 @@ data class BackupUserProfile(
             dailyCalorieTarget = dailyCalorieTarget ?: 2000,
             sleepGoal = sleepGoal ?: 7.5f,
             showMacros = showMacros ?: false,
+            weekStartDay = if (weekStartDay == Calendar.MONDAY) Calendar.MONDAY else Calendar.SUNDAY,
             selectedTodayThemeIndex = selectedTodayThemeIndex ?: 0,
             hasSelectedTodayTheme = hasSelectedTodayTheme ?: false,
             excludedExercises = excludedExercises ?: "",
@@ -82,6 +85,7 @@ data class BackupUserProfile(
                 dailyCalorieTarget = entity.dailyCalorieTarget,
                 sleepGoal = entity.sleepGoal,
                 showMacros = entity.showMacros,
+                weekStartDay = entity.weekStartDay,
                 selectedTodayThemeIndex = entity.selectedTodayThemeIndex,
                 hasSelectedTodayTheme = entity.hasSelectedTodayTheme,
                 excludedExercises = entity.excludedExercises,
@@ -161,15 +165,19 @@ class BackupManager(
                 ?: "${System.currentTimeMillis()}-${date.hashCode()}-${type.hashCode()}"
             val normalizedName = runCatching { item.name }.getOrNull().takeUnless { it.isNullOrBlank() }
                 ?: if (type == "exercise") "运动" else "食物"
+            val calories = runCatching { item.calories }.getOrDefault(0.0).let { if (it.isFinite()) it else 0.0 }.coerceAtLeast(0.0)
+            val carbs = runCatching { item.carbs }.getOrDefault(0.0).let { if (it.isFinite()) it else 0.0 }.coerceAtLeast(0.0)
+            val protein = runCatching { item.protein }.getOrDefault(0.0).let { if (it.isFinite()) it else 0.0 }.coerceAtLeast(0.0)
+            val fat = runCatching { item.fat }.getOrDefault(0.0).let { if (it.isFinite()) it else 0.0 }.coerceAtLeast(0.0)
             CalorieItemEntity(
                 id = normalizedId,
                 date = date,
                 type = type,
                 name = normalizedName,
-                calories = runCatching { item.calories }.getOrDefault(0).coerceAtLeast(0),
-                carbs = runCatching { item.carbs }.getOrDefault(0).coerceAtLeast(0),
-                protein = runCatching { item.protein }.getOrDefault(0).coerceAtLeast(0),
-                fat = runCatching { item.fat }.getOrDefault(0).coerceAtLeast(0),
+                calories = calories,
+                carbs = carbs,
+                protein = protein,
+                fat = fat,
                 time = normalizeTime(runCatching { item.time }.getOrNull()),
                 mealCategory = runCatching { item.mealCategory }.getOrNull(),
                 imageUrl = runCatching { item.imageUrl }.getOrNull(),

@@ -1,6 +1,7 @@
 package com.example.calorietracker.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -26,6 +27,7 @@ import com.example.calorietracker.data.UserProfileEntity
 
 import androidx.compose.material.icons.filled.Backup
 import androidx.compose.material.icons.filled.Bedtime
+import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material.icons.filled.Update
@@ -50,10 +52,11 @@ fun SettingsScreen(
     onUpdateExcludedExercises: (String) -> Unit,
     onUpdateShowMacros: (Boolean) -> Unit,
     onUpdateTodayThemeIndex: (Int) -> Unit,
+    onUpdateWeekStartDay: (Int) -> Unit,
     onCheckUpdate: (String) -> Unit = {},
     onDismissUpdateDialog: () -> Unit = {}
 ) {
-    val currentVersion = "1.4.2"
+    val currentVersion = "1.4.4"
     val isDarkTheme = androidx.compose.foundation.isSystemInDarkTheme()
     val selectedThemeIndex = userProfile?.selectedTodayThemeIndex ?: 0
     val selectedTheme = remember(selectedThemeIndex) { getTodayVisualTheme(selectedThemeIndex) }
@@ -66,6 +69,7 @@ fun SettingsScreen(
     var showSleepDialog by remember { mutableStateOf(false) }
     var showExcludedDialog by remember { mutableStateOf(false) }
     var showTodayThemeDialog by remember { mutableStateOf(false) }
+    var showWeekStartDialog by remember { mutableStateOf(false) }
     
     // Auto-show dialog if status changes to something relevant
     if (updateStatus !is UpdateStatus.Idle) {
@@ -116,6 +120,20 @@ fun SettingsScreen(
             onConfirm = {
                 onUpdateTodayThemeIndex(it)
                 showTodayThemeDialog = false
+            },
+            containerColor = cardColor,
+            textColor = onCardColor,
+            accentColor = accentColor
+        )
+    }
+
+    if (showWeekStartDialog) {
+        WeekStartDayDialog(
+            currentWeekStartDay = userProfile?.weekStartDay ?: java.util.Calendar.SUNDAY,
+            onDismiss = { showWeekStartDialog = false },
+            onConfirm = {
+                onUpdateWeekStartDay(it)
+                showWeekStartDialog = false
             },
             containerColor = cardColor,
             textColor = onCardColor,
@@ -224,6 +242,18 @@ fun SettingsScreen(
             title = "主页背景风格",
             subtitle = todayVisualThemePool[(userProfile?.selectedTodayThemeIndex ?: 0).coerceIn(0, todayVisualThemePool.lastIndex)].name,
             onClick = { showTodayThemeDialog = true },
+            cardColor = cardColor,
+            iconTint = accentColor,
+            textColor = onCardColor
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        SettingsItem(
+            icon = Icons.Default.DateRange,
+            title = "每周起始日",
+            subtitle = if ((userProfile?.weekStartDay ?: java.util.Calendar.SUNDAY) == java.util.Calendar.MONDAY) "周一" else "周日",
+            onClick = { showWeekStartDialog = true },
             cardColor = cardColor,
             iconTint = accentColor,
             textColor = onCardColor
@@ -731,6 +761,84 @@ fun SleepGoalDialog(
                         error = "请输入大于5且小于10的数值"
                     }
                 },
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = accentColor,
+                    contentColor = Color.White
+                )
+            ) {
+                Text("保存")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("取消", color = textColor.copy(alpha = 0.82f))
+            }
+        }
+    )
+}
+
+@Composable
+fun WeekStartDayDialog(
+    currentWeekStartDay: Int,
+    onDismiss: () -> Unit,
+    onConfirm: (Int) -> Unit,
+    containerColor: Color,
+    textColor: Color,
+    accentColor: Color
+) {
+    var selectedDay by remember(currentWeekStartDay) {
+        mutableIntStateOf(if (currentWeekStartDay == java.util.Calendar.MONDAY) java.util.Calendar.MONDAY else java.util.Calendar.SUNDAY)
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("设置每周起始日") },
+        containerColor = containerColor,
+        titleContentColor = textColor,
+        textContentColor = textColor,
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                listOf(
+                    java.util.Calendar.SUNDAY to "周日",
+                    java.util.Calendar.MONDAY to "周一"
+                ).forEach { (value, label) ->
+                    Surface(
+                        onClick = { selectedDay = value },
+                        shape = RoundedCornerShape(14.dp),
+                        color = if (selectedDay == value) accentColor.copy(alpha = 0.14f) else MaterialTheme.colorScheme.surface.copy(alpha = 0.45f),
+                        border = BorderStroke(
+                            width = 1.dp,
+                            color = if (selectedDay == value) accentColor.copy(alpha = 0.7f) else textColor.copy(alpha = 0.2f)
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = label,
+                                color = if (selectedDay == value) accentColor else textColor.copy(alpha = 0.92f)
+                            )
+                            RadioButton(
+                                selected = selectedDay == value,
+                                onClick = null,
+                                colors = RadioButtonDefaults.colors(
+                                    selectedColor = accentColor,
+                                    unselectedColor = textColor.copy(alpha = 0.48f)
+                                )
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { onConfirm(selectedDay) },
                 colors = ButtonDefaults.buttonColors(
                     containerColor = accentColor,
                     contentColor = Color.White

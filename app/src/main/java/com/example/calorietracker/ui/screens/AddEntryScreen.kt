@@ -1,8 +1,12 @@
 package com.example.calorietracker.ui.screens
 
+import android.Manifest
+import android.content.Context
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -20,7 +24,6 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AddPhotoAlternate
-import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
@@ -49,7 +52,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import coil.compose.AsyncImage
+import com.example.calorietracker.CalorieTrackerApp
+import com.example.calorietracker.data.CalorieItemEntity
 import com.example.calorietracker.ui.AiUiState
 import com.example.calorietracker.ui.AiViewModel
 import com.example.calorietracker.util.CalorieUtils
@@ -59,19 +66,85 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
+import kotlinx.coroutines.delay
 
 data class EntryItem(
     val type: String, // "food" or "exercise"
     val name: String,
-    val calories: Int,
-    val carbs: Int = 0,
-    val protein: Int = 0,
-    val fat: Int = 0,
+    val calories: Double,
+    val carbs: Double = 0.0,
+    val protein: Double = 0.0,
+    val fat: Double = 0.0,
     val time: String = "",
     val mealCategory: String? = null,
     val notes: String = "",
     val imagePath: String? = null
 )
+
+private fun createTempCameraUri(context: Context): Uri? {
+    return runCatching {
+        val file = File.createTempFile("meowfit_camera_", ".jpg", context.cacheDir)
+        FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+    }.getOrNull()
+}
+
+private fun allowDecimalInput(text: String): Boolean {
+    if (text.isEmpty()) return true
+    return text.matches(Regex("\\d*(\\.\\d{0,2})?"))
+}
+
+@Composable
+private fun MediaSourceDialog(
+    cardColor: Color,
+    textColor: Color,
+    accentColor: Color,
+    onDismiss: () -> Unit,
+    onPickAlbum: () -> Unit,
+    onTakePhoto: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = cardColor,
+        titleContentColor = textColor,
+        textContentColor = textColor,
+        title = { Text("选择图片来源") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(
+                    onClick = onPickAlbum,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        containerColor = cardColor.copy(alpha = 0.96f),
+                        contentColor = accentColor
+                    ),
+                    border = BorderStroke(1.dp, accentColor.copy(alpha = 0.56f))
+                ) {
+                    Text("从相册选择", color = accentColor)
+                }
+                OutlinedButton(
+                    onClick = onTakePhoto,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        containerColor = cardColor.copy(alpha = 0.96f),
+                        contentColor = accentColor
+                    ),
+                    border = BorderStroke(1.dp, accentColor.copy(alpha = 0.56f))
+                ) {
+                    Text("拍照", color = accentColor)
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(
+                onClick = onDismiss,
+                colors = ButtonDefaults.textButtonColors(contentColor = accentColor)
+            ) {
+                Text("取消", color = accentColor)
+            }
+        }
+    )
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -185,13 +258,39 @@ fun ManualInputTab(
     var endTime by remember { mutableStateOf("") }
     var notes by remember { mutableStateOf("") }
     var selectedImageUri by remember { mutableStateOf<Uri?>(null) }
+    var pendingCameraUri by remember { mutableStateOf<Uri?>(null) }
+    var showMediaSourceDialog by remember { mutableStateOf(false) }
+    var historySuggestions by remember { mutableStateOf<List<CalorieItemEntity>>(emptyList()) }
+    val context = LocalContext.current
     val imagePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
     ) { uri ->
         selectedImageUri = uri
     }
+    val cameraLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicture()
+    ) { success ->
+        if (success) {
+            selectedImageUri = pendingCameraUri
+        }
+    }
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            val uri = createTempCameraUri(context)
+            if (uri == null) {
+                Toast.makeText(context, "无法创建拍照文件", Toast.LENGTH_SHORT).show()
+            } else {
+                pendingCameraUri = uri
+                cameraLauncher.launch(uri)
+            }
+        } else {
+            Toast.makeText(context, "相机权限被拒绝", Toast.LENGTH_SHORT).show()
+        }
+    }
 
-    val context = LocalContext.current
+    val app = context.applicationContext as CalorieTrackerApp
     val calendar = Calendar.getInstance()
     val hour = calendar.get(Calendar.HOUR_OF_DAY)
     val minute = calendar.get(Calendar.MINUTE)
@@ -214,6 +313,18 @@ fun ManualInputTab(
         if (type == "food" && !mealCategoryTouched) {
             val categoryTime = if (time.isBlank()) defaultNowTime else time
             selectedMealCategory = CalorieUtils.getMealCategoryByTime(categoryTime).label
+        }
+    }
+
+    LaunchedEffect(type, name) {
+        val keyword = name.trim()
+        if (keyword.isBlank()) {
+            historySuggestions = emptyList()
+        } else {
+            delay(120)
+            historySuggestions = app.repository
+                .searchRecentItemsByTypeAndPrefix(type, keyword, 8)
+                .distinctBy { it.name }
         }
     }
 
@@ -321,11 +432,49 @@ fun ManualInputTab(
                         singleLine = true
                     )
 
+                    if (historySuggestions.isNotEmpty()) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f), RoundedCornerShape(12.dp))
+                                .padding(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            historySuggestions.forEach { historyItem ->
+                                Surface(
+                                    onClick = {
+                                        name = historyItem.name
+                                        calories = CalorieUtils.formatNumber(historyItem.calories)
+                                        carbs = CalorieUtils.formatNumber(historyItem.carbs)
+                                        protein = CalorieUtils.formatNumber(historyItem.protein)
+                                        fat = CalorieUtils.formatNumber(historyItem.fat)
+                                        notes = historyItem.notes.orEmpty()
+                                        historySuggestions = emptyList()
+                                    },
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 10.dp, vertical = 8.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(historyItem.name, color = onCardColor, style = MaterialTheme.typography.bodyMedium)
+                                        Text("${CalorieUtils.formatNumber(historyItem.calories)} kcal", color = onCardColor.copy(alpha = 0.72f), style = MaterialTheme.typography.bodySmall)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     OutlinedTextField(
                         value = calories,
-                        onValueChange = { calories = it },
+                        onValueChange = { if (allowDecimalInput(it)) calories = it },
                         label = { Text("热量 (kcal)") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                         modifier = Modifier.fillMaxWidth(),
                         leadingIcon = { Icon(Icons.Default.Star, null) }, // Use star icon as fallback for calories
                         shape = RoundedCornerShape(12.dp),
@@ -336,27 +485,27 @@ fun ManualInputTab(
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             OutlinedTextField(
                                 value = carbs,
-                                onValueChange = { if (it.all { char -> char.isDigit() }) carbs = it },
+                                onValueChange = { if (allowDecimalInput(it)) carbs = it },
                                 label = { Text("碳水") },
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                                 modifier = Modifier.weight(1f),
                                 shape = RoundedCornerShape(12.dp),
                                 singleLine = true
                             )
                             OutlinedTextField(
                                 value = protein,
-                                onValueChange = { if (it.all { char -> char.isDigit() }) protein = it },
+                                onValueChange = { if (allowDecimalInput(it)) protein = it },
                                 label = { Text("蛋白质") },
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                                 modifier = Modifier.weight(1f),
                                 shape = RoundedCornerShape(12.dp),
                                 singleLine = true
                             )
                             OutlinedTextField(
                                 value = fat,
-                                onValueChange = { if (it.all { char -> char.isDigit() }) fat = it },
+                                onValueChange = { if (allowDecimalInput(it)) fat = it },
                                 label = { Text("脂肪") },
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                                 modifier = Modifier.weight(1f),
                                 shape = RoundedCornerShape(12.dp),
                                 singleLine = true
@@ -471,7 +620,7 @@ fun ManualInputTab(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         OutlinedButton(
-                            onClick = { imagePickerLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                            onClick = { showMediaSourceDialog = true },
                             colors = ButtonDefaults.outlinedButtonColors(
                                 containerColor = cardColor.copy(alpha = 0.96f),
                                 contentColor = accentColor
@@ -506,12 +655,12 @@ fun ManualInputTab(
         item {
             Button(
                 onClick = {
-                    val calInt = calories.toIntOrNull() ?: 0
-                    val carbsInt = carbs.toIntOrNull() ?: 0
-                    val proteinInt = protein.toIntOrNull() ?: 0
-                    val fatInt = fat.toIntOrNull() ?: 0
+                    val calValue = CalorieUtils.parseDecimalInput(calories) ?: 0.0
+                    val carbsValue = CalorieUtils.parseDecimalInput(carbs) ?: 0.0
+                    val proteinValue = CalorieUtils.parseDecimalInput(protein) ?: 0.0
+                    val fatValue = CalorieUtils.parseDecimalInput(fat) ?: 0.0
                     
-                    if (name.isNotEmpty() && calInt > 0) {
+                    if (name.isNotEmpty() && calValue > 0.0) {
                         val compressedImagePath = selectedImageUri?.let { ImageStorageUtils.compressAndSaveImage(context, it) }
                         if (type == "exercise") {
                             val duration = calculateDuration()
@@ -520,16 +669,16 @@ fun ManualInputTab(
                             val durationNote = if (duration > 0) "时长: $duration 分钟" else ""
                             val finalNotes = if (notes.isNotBlank()) "$notes${if(durationNote.isNotBlank()) ", $durationNote" else ""}" else durationNote
                             
-                            onSave(EntryItem(type = type, name = name, calories = calInt, time = recordTime, notes = finalNotes, imagePath = compressedImagePath))
+                            onSave(EntryItem(type = type, name = name, calories = calValue, time = recordTime, notes = finalNotes, imagePath = compressedImagePath))
                         } else {
                             onSave(
                                 EntryItem(
                                     type = type,
                                     name = name,
-                                    calories = calInt,
-                                    carbs = carbsInt,
-                                    protein = proteinInt,
-                                    fat = fatInt,
+                                    calories = calValue,
+                                    carbs = carbsValue,
+                                    protein = proteinValue,
+                                    fat = fatValue,
                                     time = time,
                                     mealCategory = selectedMealCategory,
                                     notes = notes,
@@ -614,6 +763,33 @@ fun ManualInputTab(
             }
         )
     }
+
+    if (showMediaSourceDialog) {
+        MediaSourceDialog(
+            cardColor = cardColor,
+            textColor = onCardColor,
+            accentColor = accentColor,
+            onDismiss = { showMediaSourceDialog = false },
+            onPickAlbum = {
+                showMediaSourceDialog = false
+                imagePickerLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+            },
+            onTakePhoto = {
+                showMediaSourceDialog = false
+                if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+                    val uri = createTempCameraUri(context)
+                    if (uri == null) {
+                        Toast.makeText(context, "无法创建拍照文件", Toast.LENGTH_SHORT).show()
+                    } else {
+                        pendingCameraUri = uri
+                        cameraLauncher.launch(uri)
+                    }
+                } else {
+                    cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                }
+            }
+        )
+    }
 }
 
 @Composable
@@ -645,12 +821,36 @@ fun AiDialogueTab(
     
     // Image selection
     var selectedImageUris by remember { mutableStateOf<List<Uri>>(emptyList()) }
+    var pendingCameraUri by remember { mutableStateOf<Uri?>(null) }
+    var showMediaSourceDialog by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val launcher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickMultipleVisualMedia()
     ) { uris ->
         if (uris.isNotEmpty()) {
             selectedImageUris = uris
+        }
+    }
+    val cameraLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicture()
+    ) { success ->
+        if (success && pendingCameraUri != null) {
+            selectedImageUris = selectedImageUris + listOfNotNull(pendingCameraUri)
+        }
+    }
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            val uri = createTempCameraUri(context)
+            if (uri == null) {
+                Toast.makeText(context, "无法创建拍照文件", Toast.LENGTH_SHORT).show()
+            } else {
+                pendingCameraUri = uri
+                cameraLauncher.launch(uri)
+            }
+        } else {
+            Toast.makeText(context, "相机权限被拒绝", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -810,7 +1010,7 @@ fun AiDialogueTab(
                         colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = Color.White)
                     ) {
                         val totalCal = recognizedItems.sumOf { if (it.type == "food") it.calories else -it.calories }
-                        Text("确认添加 ($totalCal kcal)")
+                        Text("确认添加 (${CalorieUtils.formatNumber(totalCal)} kcal)")
                     }
                 }
             }
@@ -856,7 +1056,7 @@ fun AiDialogueTab(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     IconButton(onClick = { 
-                        launcher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                        showMediaSourceDialog = true
                     }) {
                         Icon(Icons.Default.AddPhotoAlternate, contentDescription = "Image", tint = accentColor)
                     }
@@ -898,6 +1098,32 @@ fun AiDialogueTab(
                     }
                 }
             }
+        }
+        if (showMediaSourceDialog) {
+            MediaSourceDialog(
+                cardColor = cardColor,
+                textColor = onCardColor,
+                accentColor = accentColor,
+                onDismiss = { showMediaSourceDialog = false },
+                onPickAlbum = {
+                    showMediaSourceDialog = false
+                    launcher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                },
+                onTakePhoto = {
+                    showMediaSourceDialog = false
+                    if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+                        val uri = createTempCameraUri(context)
+                        if (uri == null) {
+                            Toast.makeText(context, "无法创建拍照文件", Toast.LENGTH_SHORT).show()
+                        } else {
+                            pendingCameraUri = uri
+                            cameraLauncher.launch(uri)
+                        }
+                    } else {
+                        cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                    }
+                }
+            )
         }
         }
         
@@ -1031,6 +1257,8 @@ fun PhotoRecognitionTab(
 ) {
     val context = LocalContext.current
     var selectedImageUris by remember { mutableStateOf<List<Uri>>(emptyList()) }
+    var pendingCameraUri by remember { mutableStateOf<Uri?>(null) }
+    var showMediaSourceDialog by remember { mutableStateOf(false) }
     val uiState by viewModel.photoUiState.collectAsState()
     
     val recognizedItems by viewModel.photoItemsFlow.collectAsState()
@@ -1044,6 +1272,30 @@ fun PhotoRecognitionTab(
             // Auto reset state on new image
             viewModel.clearPhotoState()
             viewModel.clearPhotoItems() // Clear previous results when selecting new images
+        }
+    }
+    val cameraLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicture()
+    ) { success ->
+        if (success && pendingCameraUri != null) {
+            selectedImageUris = selectedImageUris + listOfNotNull(pendingCameraUri)
+            viewModel.clearPhotoState()
+            viewModel.clearPhotoItems()
+        }
+    }
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            val uri = createTempCameraUri(context)
+            if (uri == null) {
+                Toast.makeText(context, "无法创建拍照文件", Toast.LENGTH_SHORT).show()
+            } else {
+                pendingCameraUri = uri
+                cameraLauncher.launch(uri)
+            }
+        } else {
+            Toast.makeText(context, "相机权限被拒绝", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -1077,7 +1329,7 @@ fun PhotoRecognitionTab(
                     .height(200.dp)
                     .clip(RoundedCornerShape(16.dp))
                     .background(cardColor.copy(alpha = 0.8f))
-                    .clickable { launcher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                    .clickable { showMediaSourceDialog = true },
                 contentAlignment = Alignment.Center
             ) {
                 if (selectedImageUris.isNotEmpty()) {
@@ -1127,57 +1379,39 @@ fun PhotoRecognitionTab(
 
         // 3. Action Buttons
         item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                Button(
-                    onClick = { 
-                        launcher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-                    },
-                    modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = cardColor.copy(alpha = 0.92f), contentColor = onCardColor)
-                ) {
-                    Icon(Icons.Default.CameraAlt, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("重选")
-                }
-                
-                Button(
-                    onClick = {
-                        if (selectedImageUris.isNotEmpty()) {
-                            val bitmaps = selectedImageUris.mapNotNull { uri ->
-                                try {
-                                    val inputStream = context.contentResolver.openInputStream(uri)
-                                    BitmapFactory.decodeStream(inputStream)
-                                } catch (e: Exception) {
-                                    null
-                                }
-                            }
-                            if (bitmaps.isNotEmpty()) {
-                                viewModel.analyzeImage(bitmaps, userWeight, notes)
+            Button(
+                onClick = {
+                    if (selectedImageUris.isNotEmpty()) {
+                        val bitmaps = selectedImageUris.mapNotNull { uri ->
+                            try {
+                                val inputStream = context.contentResolver.openInputStream(uri)
+                                BitmapFactory.decodeStream(inputStream)
+                            } catch (e: Exception) {
+                                null
                             }
                         }
-                    },
-                    enabled = selectedImageUris.isNotEmpty() && uiState !is AiUiState.Loading,
-                    modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = Color.White)
-                ) {
-                    if (uiState is AiUiState.Loading) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(18.dp),
-                            color = MaterialTheme.colorScheme.onPrimary,
-                            strokeWidth = 2.dp
-                        )
-                    } else {
-                        Text("开始识别")
+                        if (bitmaps.isNotEmpty()) {
+                            viewModel.analyzeImage(bitmaps, userWeight, notes)
+                        }
                     }
+                },
+                enabled = selectedImageUris.isNotEmpty() && uiState !is AiUiState.Loading,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = Color.White)
+            ) {
+                if (uiState is AiUiState.Loading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        color = MaterialTheme.colorScheme.onPrimary,
+                        strokeWidth = 2.dp
+                    )
+                } else {
+                    Text("开始识别")
                 }
             }
         }
-        
+
         // 4. Error Message
         if (uiState is AiUiState.Error) {
             item {
@@ -1258,6 +1492,33 @@ fun PhotoRecognitionTab(
             }
         }
     }
+
+    if (showMediaSourceDialog) {
+        MediaSourceDialog(
+            cardColor = cardColor,
+            textColor = onCardColor,
+            accentColor = accentColor,
+            onDismiss = { showMediaSourceDialog = false },
+            onPickAlbum = {
+                showMediaSourceDialog = false
+                launcher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+            },
+            onTakePhoto = {
+                showMediaSourceDialog = false
+                if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+                    val uri = createTempCameraUri(context)
+                    if (uri == null) {
+                        Toast.makeText(context, "无法创建拍照文件", Toast.LENGTH_SHORT).show()
+                    } else {
+                        pendingCameraUri = uri
+                        cameraLauncher.launch(uri)
+                    }
+                } else {
+                    cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                }
+            }
+        )
+    }
 }
 
 @Composable
@@ -1287,9 +1548,9 @@ fun RecognizedItemCard(
                 val notesInfo = if (item.notes.isNotBlank()) " · ${item.notes}" else ""
                 val imageInfo = if (!item.imagePath.isNullOrBlank()) " · 已附图" else ""
                 val macroInfo = if (showMacros && item.type == "food") {
-                    " · 碳${item.carbs} 蛋${item.protein} 脂${item.fat}"
+                    " · 碳${CalorieUtils.formatNumber(item.carbs)} 蛋${CalorieUtils.formatNumber(item.protein)} 脂${CalorieUtils.formatNumber(item.fat)}"
                 } else ""
-                Text("${item.calories} kcal · ${if (item.type == "food") "食物" else "运动"}$macroInfo$timeInfo$notesInfo$imageInfo", style = MaterialTheme.typography.bodySmall, color = onCardColor.copy(alpha = 0.72f))
+                Text("${CalorieUtils.formatNumber(item.calories)} kcal · ${if (item.type == "food") "食物" else "运动"}$macroInfo$timeInfo$notesInfo$imageInfo", style = MaterialTheme.typography.bodySmall, color = onCardColor.copy(alpha = 0.72f))
             }
             IconButton(onClick = onEdit) {
                 Icon(Icons.Default.Edit, contentDescription = "Edit", tint = accentColor)
@@ -1312,10 +1573,10 @@ fun EditEntryDialog(
     onConfirm: (EntryItem) -> Unit
 ) {
     var name by remember { mutableStateOf(item.name) }
-    var calories by remember { mutableStateOf(item.calories.toString()) }
-    var carbs by remember { mutableStateOf(item.carbs.toString()) }
-    var protein by remember { mutableStateOf(item.protein.toString()) }
-    var fat by remember { mutableStateOf(item.fat.toString()) }
+    var calories by remember { mutableStateOf(CalorieUtils.formatNumber(item.calories)) }
+    var carbs by remember { mutableStateOf(CalorieUtils.formatNumber(item.carbs)) }
+    var protein by remember { mutableStateOf(CalorieUtils.formatNumber(item.protein)) }
+    var fat by remember { mutableStateOf(CalorieUtils.formatNumber(item.fat)) }
     var time by remember { mutableStateOf(item.time) }
     var notes by remember { mutableStateOf(item.notes) }
 
@@ -1334,9 +1595,9 @@ fun EditEntryDialog(
                 )
                 OutlinedTextField(
                     value = calories,
-                    onValueChange = { calories = it },
+                    onValueChange = { if (allowDecimalInput(it)) calories = it },
                     label = { Text("卡路里") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp)
                 )
@@ -1345,25 +1606,25 @@ fun EditEntryDialog(
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedTextField(
                             value = carbs,
-                            onValueChange = { if (it.all { char -> char.isDigit() }) carbs = it },
+                            onValueChange = { if (allowDecimalInput(it)) carbs = it },
                             label = { Text("碳水") },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                             modifier = Modifier.weight(1f),
                             shape = RoundedCornerShape(12.dp)
                         )
                         OutlinedTextField(
                             value = protein,
-                            onValueChange = { if (it.all { char -> char.isDigit() }) protein = it },
+                            onValueChange = { if (allowDecimalInput(it)) protein = it },
                             label = { Text("蛋白质") },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                             modifier = Modifier.weight(1f),
                             shape = RoundedCornerShape(12.dp)
                         )
                         OutlinedTextField(
                             value = fat,
-                            onValueChange = { if (it.all { char -> char.isDigit() }) fat = it },
+                            onValueChange = { if (allowDecimalInput(it)) fat = it },
                             label = { Text("脂肪") },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                             modifier = Modifier.weight(1f),
                             shape = RoundedCornerShape(12.dp)
                         )
@@ -1392,10 +1653,10 @@ fun EditEntryDialog(
         confirmButton = {
             Button(
                 onClick = {
-                val cal = calories.toIntOrNull() ?: 0
-                val c = carbs.toIntOrNull() ?: 0
-                val p = protein.toIntOrNull() ?: 0
-                val f = fat.toIntOrNull() ?: 0
+                val cal = CalorieUtils.parseDecimalInput(calories) ?: 0.0
+                val c = CalorieUtils.parseDecimalInput(carbs) ?: 0.0
+                val p = CalorieUtils.parseDecimalInput(protein) ?: 0.0
+                val f = CalorieUtils.parseDecimalInput(fat) ?: 0.0
 
                 if (name.isNotBlank()) {
                     onConfirm(item.copy(name = name, calories = cal, carbs = c, protein = p, fat = f, time = time, notes = notes))

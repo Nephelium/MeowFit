@@ -45,6 +45,7 @@ import com.example.calorietracker.util.CalorieUtils
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
+import kotlin.math.roundToInt
 
 // Enum for Tabs
 enum class StatsTab(val label: String) {
@@ -406,7 +407,7 @@ fun DateNavigator(tab: StatsTab, calendar: Calendar, accentColor: Color, textCol
 fun StatsGrid(
     totalDuration: Int,
     totalSessions: Int,
-    totalCalories: Int,
+    totalCalories: Double,
     avgDuration: Int,
     cardColor: Color,
     accentColor: Color,
@@ -437,7 +438,7 @@ fun StatsGrid(
             StatsCardItem(
                 modifier = Modifier.weight(1f),
                 label = "消耗热量",
-                value = "$totalCalories kcal",
+                value = "${CalorieUtils.formatNumber(totalCalories)} kcal",
                 icon = Icons.Default.Star,
                 color = accentColor,
                 cardColor = cardColor,
@@ -542,7 +543,7 @@ fun ExerciseHistoryItem(item: CalorieItemEntity, cardColor: Color, accentColor: 
             
             Column(horizontalAlignment = Alignment.End) {
                 Text(
-                    text = "-${item.calories} kcal",
+                    text = "-${CalorieUtils.formatNumber(item.calories)} kcal",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = accentColor
@@ -673,7 +674,7 @@ fun generateChartData(
         return if (metric == ChartMetric.DURATION) {
             durationMap[item.id] ?: 0
         } else {
-            item.calories
+            item.calories.roundToInt()
         }
     }
     

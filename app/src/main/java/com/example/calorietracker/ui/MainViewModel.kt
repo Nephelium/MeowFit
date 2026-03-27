@@ -56,10 +56,10 @@ class MainViewModel(private val repository: CalorieRepository) : ViewModel() {
     fun addRecordItem(
         type: String, 
         name: String, 
-        calories: Int, 
-        carbs: Int = 0, 
-        protein: Int = 0, 
-        fat: Int = 0, 
+        calories: Double, 
+        carbs: Double = 0.0, 
+        protein: Double = 0.0, 
+        fat: Double = 0.0, 
         time: String = "", 
         mealCategory: String? = null,
         notes: String? = null, 
@@ -122,6 +122,12 @@ class MainViewModel(private val repository: CalorieRepository) : ViewModel() {
     fun updateTodayThemeIndex(index: Int) {
         viewModelScope.launch {
             repository.updateTodayThemeIndex(index)
+        }
+    }
+
+    fun updateWeekStartDay(weekStartDay: Int) {
+        viewModelScope.launch {
+            repository.updateWeekStartDay(weekStartDay)
         }
     }
 
