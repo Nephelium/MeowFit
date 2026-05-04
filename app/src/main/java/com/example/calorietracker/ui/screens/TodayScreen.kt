@@ -3034,7 +3034,12 @@ fun generateTodayLongScreenshot(
         val iconBitmap = BitmapFactory.decodeResource(context.resources, iconId)
         if (iconBitmap != null) {
             val scaled = Bitmap.createScaledBitmap(iconBitmap, iconSize.toInt(), iconSize.toInt(), true)
+            canvas.save()
+            val iconClipPath = android.graphics.Path()
+            iconClipPath.addRoundRect(android.graphics.RectF(iconX, iconY, iconX + iconSize, iconY + iconSize), 18f, 18f, android.graphics.Path.Direction.CW)
+            canvas.clipPath(iconClipPath)
             canvas.drawBitmap(scaled, iconX, iconY, null)
+            canvas.restore()
         }
     } else {
         paint.color = selectedTheme.lightTopGradientColor
