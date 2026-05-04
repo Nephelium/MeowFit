@@ -20,7 +20,7 @@ import java.util.Locale
 
 class BackupViewModel(application: Application) : AndroidViewModel(application) {
     private val db = AppDatabase.getDatabase(application)
-    private val backupManager = BackupManager(application, db.userDao(), db.recordDao())
+    private val backupManager = BackupManager(application, db.userDao(), db.recordDao(), db.analysisDao())
 
     private val _status = MutableStateFlow<String>("就绪")
     val status: StateFlow<String> = _status.asStateFlow()
@@ -88,7 +88,7 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
             _status.value = "正在备份到下载目录..."
             try {
                 val data = backupManager.performAutoBackup() // Re-use auto backup logic which includes export
-                _status.value = if (data) "备份成功: MeowFit_Backup_..." else "备份失败"
+                _status.value = if (data) "备份成功: MeowFit_AutoBackup.zip" else "备份失败"
                 // Update last auto backup time since we ran it
                 _lastAutoBackupTime.value = formatTime(backupManager.getAutoBackupTime())
             } catch (e: Exception) {

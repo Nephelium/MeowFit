@@ -2,6 +2,7 @@ package com.example.calorietracker.ui.screens
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.*
+import androidx.compose.foundation.gestures.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -18,12 +19,15 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.*
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.compositeOver
@@ -46,7 +50,9 @@ import java.util.*
 import com.example.calorietracker.data.UserProfileEntity
 import com.example.calorietracker.util.CalorieUtils
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import android.graphics.Bitmap
 import android.graphics.Canvas as AndroidCanvas
 import android.view.View
@@ -133,6 +139,136 @@ private fun weekLabels(weekStartDay: Int): List<String> {
     }
 }
 
+private data class ChartPoint(
+    val date: java.time.LocalDate,
+    val value: Float,
+    val isInterpolated: Boolean = false
+)
+
+private fun prepareChartData(
+    records: List<DailyRecordEntity>,
+    allItems: List<CalorieItemEntity>,
+    userProfile: UserProfileEntity?,
+    metric: HeatmapMetric,
+    smoothDays: Int,
+    startDate: java.time.LocalDate,
+    endDate: java.time.LocalDate
+): List<ChartPoint> {
+    val recordMap = records.mapNotNull { record ->
+        val parsed = parseDate(record.date) ?: return@mapNotNull null
+        java.time.LocalDate.of(parsed.year, parsed.month, parsed.day) to record
+    }.toMap()
+
+    val excludedList = userProfile?.excludedExercises?.split(",")?.map { it.trim() } ?: emptyList()
+
+    fun getValue(date: java.time.LocalDate): Float? {
+        val record = recordMap[date] ?: return null
+        return when (metric) {
+            HeatmapMetric.Sleep -> {
+                val v = record.sleepDuration
+                if (v > 0) v / 60f else null
+            }
+            HeatmapMetric.Water -> {
+                val v = record.totalWater
+                if (v > 0) v.toFloat() else null
+            }
+            HeatmapMetric.Intake -> {
+                val v = record.totalIntake
+                if (v > 0) v.toFloat() else null
+            }
+            HeatmapMetric.Burned -> {
+                val dayItems = allItems.filter {
+                    val d = parseDate(it.date) ?: return@filter false
+                    java.time.LocalDate.of(d.year, d.month, d.day) == date && it.type == "exercise"
+                }
+                val validItems = dayItems.filter { !excludedList.contains(it.name) }
+                val burned = validItems.sumOf { it.calories }.roundToInt()
+                if (burned > 0) burned.toFloat() else null
+            }
+            HeatmapMetric.Net -> {
+                val intake = record.totalIntake
+                val burned = record.totalBurned
+                val target = computeTarget(date.toString(), records, userProfile)
+                if (intake > 0 || burned > 0) (intake - (target + burned)).toFloat() else null
+            }
+            HeatmapMetric.Weight -> {
+                val w = record.weight
+                if (w != null && w.isFinite() && w > 0f) w else null
+            }
+        }
+    }
+
+    if (metric != HeatmapMetric.Weight || smoothDays <= 1) {
+        // Non-weight or no interpolation: only return days with actual data
+        val points = mutableListOf<ChartPoint>()
+        var date = startDate
+        while (!date.isAfter(endDate)) {
+            val value = getValue(date)
+            if (value != null) {
+                points.add(ChartPoint(date, value))
+            }
+            date = date.plusDays(1)
+        }
+        return points
+    }
+
+    // Weight with interpolation
+    val allDays = mutableListOf<Pair<java.time.LocalDate, Float?>>()
+    var date = startDate
+    while (!date.isAfter(endDate)) {
+        allDays.add(date to getValue(date))
+        date = date.plusDays(1)
+    }
+
+    val points = mutableListOf<ChartPoint>()
+    var i = 0
+    while (i < allDays.size) {
+        val (d, v) = allDays[i]
+        if (v != null) {
+            points.add(ChartPoint(d, v))
+            i++
+            continue
+        }
+        // Find the gap: from i, look ahead to find the next recorded value
+        var gapStart = i
+        while (gapStart > 0 && allDays[gapStart - 1].second == null) gapStart--
+        // Actually find the previous valid index
+        var prevIdx = i - 1
+        while (prevIdx >= 0 && allDays[prevIdx].second == null) prevIdx--
+
+        var nextIdx = i
+        while (nextIdx < allDays.size && allDays[nextIdx].second == null) nextIdx++
+
+        if (prevIdx >= 0 && nextIdx < allDays.size) {
+            val gapSize = nextIdx - prevIdx - 1
+            if (gapSize <= smoothDays) {
+                val prevVal = allDays[prevIdx].second!!
+                val nextVal = allDays[nextIdx].second!!
+                val totalGap = nextIdx - prevIdx
+                for (gapDay in (prevIdx + 1) until nextIdx) {
+                    val fraction = (gapDay - prevIdx).toFloat() / totalGap
+                    val interpVal = prevVal + (nextVal - prevVal) * fraction
+                    points.add(ChartPoint(allDays[gapDay].first, interpVal, isInterpolated = true))
+                }
+                i = nextIdx
+            } else {
+                i = nextIdx
+            }
+        } else {
+            i++
+        }
+    }
+
+    return points.sortedBy { it.date }
+}
+
+private fun computeTarget(dateStr: String, records: List<DailyRecordEntity>, userProfile: UserProfileEntity?): Int {
+    val profile = userProfile ?: return 2000
+    val weight = CalorieUtils.getEffectiveWeight(dateStr, records, userProfile)
+    val currentAge = if (profile.birthDate.isNotBlank()) CalorieUtils.calculateAge(profile.birthDate) else profile.age
+    return CalorieUtils.calculateDailyTarget(profile.gender, weight, profile.height, currentAge, profile.activityLevel, profile.goal)
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun OverviewScreen(
@@ -152,7 +288,7 @@ fun OverviewScreen(
     val selectedTheme = remember(selectedThemeIndex) { getTodayVisualTheme(selectedThemeIndex) }
     val backgroundSeed = remember(selectedThemeIndex) { (selectedThemeIndex + 1) * 1031 }
     val cardColor = remember(selectedTheme, isDarkTheme) { themedDashboardCardColor(selectedTheme, isDarkTheme) }
-    val onCardColor = if (isDarkTheme) Color.White else if (calculatePerceivedLuminance(cardColor) > 0.5f) Color(0xFF1E1E1E) else Color(0xFFF4F4F4)
+    val onCardColor = com.example.calorietracker.ui.theme.onCardColor(cardColor, isDarkTheme)
     val accentColor = remember(selectedTheme, isDarkTheme) { themedAccentColor(selectedTheme, isDarkTheme) }
     val weekStartDay = normalizeWeekStartDay(userProfile?.weekStartDay ?: Calendar.SUNDAY)
 
@@ -366,17 +502,14 @@ fun OverviewScreen(
                     elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
-                        Text(
-                            text = "体重趋势",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = onCardColor.copy(alpha = 0.86f)
-                        )
-                        Spacer(modifier = Modifier.height(16.dp))
 
-                        SmoothWeightChart(
+                        MetricTrendChart(
                             year = selectedYear,
                             month = selectedMonth,
                             records = records,
+                            allItems = allItems,
+                            userProfile = userProfile,
+                            metric = heatmapMetric,
                             accentColor = accentColor,
                             contentColor = onCardColor
                         )
@@ -764,8 +897,7 @@ fun generateCalendarBitmap(
     canvas.translate(padding, 260f)
     staticLayout.draw(canvas)
     canvas.restore()
-    
-    // Helper for text color based on brightness
+
     fun getContrastColor(color: Int): Int {
         if (color == android.graphics.Color.TRANSPARENT) return android.graphics.Color.parseColor("#333333") // Dark gray for empty cells
         
@@ -781,8 +913,7 @@ fun generateCalendarBitmap(
             // Semi-transparent white for empty cells to blend with background but stay readable
             return android.graphics.Color.argb(150, 255, 255, 255)
         }
-        
-        // Helper to lerp colors
+
         fun lerp(start: Int, end: Int, fraction: Float): Int {
             val f = fraction.coerceIn(0f, 1f)
             val a = (android.graphics.Color.alpha(start) + (android.graphics.Color.alpha(end) - android.graphics.Color.alpha(start)) * f).toInt()
@@ -1195,11 +1326,16 @@ fun generateCalendarBitmap(
         val iconBitmap = android.graphics.BitmapFactory.decodeResource(context.resources, iconId)
         if (iconBitmap != null) {
             val scaledIcon = Bitmap.createScaledBitmap(iconBitmap, iconSize.toInt(), iconSize.toInt(), true)
+            // Clip to rounded rect to avoid black corners
+            canvas.save()
+            val iconPath = android.graphics.Path()
+            iconPath.addRoundRect(android.graphics.RectF(padding, iconY, padding + iconSize, iconY + iconSize), 20f, 20f, android.graphics.Path.Direction.CW)
+            canvas.clipPath(iconPath)
             canvas.drawBitmap(scaledIcon, padding, iconY, null)
+            canvas.restore()
         }
     } else {
-        // Fallback Icon
-        paint.color = theme.primaryColor // Use theme color
+        paint.color = theme.primaryColor
         canvas.drawRoundRect(android.graphics.RectF(padding, iconY, padding + iconSize, iconY + iconSize), 20f, 20f, paint)
         paint.color = android.graphics.Color.WHITE
         paint.textSize = 50f
@@ -2163,62 +2299,158 @@ fun DayDetailDialog(
     }
 }
 
+private fun applyMovingAverage(points: List<ChartPoint>, windowDays: Int): List<ChartPoint> {
+    if (windowDays <= 1 || points.size < 3) return points
+    val halfWindow = windowDays / 2
+    return points.map { pt ->
+        val neighbors = points.filter { other ->
+            kotlin.math.abs((other.date.toEpochDay() - pt.date.toEpochDay()).toInt()) <= halfWindow
+        }
+        if (neighbors.size >= 2) {
+            val avg = neighbors.map { it.value }.average().toFloat()
+            ChartPoint(pt.date, avg, pt.isInterpolated)
+        } else { pt }
+    }
+}
+
+private fun computeNiceScale(dataMin: Float, dataMax: Float): Triple<Float, Float, Float> {
+    if (dataMin == dataMax) return Triple(dataMin - 1f, dataMax + 1f, 1f)
+    val range = (dataMax - dataMin).toDouble()
+    val rawStep = range / 5.0
+    val magnitude = Math.pow(10.0, Math.floor(Math.log10(rawStep)))
+    val residual = rawStep / magnitude
+    val niceStep = (when {
+        residual <= 1.5 -> 1.0
+        residual <= 3.0 -> 2.0
+        residual <= 7.0 -> 5.0
+        else -> 10.0
+    } * magnitude).toFloat()
+    val niceMin = (Math.floor(dataMin.toDouble() / niceStep) * niceStep).toFloat()
+    val niceMax = (Math.ceil(dataMax.toDouble() / niceStep) * niceStep).toFloat()
+    return Triple(niceMin, niceMax, niceStep)
+}
+
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
-fun SmoothWeightChart(
+fun MetricTrendChart(
     year: Int,
     month: Int?,
     records: List<DailyRecordEntity>,
+    allItems: List<CalorieItemEntity>,
+    userProfile: UserProfileEntity?,
+    metric: HeatmapMetric,
     accentColor: Color,
     contentColor: Color
 ) {
-    var viewMode by remember { mutableStateOf("Month") } // Month, Quarter, Year
-    
+    var viewMode by remember { mutableStateOf("Month") }
+    var smoothDays by remember { mutableIntStateOf(3) }
+    var scaleX by remember { mutableFloatStateOf(1f) }
+    var scrollXDp by remember { mutableFloatStateOf(0f) }
+
+    val lineColor = accentColor
+    val dotColor = Color.White
+    val interpDotColor = accentColor.copy(alpha = 0.45f)
+    val hGridMajorColor = contentColor.copy(alpha = 0.18f)
+    val hGridMinorColor = contentColor.copy(alpha = 0.10f)
+    val vGridColor = contentColor.copy(alpha = 0.15f)
+    val textColor = contentColor.copy(alpha = 0.72f)
+
+    // Determine date range (capped at today)
+    val dateRange = remember(year, month, viewMode) {
+        val cal = java.util.Calendar.getInstance()
+        val endYear: Int; val endMonth: Int; val endDay: Int
+        val startYear: Int; val startMonth: Int; val startDay: Int
+
+        when (viewMode) {
+            "Year" -> {
+                startYear = year; startMonth = 1; startDay = 1
+                endYear = year; endMonth = 12; endDay = 31
+            }
+            "Quarter" -> {
+                val m = month ?: cal.get(java.util.Calendar.MONTH)
+                val qStart = (m / 3) * 3
+                startYear = year; startMonth = qStart + 1; startDay = 1
+                cal.set(year, qStart + 2, 1)
+                endYear = cal.get(java.util.Calendar.YEAR)
+                endMonth = cal.get(java.util.Calendar.MONTH) + 1
+                endDay = cal.getActualMaximum(java.util.Calendar.DAY_OF_MONTH)
+            }
+            else -> {
+                val m = month ?: cal.get(java.util.Calendar.MONTH)
+                startYear = year; startMonth = m + 1; startDay = 1
+                cal.set(year, m, 1)
+                endYear = year; endMonth = m + 1
+                endDay = cal.getActualMaximum(java.util.Calendar.DAY_OF_MONTH)
+            }
+        }
+        val today = java.time.LocalDate.now()
+        val calcStart = java.time.LocalDate.of(startYear, startMonth, startDay)
+        val calcEnd = java.time.LocalDate.of(endYear, endMonth, endDay)
+        val actualEnd = if (calcEnd.isAfter(today)) today else calcEnd
+        val actualStart = if (calcStart.isAfter(actualEnd)) actualEnd else calcStart
+        actualStart to actualEnd
+    }
+
+    val rawPoints = remember(records, allItems, userProfile, metric, smoothDays, dateRange) {
+        prepareChartData(records, allItems, userProfile, metric, smoothDays, dateRange.first, dateRange.second)
+    }
+
+    val smoothedPoints = remember(rawPoints, smoothDays) {
+        applyMovingAverage(rawPoints, smoothDays)
+    }
+
+    val realPoints = rawPoints.filter { !it.isInterpolated }
+
     Column {
-        // View Mode Selector
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-            listOf("Month" to "月", "Quarter" to "季", "Year" to "年").forEach { (mode, label) ->
-                TextButton(
-                    onClick = { viewMode = mode },
-                    colors = ButtonDefaults.textButtonColors(
-                        contentColor = if (viewMode == mode) accentColor else contentColor.copy(alpha = 0.72f)
-                    )
-                ) {
-                    Text(label)
+        // Title row: title + view mode
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                "${metric.label}趋势",
+                style = MaterialTheme.typography.titleMedium,
+                color = textColor
+            )
+            // View mode
+            Row {
+                listOf("Month" to "月", "Quarter" to "季", "Year" to "年").forEach { (mode, label) ->
+                    TextButton(
+                        onClick = { viewMode = mode; scaleX = 1f; scrollXDp = 0f },
+                        colors = ButtonDefaults.textButtonColors(
+                            contentColor = if (viewMode == mode) accentColor else contentColor.copy(alpha = 0.72f)
+                        )
+                    ) {
+                        Text(label)
+                    }
                 }
             }
         }
-        
-        val filteredRecords = remember(records, year, month, viewMode) {
-            records.filter { 
-                val parsed = parseDate(it.date) ?: return@filter false
-                val rYear = parsed.year
-                val rMonth = parsed.month - 1
 
-                if (viewMode == "Year") {
-                    rYear == year
-                } else if (viewMode == "Quarter") {
-                    if (month != null) {
-                        val qStart = (month / 3) * 3
-                        rYear == year && rMonth in qStart..(qStart + 2)
-                    } else {
-                        rYear == year
-                    }
-                } else {
-                    rYear == year && (month == null || rMonth == month)
+        Spacer(modifier = Modifier.height(4.dp))
+
+        // Smooth selector
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("平滑:", style = MaterialTheme.typography.labelSmall, color = textColor)
+            listOf(1, 3, 7, 14, 30).forEach { n ->
+                TextButton(
+                    onClick = { smoothDays = n },
+                    modifier = Modifier.height(28.dp),
+                    colors = ButtonDefaults.textButtonColors(
+                        contentColor = if (smoothDays == n) accentColor else textColor
+                    )
+                ) {
+                    Text(if (n == 1) "关" else "${n}天", style = MaterialTheme.typography.labelSmall)
                 }
-            }.filter { it.weight != null && it.weight.isFinite() && it.weight > 0 }.sortedBy { it.date }
+            }
         }
 
-        val lineColor = accentColor
-        val dotColor = Color.White
-        val gridColor = contentColor.copy(alpha = 0.24f)
-        val textColor = contentColor.copy(alpha = 0.72f)
+        Spacer(modifier = Modifier.height(8.dp))
 
-        if (filteredRecords.isEmpty()) {
+        if (realPoints.isEmpty()) {
             Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(200.dp),
+                modifier = Modifier.fillMaxWidth().height(200.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Text("暂无数据", color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -2226,100 +2458,283 @@ fun SmoothWeightChart(
             return
         }
 
-        val minWeight = filteredRecords.minOf { it.weight!! } - 2f
-        val maxWeight = filteredRecords.maxOf { it.weight!! } + 2f
-        val weightRange = maxWeight - minWeight
+        val dataMin = realPoints.minOf { it.value }
+        val dataMax = realPoints.maxOf { it.value }
+        val (niceMin, niceMax, majorStep) = computeNiceScale(dataMin, dataMax)
+        val minVal = niceMin
+        val maxVal = niceMax
+        val valRange = if (maxVal - minVal < 0.01f) 1f else maxVal - minVal
 
-        Canvas(
+        fun formatYLabel(value: Float): String = when (metric) {
+            HeatmapMetric.Weight -> formatWeightForCalendar(value)
+            HeatmapMetric.Sleep -> String.format("%.1fh", value)
+            HeatmapMetric.Water -> "${value.roundToInt()}"
+            else -> "${value.roundToInt()}"
+        }
+
+        val density = LocalDensity.current
+        var containerWidthPx by remember { mutableFloatStateOf(1f) }
+
+        // Touch tracking for data tooltip
+        var touchX by remember { mutableStateOf<Float?>(null) }
+        var touchActive by remember { mutableStateOf(false) }
+
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(250.dp)
-                .padding(start = 32.dp, end = 16.dp, top = 16.dp, bottom = 32.dp) // Extra padding for labels
-        ) {
-            val width = size.width
-            val height = size.height
-            
-            // Draw Grid & Y-Axis Labels
-            val lines = 5
-            val textPaint = android.graphics.Paint().apply {
-                color = textColor.toArgb()
-                textSize = 10.sp.toPx()
-                textAlign = android.graphics.Paint.Align.RIGHT
-            }
-            
-            for (i in 0..lines) {
-                val y = height * (i.toFloat() / lines)
-                val weightVal = maxWeight - (weightRange * (i.toFloat() / lines))
-                
-                drawLine(
-                    color = gridColor,
-                    start = Offset(0f, y),
-                    end = Offset(width, y),
-                    strokeWidth = 1.dp.toPx()
-                )
-                
-                drawContext.canvas.nativeCanvas.drawText(
-                    formatWeightForCalendar(weightVal),
-                    -8.dp.toPx(),
-                    y + 4.dp.toPx(),
-                    textPaint
-                )
-            }
-
-            if (filteredRecords.size < 2) {
-                val cx = width / 2
-                val cy = height / 2
-                drawCircle(lineColor, 4.dp.toPx(), Offset(cx, cy))
-                return@Canvas
-            }
-
-            val path = Path()
-            val points = mutableListOf<Offset>()
-            
-            val xStep = width / (filteredRecords.size - 1)
-            filteredRecords.forEachIndexed { index, record ->
-                val x = index * xStep
-                val normalizedW = (record.weight!! - minWeight) / weightRange
-                val y = height - (normalizedW * height)
-                points.add(Offset(x, y))
-                
-                // X-Axis Labels (Date) - Draw sparsely
-                if (filteredRecords.size < 10 || index % (filteredRecords.size / 5) == 0) {
-                    val parsed = parseDate(record.date)
-                    val dateLabel = if (parsed != null) {
-                        String.format("%02d-%02d", parsed.month, parsed.day)
-                    } else {
-                        runCatching { record.date }.getOrNull()?.takeLast(5) ?: "-- --"
-                    }
-                    textPaint.textAlign = android.graphics.Paint.Align.CENTER
-                    drawContext.canvas.nativeCanvas.drawText(
-                        dateLabel,
-                        x,
-                        height + 20.dp.toPx(),
-                        textPaint
+                .clipToBounds()
+                .onSizeChanged { containerWidthPx = it.width.toFloat() }
+                .pointerInput(Unit) {
+                    detectDragGestures(
+                        onDragStart = { offset ->
+                            touchActive = true
+                            touchX = offset.x
+                        },
+                        onDrag = { change, _ ->
+                            touchX = change.position.x
+                        },
+                        onDragEnd = {
+                            touchActive = false
+                            touchX = null
+                        },
+                        onDragCancel = {
+                            touchActive = false
+                            touchX = null
+                        }
                     )
                 }
-            }
+        ) {
+            val baseWidthDp = with(density) { containerWidthPx.toDp() }
+            val totalDays = (dateRange.second.toEpochDay() - dateRange.first.toEpochDay()).toInt()
+            Canvas(
+                modifier = Modifier
+                    .offset(x = (-scrollXDp).dp)
+                    .width(((baseWidthDp * scaleX).coerceAtLeast(baseWidthDp)))
+                    .height(250.dp)
+                    .padding(start = 36.dp, end = 16.dp, top = 16.dp, bottom = 32.dp)
+            ) {
+                val width = size.width
+                val height = size.height
 
-            path.moveTo(points.first().x, points.first().y)
-            for (i in 0 until points.size - 1) {
-                val p0 = points[i]
-                val p1 = points[i + 1]
-                val controlPoint1 = Offset(p0.x + (p1.x - p0.x) / 2, p0.y)
-                val controlPoint2 = Offset(p0.x + (p1.x - p0.x) / 2, p1.y)
-                path.cubicTo(controlPoint1.x, controlPoint1.y, controlPoint2.x, controlPoint2.y, p1.x, p1.y)
-            }
-            
-            drawPath(
-                path = path,
-                color = lineColor,
-                style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round)
-            )
-            
-            points.forEach { 
-                drawCircle(lineColor, 5.dp.toPx(), it)
-                drawCircle(dotColor, 3.dp.toPx(), it)
+                // Y-axis grid lines (major = thick + label, minor = thin)
+                val yTextPaint = android.graphics.Paint().apply {
+                    color = textColor.toArgb()
+                    textSize = 10.sp.toPx()
+                    textAlign = android.graphics.Paint.Align.RIGHT
+                }
+                val minorStep = majorStep / 5f
+                val minorCount = ((maxVal - minVal) / minorStep).roundToInt()
+                for (i in 0..minorCount) {
+                    val yVal = minVal + i * minorStep
+                    val normalized = (yVal - minVal) / valRange
+                    val y = height - (normalized * height)
+                    val isMajor = (i % 5 == 0)
+                    if (isMajor) {
+                        drawLine(hGridMajorColor, Offset(0f, y), Offset(width, y), 1.5.dp.toPx())
+                        drawContext.canvas.nativeCanvas.drawText(
+                            formatYLabel(yVal), -8.dp.toPx(), y + 4.dp.toPx(), yTextPaint
+                        )
+                    } else {
+                        drawLine(hGridMinorColor, Offset(0f, y), Offset(width, y), 0.5.dp.toPx())
+                    }
+                }
+
+                if (smoothedPoints.size < 2) {
+                    val cx = width / 2
+                    val cy = height / 2
+                    drawCircle(lineColor, 4.dp.toPx(), Offset(cx, cy))
+                    return@Canvas
+                }
+
+                // X positioning based on actual date offsets, not data-point index
+                val dayXStep = width / totalDays.coerceAtLeast(1)
+                val startDate = dateRange.first
+                fun dateToX(date: java.time.LocalDate): Float =
+                    (date.toEpochDay() - startDate.toEpochDay()).toInt() * dayXStep
+
+                // Build smoothed line positions (for drawing the trend line)
+                val smoothedPositions = smoothedPoints.map { pt ->
+                    val x = dateToX(pt.date)
+                    val normalized = (pt.value - minVal) / valRange
+                    val y = height - (normalized * height)
+                    Offset(x, y) to pt
+                }
+
+                // Build raw point positions (for drawing data dots at original values)
+                val rawPositions = rawPoints.map { pt ->
+                    val x = dateToX(pt.date)
+                    val normalized = (pt.value - minVal) / valRange
+                    val y = height - (normalized * height)
+                    Offset(x, y) to pt
+                }
+
+                // ---- Vertical day grid lines (drawn before curves) ----
+                var vDay = dateRange.first
+                val vEnd = dateRange.second
+                while (!vDay.isAfter(vEnd)) {
+                    val vx = dateToX(vDay)
+                    if (vx >= 0f && vx <= width) {
+                        drawLine(vGridColor, Offset(vx, 0f), Offset(vx, height), 0.5f.dp.toPx())
+                    }
+                    vDay = vDay.plusDays(1)
+                }
+
+                // ---- Draw data points at original (raw) positions (bottom layer) ----
+                rawPositions.forEach { (offset, pt) ->
+                    if (pt.isInterpolated) {
+                        drawCircle(interpDotColor, 3.5f.dp.toPx(), offset)
+                    } else {
+                        drawCircle(lineColor.copy(alpha = 0.55f), 5.dp.toPx(), offset)
+                        drawCircle(dotColor, 3.dp.toPx(), offset)
+                    }
+                }
+
+                // ---- Draw interpolated segments as dashed straight lines (middle layer) ----
+                val interpPath = Path()
+                var prevInterpPos: Offset? = null
+                for (i in smoothedPositions.indices) {
+                    val (offset, pt) = smoothedPositions[i]
+                    if (pt.isInterpolated) {
+                        if (prevInterpPos == null) {
+                            interpPath.moveTo(offset.x, offset.y)
+                        } else {
+                            interpPath.lineTo(offset.x, offset.y)
+                        }
+                        prevInterpPos = offset
+                    } else {
+                        prevInterpPos = null
+                    }
+                }
+                if (smoothedPoints.any { it.isInterpolated }) {
+                    drawPath(
+                        interpPath,
+                        color = accentColor.copy(alpha = 0.4f),
+                        style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round,
+                            pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 8f)))
+                    )
+                }
+
+                // ---- Draw smoothed line: Bézier on moving-averaged points, with gap detection (top layer) ----
+                val realSmoothed = smoothedPositions.filter { !it.second.isInterpolated }
+                if (realSmoothed.size >= 2) {
+                    val realPath = Path()
+                    realPath.moveTo(realSmoothed.first().first.x, realSmoothed.first().first.y)
+                    for (i in 1 until realSmoothed.size) {
+                        val p0 = realSmoothed[i - 1]
+                        val p1 = realSmoothed[i]
+                        val gapDays = ((p1.second.date.toEpochDay() - p0.second.date.toEpochDay()).toInt())
+                        if (gapDays <= smoothDays) {
+                            val x0 = p0.first.x; val y0 = p0.first.y
+                            val x1 = p1.first.x; val y1 = p1.first.y
+                            // Cubic Bézier with horizontal control points for visual smoothness
+                            val dx = (x1 - x0) / 3f
+                            realPath.cubicTo(x0 + dx, y0, x1 - dx, y1, x1, y1)
+                        } else {
+                            realPath.moveTo(p1.first.x, p1.first.y)
+                        }
+                    }
+                    // Glow + shadow effects
+                    drawContext.canvas.save()
+                    drawContext.canvas.translate(2.dp.toPx(), 4.dp.toPx())
+                    drawPath(realPath, Color.Black.copy(alpha = 0.15f),
+                        style = Stroke(width = 5.dp.toPx(), cap = StrokeCap.Round))
+                    drawContext.canvas.restore()
+                    drawPath(realPath, lineColor.copy(alpha = 0.14f),
+                        style = Stroke(width = 12.dp.toPx(), cap = StrokeCap.Round))
+                    drawPath(realPath, lineColor.copy(alpha = 0.28f),
+                        style = Stroke(width = 7.dp.toPx(), cap = StrokeCap.Round))
+                    drawPath(realPath, lineColor,
+                        style = Stroke(width = 4.dp.toPx(), cap = StrokeCap.Round))
+                    // Thin white center line for visual depth
+                    drawPath(realPath, Color.White.copy(alpha = 0.45f),
+                        style = Stroke(width = 1.dp.toPx(), cap = StrokeCap.Round))
+                } else if (realSmoothed.size == 1) {
+                    drawCircle(lineColor, 4.dp.toPx(), realSmoothed.first().first)
+                }
+
+                // ---- Touch tooltip ----
+                if (touchActive && touchX != null) {
+                    val canvasTouchX = touchX!! - 36.dp.toPx() // account for start padding
+                    // Find nearest non-interpolated point
+                    var nearestPoint: ChartPoint? = null
+                    var nearestXOffset = 0f
+                    var minDist = Float.MAX_VALUE
+                    rawPositions.forEach { (offset, pt) ->
+                        if (!pt.isInterpolated) {
+                            val dist = kotlin.math.abs(offset.x - canvasTouchX)
+                            if (dist < minDist) {
+                                minDist = dist
+                                nearestPoint = pt
+                                nearestXOffset = offset.x
+                            }
+                        }
+                    }
+                    if (nearestPoint != null && minDist < 50.dp.toPx()) {
+                        val displayVal = when (metric) {
+                            HeatmapMetric.Weight -> formatWeightForCalendar(nearestPoint!!.value)
+                            HeatmapMetric.Sleep -> String.format("%.1fh", nearestPoint!!.value)
+                            HeatmapMetric.Water -> "${nearestPoint!!.value.roundToInt()}ml"
+                            HeatmapMetric.Net -> "${nearestPoint!!.value.roundToInt()}"
+                            else -> "${nearestPoint!!.value.roundToInt()}"
+                        }
+                        val dateLabel = String.format("%02d-%02d", nearestPoint!!.date.monthValue, nearestPoint!!.date.dayOfMonth)
+                        val labelText = "$dateLabel  $displayVal"
+                        val tooltipPaint = android.graphics.Paint().apply {
+                            color = android.graphics.Color.WHITE
+                            textSize = 12.sp.toPx()
+                            textAlign = android.graphics.Paint.Align.LEFT
+                            isAntiAlias = true
+                            typeface = android.graphics.Typeface.DEFAULT_BOLD
+                        }
+                        val textW = tooltipPaint.measureText(labelText) + 20.dp.toPx()
+                        val textH = 32.dp.toPx()
+                        val tooltipBgX = (nearestXOffset - textW / 2).coerceIn(0f, width - textW)
+                        val tooltipBgY = 8.dp.toPx()
+                        val bgRect = android.graphics.RectF(tooltipBgX, tooltipBgY, tooltipBgX + textW, tooltipBgY + textH)
+                        val bgPaint = android.graphics.Paint().apply {
+                            color = accentColor.toArgb()
+                            isAntiAlias = true
+                            setShadowLayer(8f, 0f, 2f, android.graphics.Color.argb(80, 0, 0, 0))
+                        }
+                        drawContext.canvas.nativeCanvas.drawRoundRect(bgRect, 8.dp.toPx(), 8.dp.toPx(), bgPaint)
+                        drawContext.canvas.nativeCanvas.drawText(labelText, tooltipBgX + 10.dp.toPx(), tooltipBgY + 22.dp.toPx(), tooltipPaint)
+                        // Small indicator line
+                        drawLine(accentColor, Offset(nearestXOffset, tooltipBgY + textH), Offset(nearestXOffset, tooltipBgY + textH + 6.dp.toPx()), 2.dp.toPx())
+                    }
+                }
+
+                // ---- X-axis date labels (pixel-spaced to avoid overlap) ----
+                val xDatePaint = android.graphics.Paint().apply {
+                    color = textColor.toArgb()
+                    textSize = 10.sp.toPx()
+                    textAlign = android.graphics.Paint.Align.CENTER
+                }
+                val minLabelGapPx = 72f
+                val labelStepDays = (minLabelGapPx / dayXStep.coerceAtLeast(0.01f)).toInt().coerceAtLeast(1)
+                val lastDate = dateRange.second
+                val lastLabelX = dateToX(lastDate)
+                var prevLabelX = -999f
+                var day = dateRange.first
+                var labelIndex = 0
+                while (!day.isAfter(lastDate)) {
+                    val lx = dateToX(day)
+                    if (lx - prevLabelX >= minLabelGapPx && (lastLabelX - lx >= minLabelGapPx || day == lastDate)) {
+                        val label = String.format("%02d-%02d", day.monthValue, day.dayOfMonth)
+                        xDatePaint.color = (if (labelIndex % 2 == 0) accentColor else textColor).toArgb()
+                        drawContext.canvas.nativeCanvas.drawText(label, lx, height + 20.dp.toPx(), xDatePaint)
+                        prevLabelX = lx
+                        labelIndex++
+                    }
+                    day = day.plusDays(labelStepDays.toLong())
+                }
+                // Always draw the last date if not already drawn
+                if (lastLabelX - prevLabelX >= 4f) {
+                    val label = String.format("%02d-%02d", lastDate.monthValue, lastDate.dayOfMonth)
+                    xDatePaint.color = (if (labelIndex % 2 == 0) accentColor else textColor).toArgb()
+                    drawContext.canvas.nativeCanvas.drawText(label, lastLabelX, height + 20.dp.toPx(), xDatePaint)
+                }
             }
         }
+
     }
 }

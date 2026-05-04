@@ -70,7 +70,7 @@ fun StatisticsScreen(
     val selectedTheme = remember(selectedThemeIndex) { getTodayVisualTheme(selectedThemeIndex) }
     val backgroundSeed = remember(selectedThemeIndex) { (selectedThemeIndex + 1) * 1031 }
     val cardColor = remember(selectedTheme, isDarkTheme) { themedDashboardCardColor(selectedTheme, isDarkTheme) }
-    val onCardColor = if (isDarkTheme) Color.White else if (calculatePerceivedLuminance(cardColor) > 0.5f) Color(0xFF1E1E1E) else Color(0xFFF4F4F4)
+    val onCardColor = com.example.calorietracker.ui.theme.onCardColor(cardColor, isDarkTheme)
     val accentColor = remember(selectedTheme, isDarkTheme) { themedAccentColor(selectedTheme, isDarkTheme) }
     var selectedTab by remember { mutableStateOf(StatsTab.MONTH) }
     var chartMetric by remember { mutableStateOf(ChartMetric.DURATION) }

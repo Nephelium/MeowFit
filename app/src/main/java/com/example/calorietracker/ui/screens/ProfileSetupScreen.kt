@@ -239,7 +239,7 @@ fun ProfileSetupScreen(
                         selectedTodayThemeIndex = userProfile?.selectedTodayThemeIndex ?: 0,
                         hasSelectedTodayTheme = userProfile?.hasSelectedTodayTheme ?: false,
                         excludedExercises = userProfile?.excludedExercises ?: "",
-                        createdAt = userProfile?.createdAt ?: java.util.Date().toString()
+                        createdAt = userProfile?.createdAt ?: java.time.Instant.now().toString()
                     )
                     onSave(profile)
                 },

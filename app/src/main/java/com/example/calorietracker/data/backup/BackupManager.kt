@@ -7,6 +7,8 @@ import com.example.calorietracker.data.DailyRecordEntity
 import com.example.calorietracker.data.RecordDao
 import com.example.calorietracker.data.UserDao
 import com.example.calorietracker.data.UserProfileEntity
+import com.example.calorietracker.data.WeeklySummaryEntity
+import com.example.calorietracker.data.AnalysisDao
 import com.example.calorietracker.util.ImageStorageUtils
 import com.google.gson.Gson
 import com.google.gson.JsonArray
@@ -65,7 +67,7 @@ data class BackupUserProfile(
             selectedTodayThemeIndex = selectedTodayThemeIndex ?: 0,
             hasSelectedTodayTheme = hasSelectedTodayTheme ?: false,
             excludedExercises = excludedExercises ?: "",
-            createdAt = createdAt ?: java.util.Date().toString()
+            createdAt = createdAt ?: java.time.Instant.now().toString()
         )
     }
 
@@ -99,14 +101,19 @@ data class BackupData(
     val userProfile: BackupUserProfile?,
     val dailyRecords: List<DailyRecordEntity>,
     val calorieItems: List<CalorieItemEntity>,
-    val version: Int = 2,
+    val weeklySummaries: List<WeeklySummaryEntity> = emptyList(),
+    val customChatPrompt: String? = null,
+    val customImagePrompt: String? = null,
+    val customAnalysisPrompt: String? = null,
+    val version: Int = 3,
     val timestamp: Long = System.currentTimeMillis()
 )
 
 class BackupManager(
     private val context: Context,
     private val userDao: UserDao,
-    private val recordDao: RecordDao
+    private val recordDao: RecordDao,
+    private val analysisDao: AnalysisDao
 ) {
     private val gson = Gson()
     private val backupDir = File(context.filesDir, "backups")
@@ -218,12 +225,20 @@ class BackupManager(
         val userProfile = parseUserProfile(obj)
         val dailyRecords = parseDailyRecords(obj)
         val calorieItems = parseCalorieItems(obj)
+        val weeklySummaries = parseWeeklySummaries(obj)
         val version = obj.getSafeInt("version") ?: 1
         val timestamp = obj.getSafeLong("timestamp") ?: System.currentTimeMillis()
+        val customChatPrompt = if (obj.has("customChatPrompt")) obj.get("customChatPrompt")?.asString else null
+        val customImagePrompt = if (obj.has("customImagePrompt")) obj.get("customImagePrompt")?.asString else null
+        val customAnalysisPrompt = if (obj.has("customAnalysisPrompt")) obj.get("customAnalysisPrompt")?.asString else null
         return BackupData(
             userProfile = userProfile,
             dailyRecords = dailyRecords,
             calorieItems = calorieItems,
+            weeklySummaries = weeklySummaries,
+            customChatPrompt = customChatPrompt,
+            customImagePrompt = customImagePrompt,
+            customAnalysisPrompt = customAnalysisPrompt,
             version = version,
             timestamp = timestamp
         )
@@ -244,6 +259,12 @@ class BackupManager(
     private fun parseCalorieItems(obj: JsonObject): List<CalorieItemEntity> {
         return parseArray(obj.get("calorieItems")).mapNotNull { element ->
             runCatching { gson.fromJson(element, CalorieItemEntity::class.java) }.getOrNull()
+        }
+    }
+
+    private fun parseWeeklySummaries(obj: JsonObject): List<WeeklySummaryEntity> {
+        return parseArray(obj.get("weeklySummaries")).mapNotNull { element ->
+            runCatching { gson.fromJson(element, WeeklySummaryEntity::class.java) }.getOrNull()
         }
     }
 
@@ -295,11 +316,23 @@ class BackupManager(
                 }
             }
 
+            val weeklySummaries = analysisDao.getAllSummariesSync()
+
+            // Read custom system prompts from SharedPreferences for backup
+            val aiPrefs = context.getSharedPreferences("ai_prefs", android.content.Context.MODE_PRIVATE)
+            val customChatPrompt = aiPrefs.getString("custom_chat_prompt", null)
+            val customImagePrompt = aiPrefs.getString("custom_image_prompt", null)
+            val customAnalysisPrompt = aiPrefs.getString("custom_analysis_prompt", null)
+
             BackupPayload(
                 BackupData(
                     userProfile?.let { BackupUserProfile.fromEntity(it) },
                     dailyRecords,
-                    remappedItems
+                    remappedItems,
+                    weeklySummaries,
+                    customChatPrompt = customChatPrompt,
+                    customImagePrompt = customImagePrompt,
+                    customAnalysisPrompt = customAnalysisPrompt
                 ),
                 mappedImages
             )
@@ -340,26 +373,58 @@ class BackupManager(
     
     fun exportBackupToDownloads(zipBytes: ByteArray) {
         try {
-            val timestamp = SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(Date())
-            val filename = "MeowFit_Backup_$timestamp.zip"
+            // Fixed filename so auto-backups always overwrite the previous one
+            val filename = "MeowFit_AutoBackup.zip"
             
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
-                val contentValues = android.content.ContentValues().apply {
-                    put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, filename)
-                    put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "application/zip")
-                    put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, android.os.Environment.DIRECTORY_DOWNLOADS + "/MeowFit")
-                    put(android.provider.MediaStore.MediaColumns.IS_PENDING, 1)
-                }
-                
                 val resolver = context.contentResolver
-                val uri = resolver.insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, contentValues)
+                val relativePath = android.os.Environment.DIRECTORY_DOWNLOADS + "/MeowFit"
+
+                // Query existing auto-backup to overwrite instead of creating new
+                val existingUri: android.net.Uri? = try {
+                    resolver.query(
+                        android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+                        arrayOf(android.provider.MediaStore.MediaColumns._ID),
+                        "${android.provider.MediaStore.MediaColumns.DISPLAY_NAME}=? AND ${android.provider.MediaStore.MediaColumns.RELATIVE_PATH}=?",
+                        arrayOf(filename, relativePath),
+                        null
+                    )?.use { cursor ->
+                        if (cursor.moveToFirst()) {
+                            val id = cursor.getLong(0)
+                            android.content.ContentUris.withAppendedId(
+                                android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, id
+                            )
+                        } else null
+                    }
+                } catch (_: Exception) { null }
+
+                val uri: android.net.Uri?
+                if (existingUri != null) {
+                    // Overwrite existing file
+                    uri = existingUri
+                    val contentValues = android.content.ContentValues().apply {
+                        put(android.provider.MediaStore.MediaColumns.IS_PENDING, 1)
+                    }
+                    resolver.update(uri, contentValues, null, null)
+                } else {
+                    // Create new entry
+                    val contentValues = android.content.ContentValues().apply {
+                        put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, filename)
+                        put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "application/zip")
+                        put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, relativePath)
+                        put(android.provider.MediaStore.MediaColumns.IS_PENDING, 1)
+                    }
+                    uri = resolver.insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, contentValues)
+                }
+
                 uri?.let {
-                    resolver.openOutputStream(it)?.use { os ->
+                    resolver.openOutputStream(it, "wt")?.use { os ->
                         os.write(zipBytes)
                     }
-                    contentValues.clear()
-                    contentValues.put(android.provider.MediaStore.MediaColumns.IS_PENDING, 0)
-                    resolver.update(it, contentValues, null, null)
+                    val finishValues = android.content.ContentValues().apply {
+                        put(android.provider.MediaStore.MediaColumns.IS_PENDING, 0)
+                    }
+                    resolver.update(it, finishValues, null, null)
                 }
             } else {
                 val downloadsDir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS)
@@ -468,6 +533,19 @@ class BackupManager(
         if (sanitized.calorieItems.isNotEmpty()) {
             recordDao.insertCalorieItems(sanitized.calorieItems)
         }
+
+        // Restore Weekly Summaries
+        if (sanitized.weeklySummaries.isNotEmpty()) {
+            analysisDao.insertSummaries(sanitized.weeklySummaries)
+        }
+
+        // Restore custom system prompts
+        val aiPrefs = context.getSharedPreferences("ai_prefs", android.content.Context.MODE_PRIVATE)
+        val editor = aiPrefs.edit()
+        sanitized.customChatPrompt?.let { editor.putString("custom_chat_prompt", it) }
+        sanitized.customImagePrompt?.let { editor.putString("custom_image_prompt", it) }
+        sanitized.customAnalysisPrompt?.let { editor.putString("custom_analysis_prompt", it) }
+        editor.apply()
     }
 
     fun getAutoBackupTime(): Long {

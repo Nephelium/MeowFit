@@ -42,7 +42,7 @@ object CalorieUtils {
     )
     
     fun generateId(): String {
-        return "${System.currentTimeMillis()}-${UUID.randomUUID().toString().substring(0, 9)}"
+        return "${System.currentTimeMillis()}-${UUID.randomUUID()}"
     }
 
     fun getTodayString(): String {
@@ -155,6 +155,20 @@ object CalorieUtils {
             return match.groupValues[1].toIntOrNull() ?: 0
         }
         return 0
+    }
+
+    fun calculateDuration(startTime: String, endTime: String): Int {
+        if (startTime.isBlank() || endTime.isBlank()) return 0
+        try {
+            val sdf = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
+            val start = sdf.parse(startTime) ?: return 0
+            val end = sdf.parse(endTime) ?: return 0
+            var diff = end.time - start.time
+            if (diff < 0) diff += 24 * 60 * 60 * 1000
+            return (diff / (1000 * 60)).toInt()
+        } catch (e: Exception) {
+            return 0
+        }
     }
 
     fun getMealCategoryByTime(time: String): MealCategory {

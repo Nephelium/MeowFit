@@ -68,3 +68,15 @@ data class CalorieItemEntity(
     val notes: String? = null,
     val createdAt: String
 )
+
+@Entity(tableName = "weekly_summaries")
+data class WeeklySummaryEntity(
+    @PrimaryKey val weekStartDate: String, // YYYY-MM-DD (Monday)
+    val weekEndDate: String,               // YYYY-MM-DD (Sunday)
+    val summaryText: String,               // AI analysis text
+    val recommendations: String,           // Menu + exercise recommendations
+    val dietDays: Int,                     // Days with food records
+    val exerciseDays: Int,                 // Days with exercise records
+    val generatedAt: Long,                 // Timestamp
+    val status: String                     // "pending", "generated", "failed"
+)

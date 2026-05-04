@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoGraph
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.FitnessCenter
 import androidx.compose.material.icons.filled.Home
@@ -138,7 +139,7 @@ fun MainApp(viewModel: MainViewModel, aiViewModel: AiViewModel, backupViewModel:
     val isDarkTheme = androidx.compose.foundation.isSystemInDarkTheme()
     val accentColor = remember(selectedTheme, isDarkTheme) { themedAccentColor(selectedTheme, isDarkTheme) }
     val navCardColor = remember(selectedTheme, isDarkTheme) { themedDashboardCardColor(selectedTheme, isDarkTheme) }
-    val navOnCardColor = if (isDarkTheme) Color.White else if (calculatePerceivedLuminance(navCardColor) > 0.5f) Color(0xFF1E1E1E) else Color(0xFFF4F4F4)
+    val navOnCardColor = com.example.calorietracker.ui.theme.onCardColor(navCardColor, isDarkTheme)
     val selectedIndicatorColor = remember(navCardColor, isDarkTheme) {
         if (isDarkTheme) {
             lerp(navCardColor, Color.Black, BottomNavTuning.selectedIndicatorBlendToBlackDark)
@@ -182,6 +183,7 @@ fun MainApp(viewModel: MainViewModel, aiViewModel: AiViewModel, backupViewModel:
                         Triple("today", "今日", Icons.Default.Home),
                         Triple("stats", "运动统计", Icons.Default.FitnessCenter),
                         Triple("overview", "日历", Icons.Default.DateRange),
+                        Triple("analysis", "分析", Icons.Default.AutoGraph),
                         Triple("settings", "设置", Icons.Default.Settings)
                     )
 
@@ -266,21 +268,8 @@ fun MainApp(viewModel: MainViewModel, aiViewModel: AiViewModel, backupViewModel:
                     onUpdateWater = { viewModel.updateWater(it, selectedDate) },
                     onUpdateSleep = { viewModel.updateSleep(it, selectedDate) },
                     onSaveExercise = { name, calories, startTime, endTime ->
-                        // Calculate duration
-                        var notes = ""
-                        try {
-                            val sdf = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
-                            val start = sdf.parse(startTime)
-                            val end = sdf.parse(endTime)
-                            if (start != null && end != null) {
-                                var diff = end.time - start.time
-                                if (diff < 0) diff += 24 * 60 * 60 * 1000
-                                val minutes = diff / (1000 * 60)
-                                notes = "时长: ${minutes}分钟"
-                            }
-                        } catch (e: Exception) {
-                            e.printStackTrace()
-                        }
+                        val minutes = com.example.calorietracker.util.CalorieUtils.calculateDuration(startTime, endTime)
+                        val notes = if (minutes > 0) "时长: ${minutes}分钟" else ""
                         
                         viewModel.addRecordItem(
                             type = "exercise",
@@ -353,6 +342,49 @@ fun MainApp(viewModel: MainViewModel, aiViewModel: AiViewModel, backupViewModel:
                 }
             }
             
+            composable("analysis") {
+                val allRecords by viewModel.allRecords.collectAsState()
+                val allItems by viewModel.allCalorieItems.collectAsState()
+                
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .upwardOffsetWithoutBottomGap(ScreenOffsetTuning.settingsPageOffsetY)
+                ) {
+                    AnalysisScreen(
+                        records = allRecords,
+                        allItems = allItems,
+                        userProfile = userProfile,
+                        aiViewModel = aiViewModel,
+                        selectedThemeIndex = selectedThemeIndex,
+                        onNavigateToDetail = { weekStart ->
+                            navController.navigate("analysis_detail/$weekStart")
+                        }
+                    )
+                }
+            }
+
+            composable(
+                route = "analysis_detail/{weekStart}",
+                arguments = listOf(androidx.navigation.navArgument("weekStart") { 
+                    nullable = false
+                })
+            ) { backStackEntry ->
+                val weekStart = backStackEntry.arguments?.getString("weekStart") ?: return@composable
+                val allRecords by viewModel.allRecords.collectAsState()
+                val allItems by viewModel.allCalorieItems.collectAsState()
+
+                AnalysisDetailScreen(
+                    weekStartDate = weekStart,
+                    records = allRecords,
+                    allItems = allItems,
+                    userProfile = userProfile,
+                    aiViewModel = aiViewModel,
+                    selectedThemeIndex = selectedThemeIndex,
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
             composable("settings") {
                 val allItems by viewModel.allCalorieItems.collectAsState()
                 val updateStatus by viewModel.updateStatus.collectAsState()

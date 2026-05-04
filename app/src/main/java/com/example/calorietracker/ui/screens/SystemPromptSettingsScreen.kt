@@ -26,18 +26,18 @@ fun SystemPromptSettingsScreen(
     val isDarkTheme = isSystemInDarkTheme()
     val selectedTheme = remember(selectedThemeIndex) { getTodayVisualTheme(selectedThemeIndex) }
     val accentColor = remember(selectedTheme, isDarkTheme) { themedAccentColor(selectedTheme, isDarkTheme) }
-    
+
     var chatPrompt by remember { mutableStateOf(config.customChatPrompt ?: AiService.DEFAULT_CHAT_PROMPT) }
     var imagePrompt by remember { mutableStateOf(config.customImagePrompt ?: AiService.DEFAULT_IMAGE_PROMPT) }
+    var analysisPrompt by remember { mutableStateOf(config.customAnalysisPrompt ?: AiService.DEFAULT_ANALYSIS_PROMPT) }
 
     LaunchedEffect(config) {
-        if (config.customChatPrompt != null) {
-            chatPrompt = config.customChatPrompt!!
-        }
-        if (config.customImagePrompt != null) {
-            imagePrompt = config.customImagePrompt!!
-        }
+        if (config.customChatPrompt != null) chatPrompt = config.customChatPrompt!!
+        if (config.customImagePrompt != null) imagePrompt = config.customImagePrompt!!
+        if (config.customAnalysisPrompt != null) analysisPrompt = config.customAnalysisPrompt!!
     }
+
+    var selectedTab by remember { mutableIntStateOf(0) }
 
     Scaffold(
         topBar = {
@@ -76,54 +76,75 @@ fun SystemPromptSettingsScreen(
 
             Text("注意：系统会自动在提示词末尾追加用户的体重信息，无需手动添加。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
-            OutlinedTextField(
-                value = chatPrompt,
-                onValueChange = { chatPrompt = it },
-                label = { Text("AI 对话提示词") },
-                modifier = Modifier.fillMaxWidth().height(300.dp),
-                textStyle = MaterialTheme.typography.bodySmall
-            )
-            
-            OutlinedTextField(
-                value = imagePrompt,
-                onValueChange = { imagePrompt = it },
-                label = { Text("识图提示词") },
-                modifier = Modifier.fillMaxWidth().height(300.dp),
-                textStyle = MaterialTheme.typography.bodySmall
-            )
-            
+            // Tab row for three prompt types
+            TabRow(
+                selectedTabIndex = selectedTab,
+                containerColor = Color.Transparent,
+                contentColor = accentColor
+            ) {
+                Tab(selected = selectedTab == 0, onClick = { selectedTab = 0 },
+                    text = { Text("对话", style = MaterialTheme.typography.labelSmall) })
+                Tab(selected = selectedTab == 1, onClick = { selectedTab = 1 },
+                    text = { Text("识图", style = MaterialTheme.typography.labelSmall) })
+                Tab(selected = selectedTab == 2, onClick = { selectedTab = 2 },
+                    text = { Text("周报分析", style = MaterialTheme.typography.labelSmall) })
+            }
+
+            when (selectedTab) {
+                0 -> {
+                    OutlinedTextField(
+                        value = chatPrompt,
+                        onValueChange = { chatPrompt = it },
+                        label = { Text("AI 对话提示词") },
+                        modifier = Modifier.fillMaxWidth().height(300.dp),
+                        textStyle = MaterialTheme.typography.bodySmall
+                    )
+                }
+                1 -> {
+                    OutlinedTextField(
+                        value = imagePrompt,
+                        onValueChange = { imagePrompt = it },
+                        label = { Text("识图提示词") },
+                        modifier = Modifier.fillMaxWidth().height(300.dp),
+                        textStyle = MaterialTheme.typography.bodySmall
+                    )
+                }
+                2 -> {
+                    OutlinedTextField(
+                        value = analysisPrompt,
+                        onValueChange = { analysisPrompt = it },
+                        label = { Text("周报分析提示词") },
+                        modifier = Modifier.fillMaxWidth().height(300.dp),
+                        textStyle = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
+
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(
                     onClick = {
-                        // Reset to defaults
-                        chatPrompt = AiService.DEFAULT_CHAT_PROMPT
-                        imagePrompt = AiService.DEFAULT_IMAGE_PROMPT
+                        when (selectedTab) {
+                            0 -> chatPrompt = AiService.DEFAULT_CHAT_PROMPT
+                            1 -> imagePrompt = AiService.DEFAULT_IMAGE_PROMPT
+                            2 -> analysisPrompt = AiService.DEFAULT_ANALYSIS_PROMPT
+                        }
                     },
-                    colors = ButtonDefaults.outlinedButtonColors(
-                        contentColor = accentColor
-                    ),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = accentColor),
                     modifier = Modifier.weight(1f)
                 ) {
-                    Text("重置默认")
+                    Text("重置当前")
                 }
-                
+
                 Button(
                     onClick = {
                         viewModel.updateConfig(
-                            config.apiKey,
-                            config.provider,
-                            config.baseUrl,
-                            config.modelName,
+                            config.apiKey, config.provider, config.baseUrl, config.modelName,
                             config.maxContext,
-                            chatPrompt,
-                            imagePrompt
+                            chatPrompt, imagePrompt, analysisPrompt
                         )
                         onBack()
                     },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = accentColor,
-                        contentColor = Color.White
-                    ),
+                    colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = Color.White),
                     modifier = Modifier.weight(1f)
                 ) {
                     Text("保存修改")

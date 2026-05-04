@@ -57,6 +57,8 @@ import androidx.core.content.FileProvider
 import coil.compose.AsyncImage
 import com.example.calorietracker.CalorieTrackerApp
 import com.example.calorietracker.data.CalorieItemEntity
+import com.example.calorietracker.data.NutritionDatabase
+import com.example.calorietracker.data.NutritionFoodItem
 import com.example.calorietracker.ui.AiUiState
 import com.example.calorietracker.ui.AiViewModel
 import com.example.calorietracker.util.CalorieUtils
@@ -91,6 +93,57 @@ private fun createTempCameraUri(context: Context): Uri? {
 private fun allowDecimalInput(text: String): Boolean {
     if (text.isEmpty()) return true
     return text.matches(Regex("\\d*(\\.\\d{0,2})?"))
+}
+
+@Composable
+private fun SuggestionRow(
+    name: String,
+    calories: Double,
+    source: String,
+    sourceColor: Color,
+    onCardColor: Color,
+    onClick: () -> Unit
+) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(8.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp, vertical = 5.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.weight(1f)
+            ) {
+                Text(name, color = onCardColor, style = MaterialTheme.typography.bodySmall)
+                Spacer(modifier = Modifier.width(6.dp))
+                // Source badge
+                Surface(
+                    shape = RoundedCornerShape(4.dp),
+                    color = sourceColor.copy(alpha = 0.15f)
+                ) {
+                    Text(
+                        source,
+                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = sourceColor,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+            Text(
+                "${CalorieUtils.formatNumber(calories)} kcal",
+                color = onCardColor.copy(alpha = 0.6f),
+                style = MaterialTheme.typography.labelSmall
+            )
+        }
+    }
 }
 
 @Composable
@@ -163,12 +216,7 @@ fun AddEntryScreen(
     val selectedTheme = remember(selectedThemeIndex) { getTodayVisualTheme(selectedThemeIndex) }
     val accentColor = remember(selectedTheme, isDarkTheme) { themedAccentColor(selectedTheme, isDarkTheme) }
     val cardColor = remember(selectedTheme, isDarkTheme) { themedDashboardCardColor(selectedTheme, isDarkTheme) }
-    val onCardColor = if (isDarkTheme) Color.White else if (calculatePerceivedLuminance(cardColor) > 0.5f) Color(0xFF1E1E1E) else Color(0xFFF4F4F4)
-
-    // Remove automatic state clearing to persist chat/results across navigation
-    // LaunchedEffect(Unit) {
-    //    aiViewModel.clearState()
-    // }
+    val onCardColor = com.example.calorietracker.ui.theme.onCardColor(cardColor, isDarkTheme)
 
     Scaffold(
         topBar = {
@@ -261,6 +309,20 @@ fun ManualInputTab(
     var pendingCameraUri by remember { mutableStateOf<Uri?>(null) }
     var showMediaSourceDialog by remember { mutableStateOf(false) }
     var historySuggestions by remember { mutableStateOf<List<CalorieItemEntity>>(emptyList()) }
+    var nutritionSuggestions by remember { mutableStateOf<List<NutritionFoodItem>>(emptyList()) }
+
+    // Weight adjustment state
+    var suggestionSource by remember { mutableStateOf<String?>(null) } // "history" or "official"
+    var weightGrams by remember { mutableStateOf("100") } // for official: current grams
+    var useSameWeight by remember { mutableStateOf(true) } // for history: same weight toggle
+    var previousGrams by remember { mutableStateOf("") } // for history: previous weight
+    var currentGrams by remember { mutableStateOf("") }  // for history: current weight
+    // Base values (per 100g for official, or original values for history)
+    var baseCalories by remember { mutableStateOf(0.0) }
+    var baseCarbs by remember { mutableStateOf(0.0) }
+    var baseProtein by remember { mutableStateOf(0.0) }
+    var baseFat by remember { mutableStateOf(0.0) }
+
     val context = LocalContext.current
     val imagePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
@@ -320,11 +382,17 @@ fun ManualInputTab(
         val keyword = name.trim()
         if (keyword.isBlank()) {
             historySuggestions = emptyList()
+            nutritionSuggestions = emptyList()
+            suggestionSource = null
         } else {
             delay(120)
+            // Search history (distinct by name, max 5 shown first)
             historySuggestions = app.repository
-                .searchRecentItemsByTypeAndPrefix(type, keyword, 8)
+                .searchRecentItemsByTypeAndPrefix(type, keyword, 10)
                 .distinctBy { it.name }
+                .take(5)
+            // Search official nutrition database (max 20, food only)
+            nutritionSuggestions = if (type == "food") NutritionDatabase.search(keyword, 20) else emptyList()
         }
     }
 
@@ -340,24 +408,6 @@ fun ManualInputTab(
         ).show()
     }
 
-    // Helper to calculate duration
-    fun calculateDuration(): Int {
-        if (startTime.isBlank() || endTime.isBlank()) return 0
-        try {
-            val format = SimpleDateFormat("HH:mm", Locale.getDefault())
-            val start = format.parse(startTime)
-            val end = format.parse(endTime)
-            if (start != null && end != null) {
-                var diff = end.time - start.time
-                // If end time is earlier than start time, assume it's next day
-                if (diff < 0) diff += 24 * 60 * 60 * 1000 
-                return (diff / (1000 * 60)).toInt()
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-        return 0
-    }
 
     LazyColumn(
         contentPadding = PaddingValues(16.dp),
@@ -432,40 +482,71 @@ fun ManualInputTab(
                         singleLine = true
                     )
 
-                    if (historySuggestions.isNotEmpty()) {
+                    // ========== Combined Suggestions (History + Official) ==========
+                    val hasSuggestions = historySuggestions.isNotEmpty() || nutritionSuggestions.isNotEmpty()
+                    if (hasSuggestions) {
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f), RoundedCornerShape(12.dp))
-                                .padding(8.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                                .background(
+                                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                                    RoundedCornerShape(12.dp)
+                                )
+                                .padding(6.dp),
+                            verticalArrangement = Arrangement.spacedBy(2.dp)  // tighter spacing
                         ) {
+                            // History items first
                             historySuggestions.forEach { historyItem ->
-                                Surface(
+                                SuggestionRow(
+                                    name = historyItem.name,
+                                    calories = historyItem.calories,
+                                    source = "历史",
+                                    sourceColor = accentColor.copy(alpha = 0.8f),
+                                    onCardColor = onCardColor,
                                     onClick = {
                                         name = historyItem.name
+                                        baseCalories = historyItem.calories
+                                        baseCarbs = historyItem.carbs
+                                        baseProtein = historyItem.protein
+                                        baseFat = historyItem.fat
                                         calories = CalorieUtils.formatNumber(historyItem.calories)
                                         carbs = CalorieUtils.formatNumber(historyItem.carbs)
                                         protein = CalorieUtils.formatNumber(historyItem.protein)
                                         fat = CalorieUtils.formatNumber(historyItem.fat)
                                         notes = historyItem.notes.orEmpty()
+                                        suggestionSource = "history"
+                                        useSameWeight = true
+                                        previousGrams = ""
+                                        currentGrams = ""
                                         historySuggestions = emptyList()
-                                    },
-                                    shape = RoundedCornerShape(10.dp),
-                                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(horizontal = 10.dp, vertical = 8.dp),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text(historyItem.name, color = onCardColor, style = MaterialTheme.typography.bodyMedium)
-                                        Text("${CalorieUtils.formatNumber(historyItem.calories)} kcal", color = onCardColor.copy(alpha = 0.72f), style = MaterialTheme.typography.bodySmall)
+                                        nutritionSuggestions = emptyList()
                                     }
-                                }
+                                )
+                            }
+                            // Official nutrition items
+                            nutritionSuggestions.forEach { nutritionItem ->
+                                SuggestionRow(
+                                    name = nutritionItem.foodName,
+                                    calories = nutritionItem.calories,
+                                    source = "官方",
+                                    sourceColor = Color(0xFF4CAF50),
+                                    onCardColor = onCardColor,
+                                    onClick = {
+                                        name = nutritionItem.foodName
+                                        baseCalories = nutritionItem.calories
+                                        baseCarbs = nutritionItem.carbsG
+                                        baseProtein = nutritionItem.proteinG
+                                        baseFat = nutritionItem.fatG
+                                        calories = CalorieUtils.formatNumber(nutritionItem.calories)
+                                        carbs = CalorieUtils.formatNumber(nutritionItem.carbsG)
+                                        protein = CalorieUtils.formatNumber(nutritionItem.proteinG)
+                                        fat = CalorieUtils.formatNumber(nutritionItem.fatG)
+                                        suggestionSource = "official"
+                                        weightGrams = "100"
+                                        historySuggestions = emptyList()
+                                        nutritionSuggestions = emptyList()
+                                    }
+                                )
                             }
                         }
                     }
@@ -510,6 +591,136 @@ fun ManualInputTab(
                                 shape = RoundedCornerShape(12.dp),
                                 singleLine = true
                             )
+                        }
+                    }
+
+                    // ========== Weight Adjustment Section ==========
+                    if (type == "food" && suggestionSource != null) {
+                        Card(
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (suggestionSource == "official") 
+                                    Color(0xFF4CAF50).copy(alpha = 0.08f) 
+                                else 
+                                    accentColor.copy(alpha = 0.06f)
+                            ),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(10.dp)) {
+                                if (suggestionSource == "official") {
+                                    // Official: per 100g, user inputs actual grams
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Text(
+                                            "📋 官方数据",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = Color(0xFF4CAF50),
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        Spacer(modifier = Modifier.weight(1f))
+                                        Text(
+                                            "默认100g",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = onCardColor.copy(alpha = 0.5f)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    OutlinedTextField(
+                                        value = weightGrams,
+                                        onValueChange = { if (allowDecimalInput(it)) weightGrams = it },
+                                        label = { Text("实际克数") },
+                                        placeholder = { Text("例如: 250") },
+                                        suffix = { Text("g") },
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                        modifier = Modifier.fillMaxWidth(),
+                                        shape = RoundedCornerShape(8.dp),
+                                        singleLine = true
+                                    )
+                                } else {
+                                    // History: ask same weight?
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Text(
+                                            "🕐 历史记录",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = accentColor,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        Spacer(modifier = Modifier.weight(1f))
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text("相同重量", style = MaterialTheme.typography.labelSmall, color = onCardColor.copy(alpha = 0.7f))
+                                            Switch(
+                                                checked = useSameWeight,
+                                                onCheckedChange = {
+                                                    useSameWeight = it
+                                                    if (it) {
+                                                        // Reset to original values
+                                                        calories = CalorieUtils.formatNumber(baseCalories)
+                                                        carbs = CalorieUtils.formatNumber(baseCarbs)
+                                                        protein = CalorieUtils.formatNumber(baseProtein)
+                                                        fat = CalorieUtils.formatNumber(baseFat)
+                                                    }
+                                                },
+                                                colors = SwitchDefaults.colors(checkedThumbColor = accentColor, checkedTrackColor = accentColor.copy(alpha = 0.4f))
+                                            )
+                                        }
+                                    }
+                                    if (!useSameWeight) {
+                                        Spacer(modifier = Modifier.height(6.dp))
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            OutlinedTextField(
+                                                value = previousGrams,
+                                                onValueChange = { if (allowDecimalInput(it)) previousGrams = it },
+                                                label = { Text("之前克数") },
+                                                suffix = { Text("g") },
+                                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                                modifier = Modifier.weight(1f),
+                                                shape = RoundedCornerShape(8.dp),
+                                                singleLine = true
+                                            )
+                                            OutlinedTextField(
+                                                value = currentGrams,
+                                                onValueChange = { if (allowDecimalInput(it)) currentGrams = it },
+                                                label = { Text("现在克数") },
+                                                suffix = { Text("g") },
+                                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                                modifier = Modifier.weight(1f),
+                                                shape = RoundedCornerShape(8.dp),
+                                                singleLine = true
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // Auto-recalculate when weight inputs change
+                        LaunchedEffect(suggestionSource, weightGrams, useSameWeight, previousGrams, currentGrams) {
+                            if (suggestionSource == "official") {
+                                val grams = CalorieUtils.parseDecimalInput(weightGrams) ?: 100.0
+                                val ratio = grams / 100.0
+                                calories = CalorieUtils.formatNumber(baseCalories * ratio)
+                                carbs = CalorieUtils.formatNumber(baseCarbs * ratio)
+                                protein = CalorieUtils.formatNumber(baseProtein * ratio)
+                                fat = CalorieUtils.formatNumber(baseFat * ratio)
+                            } else if (suggestionSource == "history" && !useSameWeight) {
+                                val prev = CalorieUtils.parseDecimalInput(previousGrams)
+                                val curr = CalorieUtils.parseDecimalInput(currentGrams)
+                                if (prev != null && curr != null && prev > 0) {
+                                    val ratio = curr / prev
+                                    calories = CalorieUtils.formatNumber(baseCalories * ratio)
+                                    carbs = CalorieUtils.formatNumber(baseCarbs * ratio)
+                                    protein = CalorieUtils.formatNumber(baseProtein * ratio)
+                                    fat = CalorieUtils.formatNumber(baseFat * ratio)
+                                }
+                            }
                         }
                     }
                     
@@ -591,7 +802,7 @@ fun ManualInputTab(
                                 )
                             }
                         }
-                        val duration = calculateDuration()
+                        val duration = CalorieUtils.calculateDuration(startTime, endTime)
                         if (duration > 0) {
                             Text(
                                 "时长: $duration 分钟", 
@@ -663,7 +874,7 @@ fun ManualInputTab(
                     if (name.isNotEmpty() && calValue > 0.0) {
                         val compressedImagePath = selectedImageUri?.let { ImageStorageUtils.compressAndSaveImage(context, it) }
                         if (type == "exercise") {
-                            val duration = calculateDuration()
+                            val duration = CalorieUtils.calculateDuration(startTime, endTime)
                             // Use startTime as the record time
                             val recordTime = if (startTime.isNotBlank()) startTime else time
                             val durationNote = if (duration > 0) "时长: $duration 分钟" else ""

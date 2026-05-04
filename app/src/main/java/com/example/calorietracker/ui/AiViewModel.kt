@@ -35,18 +35,6 @@ class AiViewModel(application: Application) : AndroidViewModel(application) {
     private val _photoUiState = MutableStateFlow<AiUiState>(AiUiState.Idle)
     val photoUiState: StateFlow<AiUiState> = _photoUiState.asStateFlow()
 
-    // Persistent lists for recognized items to survive tab switching
-    private val _chatRecognizedItems = mutableListOf<com.example.calorietracker.ui.screens.EntryItem>()
-    val chatRecognizedItems: List<com.example.calorietracker.ui.screens.EntryItem> get() = _chatRecognizedItems
-
-    private val _photoRecognizedItems = mutableListOf<com.example.calorietracker.ui.screens.EntryItem>()
-    val photoRecognizedItems: List<com.example.calorietracker.ui.screens.EntryItem> get() = _photoRecognizedItems
-    
-    // Helper to update lists (using a flow or just exposing the list? 
-    // Compose needs State. Let's use MutableStateFlow for the lists or just MutableStateList if we were in Compose, 
-    // but here we are in ViewModel.
-    // Better to use MutableStateFlow<List<EntryItem>>
-    
     private val _chatItemsFlow = MutableStateFlow<List<com.example.calorietracker.ui.screens.EntryItem>>(emptyList())
     val chatItemsFlow: StateFlow<List<com.example.calorietracker.ui.screens.EntryItem>> = _chatItemsFlow.asStateFlow()
 
@@ -69,36 +57,17 @@ class AiViewModel(application: Application) : AndroidViewModel(application) {
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    fun updateConfig(apiKey: String, provider: String, baseUrl: String, modelName: String, maxContext: Int, customChatPrompt: String? = null, customImagePrompt: String? = null) {
-        val newConfig = AiConfig(apiKey, provider, baseUrl, modelName, maxContext, customChatPrompt, customImagePrompt)
+    fun updateConfig(apiKey: String, provider: String, baseUrl: String, modelName: String, maxContext: Int, customChatPrompt: String? = null, customImagePrompt: String? = null, customAnalysisPrompt: String? = null) {
+        val newConfig = AiConfig(apiKey, provider, baseUrl, modelName, maxContext, customChatPrompt, customImagePrompt, customAnalysisPrompt)
         aiService.saveConfig(newConfig)
         _config.value = newConfig
     }
     
-    // Overload for compatibility if needed, or remove if unused
-    fun updateConfig(apiKey: String, provider: String, baseUrl: String, modelName: String) {
-        updateConfig(apiKey, provider, baseUrl, modelName, _config.value.maxContext, _config.value.customChatPrompt, _config.value.customImagePrompt)
-    }
-
     suspend fun testConnection(apiKey: String, baseUrl: String, modelName: String): Boolean {
         val testConfig = AiConfig(apiKey, _config.value.provider, baseUrl, modelName, _config.value.maxContext, _config.value.customChatPrompt, _config.value.customImagePrompt)
         return aiService.testConnection(testConfig)
     }
 
-    // For PhotoRecognitionTab (One-off)
-    fun analyzeText(text: String, userWeight: Float) {
-        viewModelScope.launch {
-            _uiState.value = AiUiState.Loading
-            try {
-                val response = aiService.analyzeText(text, userWeight)
-                _uiState.value = AiUiState.Success(response.items, response.summary)
-            } catch (e: Exception) {
-                _uiState.value = AiUiState.Error(e.localizedMessage ?: "Unknown error")
-            }
-        }
-    }
-
-    // For PhotoRecognitionTab (One-off)
     fun analyzeImage(bitmaps: List<Bitmap>, userWeight: Float, notes: String? = null) {
         viewModelScope.launch {
             _photoUiState.value = AiUiState.Loading

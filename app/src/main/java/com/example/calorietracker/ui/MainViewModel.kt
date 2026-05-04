@@ -82,7 +82,7 @@ class MainViewModel(private val repository: CalorieRepository) : ViewModel() {
                 mealCategory = mealCategory,
                 imageUrl = imageUrl,
                 notes = notes,
-                createdAt = java.util.Date().toString()
+                createdAt = java.time.Instant.now().toString()
             )
             repository.addRecordItem(item)
         }

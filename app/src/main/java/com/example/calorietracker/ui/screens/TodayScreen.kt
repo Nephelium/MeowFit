@@ -1256,10 +1256,10 @@ fun EditRecordDialog(
                         endTimeStr = sdf.format(java.util.Date(endMillis))
                     }
                 } catch (e: Exception) {
-                    endTimeStr = item.time // Fallback
+                    endTimeStr = item.time
                 }
             } else {
-                endTimeStr = item.time // Fallback
+                endTimeStr = item.time
             }
         }
     }
@@ -1574,8 +1574,6 @@ fun EditRecordDialog(
         )
     }
 }
-
-// Helper to reuse parseDuration removed - using CalorieUtils.parseDuration
 
 @Composable
 fun SummaryCard(

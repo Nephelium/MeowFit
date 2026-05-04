@@ -23,7 +23,8 @@ data class AiConfig(
     val modelName: String = "gpt-4o-mini",
     val maxContext: Int = 10,
     val customChatPrompt: String? = null,
-    val customImagePrompt: String? = null
+    val customImagePrompt: String? = null,
+    val customAnalysisPrompt: String? = null
 )
 
 data class AiResponseItem(
@@ -53,6 +54,51 @@ class AiService(context: Context) {
     private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
 
     companion object {
+        const val DEFAULT_ANALYSIS_PROMPT = """
+你是一位资深的健康管理师、营养师和运动教练。用户会提供过去一周（周一到周日）的全部健康数据，请你进行专业、细致、温暖的周报分析。
+
+你需要分析以下维度：
+1. **饮食分析**：每日热量摄入趋势、三餐规律性、营养成分是否均衡、高热量食物出现频率
+2. **运动分析**：运动频率、运动类型分布、消耗热量趋势、是否达到推荐运动量
+3. **饮水分析**：每日饮水量是否达标（建议2000ml）、饮水习惯评价
+4. **睡眠分析**：睡眠时长趋势、是否存在熬夜/睡眠不足、睡眠质量评价
+5. **体重分析**：体重变化趋势（与目标体重对比）、变化是否健康
+6. **综合评估**：本周目标达成情况、整体健康评分（百分制）、与上周对比（如果有）
+
+请按以下格式返回（纯文本，不要JSON）：
+
+【本周总体评价】
+（2-3句话概括本周健康状态，语气温暖鼓励）
+
+【饮食分析】
+（分析饮食数据，指出亮点和需要改进的地方）
+
+【运动分析】
+（分析运动数据，给出评价）
+
+【睡眠与饮水】
+（分析睡眠和饮水数据）
+
+【体重变化】
+（分析体重趋势）
+
+【下周建议】
+1. 饮食建议：（具体可执行的建议）
+2. 推荐菜单：（提供3-5天的推荐菜单，每天列出早餐/午餐/晚餐/加餐）
+3. 运动计划：（推荐具体的运动项目和频率）
+4. 生活习惯：（睡眠、饮水等建议）
+
+【健康评分】
+本周健康评分：XX/100
+（简短说明评分理由）
+
+注意：
+- 语气要像朋友一样温暖，有鼓励感
+- 如果某项数据缺失或不足，要温柔地提醒
+- 推荐菜单要符合用户的饮食习惯和目标（减脂/增肌/保持）
+- 用emoji增加可读性，但不要过度
+"""
+
         const val DEFAULT_CHAT_PROMPT = """
 你是一位专业的营养师和运动教练。你的任务是与用户进行自然对话，并从用户的描述中识别食物摄入和运动消耗记录。
 
@@ -117,7 +163,8 @@ class AiService(context: Context) {
             modelName = prefs.getString("model_name", "gpt-4o-mini") ?: "gpt-4o-mini",
             maxContext = prefs.getInt("max_context", 10),
             customChatPrompt = prefs.getString("custom_chat_prompt", null),
-            customImagePrompt = prefs.getString("custom_image_prompt", null)
+            customImagePrompt = prefs.getString("custom_image_prompt", null),
+            customAnalysisPrompt = prefs.getString("custom_analysis_prompt", null)
         )
     }
 
@@ -130,6 +177,7 @@ class AiService(context: Context) {
             .putInt("max_context", config.maxContext)
             .putString("custom_chat_prompt", config.customChatPrompt)
             .putString("custom_image_prompt", config.customImagePrompt)
+            .putString("custom_analysis_prompt", config.customAnalysisPrompt)
             .apply()
     }
 
@@ -231,29 +279,6 @@ class AiService(context: Context) {
                 e.printStackTrace()
                 false
             }
-        }
-    }
-
-    private suspend fun callLlmApi(config: AiConfig, systemPrompt: String): AiResponse {
-        return withContext(Dispatchers.IO) {
-            val requestBody = mapOf(
-                "model" to config.modelName,
-                "messages" to listOf(
-                    mapOf("role" to "system", "content" to systemPrompt),
-                    mapOf("role" to "user", "content" to "请分析我的输入") // Placeholder user message if prompt is all system
-                )
-                // Remove temperature
-            )
-            
-            val jsonBody = gson.toJson(requestBody)
-            val request = Request.Builder()
-            .url(if (config.baseUrl.endsWith("/")) "${config.baseUrl}chat/completions" else "${config.baseUrl}/chat/completions")
-            .header("Authorization", "Bearer ${config.apiKey}")
-            .header("Content-Type", "application/json") // Explicitly add Content-Type header
-            .post(jsonBody.toRequestBody(jsonMediaType))
-            .build()
-
-            executeRequest(request)
         }
     }
 
@@ -371,8 +396,7 @@ class AiService(context: Context) {
                         }
                     }
                     
-                    // Fallback for old prompt format (if user didn't update app but server changed? unlikely for local)
-                    // Or if model output "summary" instead of "message"
+                    // Backward compatibility: old prompt format used "summary" instead of "message"
                     if (message == null && jsonObject.has("summary")) {
                         message = jsonObject.get("summary").asString
                     }
@@ -391,6 +415,82 @@ class AiService(context: Context) {
             } catch (e: Exception) {
                 // If JSON parsing fails, return the content as message
                 return AiResponse(emptyList(), content)
+            }
+        }
+    }
+
+    suspend fun sendPlainChat(
+        messages: List<Map<String, String>>,
+        userWeight: Float
+    ): String {
+        val config = getConfig()
+        if (config.apiKey.isBlank()) throw Exception("API Key is missing")
+
+        val basePrompt = config.customChatPrompt?.takeIf { it.isNotBlank() } ?: DEFAULT_CHAT_PROMPT
+        val systemPrompt = "$basePrompt\n\n当前用户体重: ${userWeight}kg。"
+
+        val allMessages = mutableListOf<Map<String, Any>>()
+        allMessages.add(mapOf("role" to "system", "content" to systemPrompt))
+        allMessages.addAll(messages.map { mapOf("role" to it["role"]!!, "content" to it["content"]!!) })
+
+        return withContext(Dispatchers.IO) {
+            val jsonBody = gson.toJson(mapOf("model" to config.modelName, "messages" to allMessages))
+            val request = Request.Builder()
+                .url(if (config.baseUrl.endsWith("/")) "${config.baseUrl}chat/completions" else "${config.baseUrl}/chat/completions")
+                .header("Authorization", "Bearer ${config.apiKey}")
+                .header("Content-Type", "application/json")
+                .post(jsonBody.toRequestBody(jsonMediaType))
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    val errorBody = response.body?.string() ?: "No error body"
+                    throw Exception("API Error: ${response.code} - $errorBody")
+                }
+                val responseBody = response.body?.string() ?: throw Exception("Empty response")
+                val jsonObject = com.google.gson.JsonParser.parseString(responseBody).asJsonObject
+                val choices = jsonObject.getAsJsonArray("choices")
+                    ?: throw Exception("No choices in response")
+                val msg = choices.get(0).asJsonObject.getAsJsonObject("message")
+                msg.get("content").asString
+            }
+        }
+    }
+
+    suspend fun generateWeeklyAnalysis(weeklyDataText: String): String {
+        val config = getConfig()
+        if (config.apiKey.isBlank()) throw Exception("API Key is missing")
+
+        val basePrompt = config.customAnalysisPrompt?.takeIf { it.isNotBlank() } ?: DEFAULT_ANALYSIS_PROMPT
+
+        return withContext(Dispatchers.IO) {
+            val messages = listOf(
+                mapOf("role" to "system", "content" to basePrompt),
+                mapOf("role" to "user", "content" to weeklyDataText)
+            )
+            val requestBody = mapOf(
+                "model" to config.modelName,
+                "messages" to messages
+            )
+            val jsonBody = gson.toJson(requestBody)
+            val request = Request.Builder()
+                .url(if (config.baseUrl.endsWith("/")) "${config.baseUrl}chat/completions" else "${config.baseUrl}/chat/completions")
+                .header("Authorization", "Bearer ${config.apiKey}")
+                .header("Content-Type", "application/json")
+                .post(jsonBody.toRequestBody(jsonMediaType))
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    val errorBody = response.body?.string() ?: "No error body"
+                    throw Exception("API Error: ${response.code} - $errorBody")
+                }
+                val responseBody = response.body?.string() ?: throw Exception("Empty response")
+                val jsonObject = com.google.gson.JsonParser.parseString(responseBody).asJsonObject
+                val choices = jsonObject.getAsJsonArray("choices")
+                    ?: throw Exception("No choices in response")
+                val message = choices.get(0).asJsonObject.getAsJsonObject("message")
+                message.get("content").asString
             }
         }
     }
