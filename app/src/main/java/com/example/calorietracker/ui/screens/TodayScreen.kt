@@ -100,7 +100,8 @@ val todayVisualThemePool = listOf(
     TodayVisualTheme(2, "海盐清蓝", "#E1F5FE".toColorInt(), "#B3E5FC".toColorInt(), "#111B22".toColorInt(), "#153448".toColorInt(), listOf("💧", "🌊", "🧊", "💙")),
     TodayVisualTheme(3, "夜眠薰衣", "#F3E5F5".toColorInt(), "#E1BEE7".toColorInt(), "#1A1520".toColorInt(), "#30203A".toColorInt(), listOf("💤", "🌙", "⭐", "🛌")),
     TodayVisualTheme(4, "猫系森绿", "#E8F5E9".toColorInt(), "#C8E6C9".toColorInt(), "#121A14".toColorInt(), "#1E3121".toColorInt(), listOf("🐱", "🐾", "🌿", "🍀")),
-    TodayVisualTheme(5, "暖阳蔬果", "#FFF3E0".toColorInt(), "#FFCC80".toColorInt(), "#20170F".toColorInt(), "#3C2A16".toColorInt(), listOf("🥕", "🍊", "🌞", "🌻"))
+    TodayVisualTheme(5, "暖阳蔬果", "#FFF3E0".toColorInt(), "#FFCC80".toColorInt(), "#20170F".toColorInt(), "#3C2A16".toColorInt(), listOf("🥕", "🍊", "🌞", "🌻")),
+    TodayVisualTheme(6, "纯净素白", "#FAFAFA".toColorInt(), "#EEEEEE".toColorInt(), "#121212".toColorInt(), "#1E1E1E".toColorInt(), listOf("☁️", "❄️", "🕊️", "🤍"))
 )
 
 fun getTodayVisualTheme(index: Int): TodayVisualTheme {
@@ -1270,7 +1271,7 @@ fun EditRecordDialog(
             colors = CardDefaults.cardColors(containerColor = containerColor),
             modifier = Modifier.fillMaxWidth()
         ) {
-            Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("编辑记录", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = onContainerColor)
                 
                 OutlinedTextField(

@@ -33,19 +33,22 @@ public final class AppDatabase_Impl extends AppDatabase {
 
   private volatile AiDao _aiDao;
 
+  private volatile AnalysisDao _analysisDao;
+
   @Override
   @NonNull
   protected SupportSQLiteOpenHelper createOpenHelper(@NonNull final DatabaseConfiguration config) {
-    final SupportSQLiteOpenHelper.Callback _openCallback = new RoomOpenHelper(config, new RoomOpenHelper.Delegate(8) {
+    final SupportSQLiteOpenHelper.Callback _openCallback = new RoomOpenHelper(config, new RoomOpenHelper.Delegate(13) {
       @Override
       public void createAllTables(@NonNull final SupportSQLiteDatabase db) {
-        db.execSQL("CREATE TABLE IF NOT EXISTS `user_profile` (`id` INTEGER NOT NULL, `name` TEXT NOT NULL, `gender` TEXT NOT NULL, `age` INTEGER NOT NULL, `birthDate` TEXT NOT NULL, `height` REAL NOT NULL, `weight` REAL NOT NULL, `targetWeight` REAL NOT NULL, `activityLevel` TEXT NOT NULL, `goal` TEXT NOT NULL, `dailyCalorieTarget` INTEGER NOT NULL, `sleepGoal` REAL NOT NULL, `showMacros` INTEGER NOT NULL, `excludedExercises` TEXT NOT NULL, `createdAt` TEXT NOT NULL, PRIMARY KEY(`id`))");
+        db.execSQL("CREATE TABLE IF NOT EXISTS `user_profile` (`id` INTEGER NOT NULL, `name` TEXT NOT NULL, `gender` TEXT NOT NULL, `age` INTEGER NOT NULL, `birthDate` TEXT NOT NULL, `height` REAL NOT NULL, `weight` REAL NOT NULL, `targetWeight` REAL NOT NULL, `activityLevel` TEXT NOT NULL, `goal` TEXT NOT NULL, `dailyCalorieTarget` INTEGER NOT NULL, `sleepGoal` REAL NOT NULL, `showMacros` INTEGER NOT NULL, `weekStartDay` INTEGER NOT NULL, `selectedTodayThemeIndex` INTEGER NOT NULL, `hasSelectedTodayTheme` INTEGER NOT NULL, `excludedExercises` TEXT NOT NULL, `createdAt` TEXT NOT NULL, PRIMARY KEY(`id`))");
         db.execSQL("CREATE TABLE IF NOT EXISTS `daily_records` (`date` TEXT NOT NULL, `weight` REAL, `totalIntake` INTEGER NOT NULL, `totalBurned` INTEGER NOT NULL, `netCalories` INTEGER NOT NULL, `totalCarbs` INTEGER NOT NULL, `totalProtein` INTEGER NOT NULL, `totalFat` INTEGER NOT NULL, `totalWater` INTEGER NOT NULL, `sleepDuration` INTEGER NOT NULL, PRIMARY KEY(`date`))");
-        db.execSQL("CREATE TABLE IF NOT EXISTS `calorie_items` (`id` TEXT NOT NULL, `date` TEXT NOT NULL, `type` TEXT NOT NULL, `name` TEXT NOT NULL, `calories` INTEGER NOT NULL, `carbs` INTEGER NOT NULL, `protein` INTEGER NOT NULL, `fat` INTEGER NOT NULL, `time` TEXT NOT NULL, `imageUrl` TEXT, `notes` TEXT, `createdAt` TEXT NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`date`) REFERENCES `daily_records`(`date`) ON UPDATE NO ACTION ON DELETE CASCADE )");
+        db.execSQL("CREATE TABLE IF NOT EXISTS `calorie_items` (`id` TEXT NOT NULL, `date` TEXT NOT NULL, `type` TEXT NOT NULL, `name` TEXT NOT NULL, `calories` REAL NOT NULL, `carbs` REAL NOT NULL, `protein` REAL NOT NULL, `fat` REAL NOT NULL, `time` TEXT NOT NULL, `mealCategory` TEXT, `imageUrl` TEXT, `notes` TEXT, `createdAt` TEXT NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`date`) REFERENCES `daily_records`(`date`) ON UPDATE NO ACTION ON DELETE CASCADE )");
         db.execSQL("CREATE INDEX IF NOT EXISTS `index_calorie_items_date` ON `calorie_items` (`date`)");
         db.execSQL("CREATE TABLE IF NOT EXISTS `ai_chat_messages` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `role` TEXT NOT NULL, `content` TEXT NOT NULL, `imageUrl` TEXT, `timestamp` INTEGER NOT NULL)");
+        db.execSQL("CREATE TABLE IF NOT EXISTS `weekly_summaries` (`weekStartDate` TEXT NOT NULL, `weekEndDate` TEXT NOT NULL, `summaryText` TEXT NOT NULL, `recommendations` TEXT NOT NULL, `dietDays` INTEGER NOT NULL, `exerciseDays` INTEGER NOT NULL, `generatedAt` INTEGER NOT NULL, `status` TEXT NOT NULL, PRIMARY KEY(`weekStartDate`))");
         db.execSQL("CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)");
-        db.execSQL("INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'ae96c2c32a806fc77b121b918133a16d')");
+        db.execSQL("INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '18e763d8aeb7149f7c7424d5a7f94b15')");
       }
 
       @Override
@@ -54,6 +57,7 @@ public final class AppDatabase_Impl extends AppDatabase {
         db.execSQL("DROP TABLE IF EXISTS `daily_records`");
         db.execSQL("DROP TABLE IF EXISTS `calorie_items`");
         db.execSQL("DROP TABLE IF EXISTS `ai_chat_messages`");
+        db.execSQL("DROP TABLE IF EXISTS `weekly_summaries`");
         final List<? extends RoomDatabase.Callback> _callbacks = mCallbacks;
         if (_callbacks != null) {
           for (RoomDatabase.Callback _callback : _callbacks) {
@@ -98,7 +102,7 @@ public final class AppDatabase_Impl extends AppDatabase {
       @NonNull
       public RoomOpenHelper.ValidationResult onValidateSchema(
           @NonNull final SupportSQLiteDatabase db) {
-        final HashMap<String, TableInfo.Column> _columnsUserProfile = new HashMap<String, TableInfo.Column>(15);
+        final HashMap<String, TableInfo.Column> _columnsUserProfile = new HashMap<String, TableInfo.Column>(18);
         _columnsUserProfile.put("id", new TableInfo.Column("id", "INTEGER", true, 1, null, TableInfo.CREATED_FROM_ENTITY));
         _columnsUserProfile.put("name", new TableInfo.Column("name", "TEXT", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
         _columnsUserProfile.put("gender", new TableInfo.Column("gender", "TEXT", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
@@ -112,6 +116,9 @@ public final class AppDatabase_Impl extends AppDatabase {
         _columnsUserProfile.put("dailyCalorieTarget", new TableInfo.Column("dailyCalorieTarget", "INTEGER", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
         _columnsUserProfile.put("sleepGoal", new TableInfo.Column("sleepGoal", "REAL", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
         _columnsUserProfile.put("showMacros", new TableInfo.Column("showMacros", "INTEGER", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
+        _columnsUserProfile.put("weekStartDay", new TableInfo.Column("weekStartDay", "INTEGER", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
+        _columnsUserProfile.put("selectedTodayThemeIndex", new TableInfo.Column("selectedTodayThemeIndex", "INTEGER", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
+        _columnsUserProfile.put("hasSelectedTodayTheme", new TableInfo.Column("hasSelectedTodayTheme", "INTEGER", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
         _columnsUserProfile.put("excludedExercises", new TableInfo.Column("excludedExercises", "TEXT", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
         _columnsUserProfile.put("createdAt", new TableInfo.Column("createdAt", "TEXT", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
         final HashSet<TableInfo.ForeignKey> _foreignKeysUserProfile = new HashSet<TableInfo.ForeignKey>(0);
@@ -143,16 +150,17 @@ public final class AppDatabase_Impl extends AppDatabase {
                   + " Expected:\n" + _infoDailyRecords + "\n"
                   + " Found:\n" + _existingDailyRecords);
         }
-        final HashMap<String, TableInfo.Column> _columnsCalorieItems = new HashMap<String, TableInfo.Column>(12);
+        final HashMap<String, TableInfo.Column> _columnsCalorieItems = new HashMap<String, TableInfo.Column>(13);
         _columnsCalorieItems.put("id", new TableInfo.Column("id", "TEXT", true, 1, null, TableInfo.CREATED_FROM_ENTITY));
         _columnsCalorieItems.put("date", new TableInfo.Column("date", "TEXT", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
         _columnsCalorieItems.put("type", new TableInfo.Column("type", "TEXT", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
         _columnsCalorieItems.put("name", new TableInfo.Column("name", "TEXT", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
-        _columnsCalorieItems.put("calories", new TableInfo.Column("calories", "INTEGER", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
-        _columnsCalorieItems.put("carbs", new TableInfo.Column("carbs", "INTEGER", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
-        _columnsCalorieItems.put("protein", new TableInfo.Column("protein", "INTEGER", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
-        _columnsCalorieItems.put("fat", new TableInfo.Column("fat", "INTEGER", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
+        _columnsCalorieItems.put("calories", new TableInfo.Column("calories", "REAL", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
+        _columnsCalorieItems.put("carbs", new TableInfo.Column("carbs", "REAL", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
+        _columnsCalorieItems.put("protein", new TableInfo.Column("protein", "REAL", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
+        _columnsCalorieItems.put("fat", new TableInfo.Column("fat", "REAL", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
         _columnsCalorieItems.put("time", new TableInfo.Column("time", "TEXT", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
+        _columnsCalorieItems.put("mealCategory", new TableInfo.Column("mealCategory", "TEXT", false, 0, null, TableInfo.CREATED_FROM_ENTITY));
         _columnsCalorieItems.put("imageUrl", new TableInfo.Column("imageUrl", "TEXT", false, 0, null, TableInfo.CREATED_FROM_ENTITY));
         _columnsCalorieItems.put("notes", new TableInfo.Column("notes", "TEXT", false, 0, null, TableInfo.CREATED_FROM_ENTITY));
         _columnsCalorieItems.put("createdAt", new TableInfo.Column("createdAt", "TEXT", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
@@ -182,9 +190,27 @@ public final class AppDatabase_Impl extends AppDatabase {
                   + " Expected:\n" + _infoAiChatMessages + "\n"
                   + " Found:\n" + _existingAiChatMessages);
         }
+        final HashMap<String, TableInfo.Column> _columnsWeeklySummaries = new HashMap<String, TableInfo.Column>(8);
+        _columnsWeeklySummaries.put("weekStartDate", new TableInfo.Column("weekStartDate", "TEXT", true, 1, null, TableInfo.CREATED_FROM_ENTITY));
+        _columnsWeeklySummaries.put("weekEndDate", new TableInfo.Column("weekEndDate", "TEXT", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
+        _columnsWeeklySummaries.put("summaryText", new TableInfo.Column("summaryText", "TEXT", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
+        _columnsWeeklySummaries.put("recommendations", new TableInfo.Column("recommendations", "TEXT", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
+        _columnsWeeklySummaries.put("dietDays", new TableInfo.Column("dietDays", "INTEGER", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
+        _columnsWeeklySummaries.put("exerciseDays", new TableInfo.Column("exerciseDays", "INTEGER", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
+        _columnsWeeklySummaries.put("generatedAt", new TableInfo.Column("generatedAt", "INTEGER", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
+        _columnsWeeklySummaries.put("status", new TableInfo.Column("status", "TEXT", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
+        final HashSet<TableInfo.ForeignKey> _foreignKeysWeeklySummaries = new HashSet<TableInfo.ForeignKey>(0);
+        final HashSet<TableInfo.Index> _indicesWeeklySummaries = new HashSet<TableInfo.Index>(0);
+        final TableInfo _infoWeeklySummaries = new TableInfo("weekly_summaries", _columnsWeeklySummaries, _foreignKeysWeeklySummaries, _indicesWeeklySummaries);
+        final TableInfo _existingWeeklySummaries = TableInfo.read(db, "weekly_summaries");
+        if (!_infoWeeklySummaries.equals(_existingWeeklySummaries)) {
+          return new RoomOpenHelper.ValidationResult(false, "weekly_summaries(com.example.calorietracker.data.WeeklySummaryEntity).\n"
+                  + " Expected:\n" + _infoWeeklySummaries + "\n"
+                  + " Found:\n" + _existingWeeklySummaries);
+        }
         return new RoomOpenHelper.ValidationResult(true, null);
       }
-    }, "ae96c2c32a806fc77b121b918133a16d", "d8010429171e4980779af2964db56723");
+    }, "18e763d8aeb7149f7c7424d5a7f94b15", "423e753a20b6251b38647cbaa3ada481");
     final SupportSQLiteOpenHelper.Configuration _sqliteConfig = SupportSQLiteOpenHelper.Configuration.builder(config.context).name(config.name).callback(_openCallback).build();
     final SupportSQLiteOpenHelper _helper = config.sqliteOpenHelperFactory.create(_sqliteConfig);
     return _helper;
@@ -195,7 +221,7 @@ public final class AppDatabase_Impl extends AppDatabase {
   protected InvalidationTracker createInvalidationTracker() {
     final HashMap<String, String> _shadowTablesMap = new HashMap<String, String>(0);
     final HashMap<String, Set<String>> _viewTables = new HashMap<String, Set<String>>(0);
-    return new InvalidationTracker(this, _shadowTablesMap, _viewTables, "user_profile","daily_records","calorie_items","ai_chat_messages");
+    return new InvalidationTracker(this, _shadowTablesMap, _viewTables, "user_profile","daily_records","calorie_items","ai_chat_messages","weekly_summaries");
   }
 
   @Override
@@ -215,6 +241,7 @@ public final class AppDatabase_Impl extends AppDatabase {
       _db.execSQL("DELETE FROM `daily_records`");
       _db.execSQL("DELETE FROM `calorie_items`");
       _db.execSQL("DELETE FROM `ai_chat_messages`");
+      _db.execSQL("DELETE FROM `weekly_summaries`");
       super.setTransactionSuccessful();
     } finally {
       super.endTransaction();
@@ -235,6 +262,7 @@ public final class AppDatabase_Impl extends AppDatabase {
     _typeConvertersMap.put(UserDao.class, UserDao_Impl.getRequiredConverters());
     _typeConvertersMap.put(RecordDao.class, RecordDao_Impl.getRequiredConverters());
     _typeConvertersMap.put(AiDao.class, AiDao_Impl.getRequiredConverters());
+    _typeConvertersMap.put(AnalysisDao.class, AnalysisDao_Impl.getRequiredConverters());
     return _typeConvertersMap;
   }
 
@@ -291,6 +319,20 @@ public final class AppDatabase_Impl extends AppDatabase {
           _aiDao = new AiDao_Impl(this);
         }
         return _aiDao;
+      }
+    }
+  }
+
+  @Override
+  public AnalysisDao analysisDao() {
+    if (_analysisDao != null) {
+      return _analysisDao;
+    } else {
+      synchronized(this) {
+        if(_analysisDao == null) {
+          _analysisDao = new AnalysisDao_Impl(this);
+        }
+        return _analysisDao;
       }
     }
   }

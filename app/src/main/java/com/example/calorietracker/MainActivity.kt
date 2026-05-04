@@ -18,7 +18,12 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoGraph
@@ -28,6 +33,7 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -39,6 +45,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -109,9 +116,9 @@ private object BottomNavTuning {
 }
 
 private object ScreenOffsetTuning {
-    val overviewPageOffsetY = (-15).dp
-    val statsPageOffsetY = (-25).dp
-    val settingsPageOffsetY = (-10).dp
+    val overviewPageOffsetY = 0.dp
+    val statsPageOffsetY = 0.dp
+    val settingsPageOffsetY = 0.dp
 }
 
 private fun Modifier.upwardOffsetWithoutBottomGap(offsetY: Dp): Modifier = this.then(
@@ -150,13 +157,80 @@ fun MainApp(viewModel: MainViewModel, aiViewModel: AiViewModel, backupViewModel:
         }
     }
     val view = LocalView.current
+    val context = LocalContext.current
     SideEffect {
         val window = (view.context as Activity).window
         WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !isDarkTheme
         WindowCompat.getInsetsController(window, view).isAppearanceLightNavigationBars = !isDarkTheme
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    // Auto-update check on startup (only when online)
+    val currentVersion = "1.5.1"
+    val autoRelease by viewModel.autoUpdateRelease.collectAsState()
+    LaunchedEffect(Unit) {
+        viewModel.checkAutoUpdate(context, currentVersion)
+    }
+
+    // Auto-update dialog
+    if (autoRelease != null) {
+        AlertDialog(
+            onDismissRequest = { viewModel.dismissAutoUpdate(context) },
+            containerColor = navCardColor,
+            titleContentColor = navOnCardColor,
+            textContentColor = navOnCardColor,
+            title = { Text("发现新版本") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("新版本: ${autoRelease!!.tagName}")
+                    Text("当前版本: $currentVersion")
+                    if (autoRelease!!.body.isNotBlank()) {
+                        Text(
+                            autoRelease!!.body.take(300),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = navOnCardColor.copy(alpha = 0.7f)
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = { viewModel.openUpdateInBrowser(context) },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = accentColor,
+                        contentColor = Color.White
+                    )
+                ) {
+                    Text("去 GitHub 下载")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { viewModel.dismissAutoUpdate(context) },
+                    colors = ButtonDefaults.textButtonColors(contentColor = accentColor)
+                ) {
+                    Text("稍后再说")
+                }
+            }
+        )
+    }
+
+    // Nested scroll tracking for status bar blur
+    val blurAmount by viewModel.scrollBlurAmount.collectAsState()
+    var cumulativeScroll by remember { mutableFloatStateOf(0f) }
+    val scrollConnection = remember {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: androidx.compose.ui.input.nestedscroll.NestedScrollSource): Offset {
+                cumulativeScroll = (cumulativeScroll + available.y).coerceIn(0f, 300f)
+                viewModel.updateScrollBlur(cumulativeScroll / 300f)
+                return Offset.Zero
+            }
+        }
+    }
+
+    Box(modifier = Modifier
+        .fillMaxSize()
+        .nestedScroll(scrollConnection)
+    ) {
         TodayBackground(
             theme = selectedTheme,
             seed = (selectedThemeIndex + 1) * 1031,
@@ -498,6 +572,33 @@ fun MainApp(viewModel: MainViewModel, aiViewModel: AiViewModel, backupViewModel:
                 containerColor = navCardColor,
                 textColor = navOnCardColor,
                 accentColor = accentColor
+            )
+        }
+
+        // Status bar blur overlay (appears on scroll)
+        if (blurAmount > 0.01f) {
+            val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+            val overlayColor = if (isDarkTheme) Color(0xFF121212) else Color(0xFFFFFFFF)
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(statusBarHeight + 8.dp)
+                    .then(
+                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                            Modifier.blur((blurAmount * 20).dp)
+                        } else {
+                            Modifier
+                        }
+                    )
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(
+                                overlayColor.copy(alpha = blurAmount * 0.85f),
+                                overlayColor.copy(alpha = blurAmount * 0.5f),
+                                overlayColor.copy(alpha = 0f)
+                            )
+                        )
+                    )
             )
         }
     }

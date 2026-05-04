@@ -87,7 +87,7 @@ fun CalorieTrackerTheme(
     if (!view.isInEditMode) {
         SideEffect {
             val window = (view.context as Activity).window
-            window.statusBarColor = colorScheme.background.toArgb() // Blend status bar with background
+            window.statusBarColor = android.graphics.Color.TRANSPARENT // Transparent to extend background into status bar
             // Use light status bar icons if not dark theme
             WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !darkTheme
         }

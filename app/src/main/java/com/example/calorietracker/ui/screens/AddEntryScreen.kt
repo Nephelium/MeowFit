@@ -113,7 +113,7 @@ private fun SuggestionRow(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 5.dp),
+                .padding(horizontal = 8.dp, vertical = 3.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -411,7 +411,7 @@ fun ManualInputTab(
 
     LazyColumn(
         contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
         modifier = Modifier.fillMaxSize()
     ) {
         item {
@@ -469,7 +469,7 @@ fun ManualInputTab(
             ) {
                 Column(
                     modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     OutlinedTextField(
                         value = name,
@@ -493,7 +493,7 @@ fun ManualInputTab(
                                     RoundedCornerShape(12.dp)
                                 )
                                 .padding(6.dp),
-                            verticalArrangement = Arrangement.spacedBy(2.dp)  // tighter spacing
+                            verticalArrangement = Arrangement.spacedBy(1.dp)  // tighter spacing
                         ) {
                             // History items first
                             historySuggestions.forEach { historyItem ->

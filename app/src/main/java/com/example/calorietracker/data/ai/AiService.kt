@@ -196,7 +196,8 @@ class AiService(context: Context) {
         // Append user context dynamically
         val systemPrompt = "$basePrompt\n\n当前用户体重: ${userWeight}kg。"
 
-        val contextMessages = history.takeLast(config.maxContext).map { msg ->
+        val actualMax = if (config.maxContext >= 21) Int.MAX_VALUE else config.maxContext
+        val contextMessages = history.takeLast(actualMax).map { msg ->
             mapOf("role" to msg.role, "content" to msg.content)
         }
         

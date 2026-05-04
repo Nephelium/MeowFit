@@ -56,7 +56,7 @@ fun SettingsScreen(
     onCheckUpdate: (String) -> Unit = {},
     onDismissUpdateDialog: () -> Unit = {}
 ) {
-    val currentVersion = "1.5.0"
+    val currentVersion = "1.5.1"
     val isDarkTheme = androidx.compose.foundation.isSystemInDarkTheme()
     val selectedThemeIndex = userProfile?.selectedTodayThemeIndex ?: 0
     val selectedTheme = remember(selectedThemeIndex) { getTodayVisualTheme(selectedThemeIndex) }
@@ -357,6 +357,15 @@ fun CheckUpdateDialog(
                 Text("当前版本: $currentVersion")
                 MarkdownText(
                     text = "**近期更新**\n\n" +
+                        "### 1.5.1\n" +
+                        "- 状态栏边缘到边缘，背景图案延伸至状态栏\n" +
+                        "- 滑动时状态栏渐显毛玻璃模糊效果\n" +
+                        "- 新增「纯净素白」主页背景主题\n" +
+                        "- 手动输入页面行高优化，备选项间距收紧\n" +
+                        "- AI上下文长度新增「无限制」选项\n" +
+                        "- 启动时自动联网检查更新，同版本只弹一次\n" +
+                        "- 分析页面新增年份/月份/周导航与精简模式\n" +
+                        "- 各页面顶部元素高度对齐\n" +
                         "### 1.5.0\n" +
                         "- 集成《中国食物成分表》1657条官方营养数据，支持智能搜索\n" +
                         "- 双源备选项：历史记录（紫色标签）+ 官方数据（绿色标签）\n" +
@@ -543,7 +552,7 @@ fun TodayThemeDialog(
         titleContentColor = textColor,
         textContentColor = textColor,
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(
                     "选择一个你喜欢的主页背景风格",
                     style = MaterialTheme.typography.bodySmall,
@@ -551,7 +560,7 @@ fun TodayThemeDialog(
                 )
                 LazyColumn(
                     modifier = Modifier.heightIn(max = 420.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     itemsIndexed(todayVisualThemePool) { index, theme ->
                         val isSelected = selected == index
@@ -567,11 +576,11 @@ fun TodayThemeDialog(
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                    .padding(horizontal = 12.dp, vertical = 8.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Column(
-                                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalArrangement = Arrangement.spacedBy(4.dp),
                                     modifier = Modifier.width(56.dp)
                                 ) {
                                     Box(

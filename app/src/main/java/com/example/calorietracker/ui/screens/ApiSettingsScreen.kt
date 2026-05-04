@@ -241,19 +241,19 @@ fun ApiSettingsScreen(
             // Max Context Setting
             Column {
                 Text(
-                    text = "上下文长度: $maxContext 条",
+                    text = if (maxContext >= 21) "上下文长度: 无限制" else "上下文长度: $maxContext 条",
                     style = MaterialTheme.typography.bodyMedium
                 )
                 Text(
-                    text = "发送给 AI 的历史消息数量，数值越大消耗 Token 越多。",
+                    text = if (maxContext >= 21) "发送全部历史消息给 AI，可能消耗大量 Token。" else "发送给 AI 的历史消息数量，数值越大消耗 Token 越多。",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Slider(
                     value = maxContext.toFloat(),
                     onValueChange = { maxContext = it.toInt() },
-                    valueRange = 0f..20f,
-                    steps = 19,
+                    valueRange = 0f..21f,
+                    steps = 20,
                     colors = SliderDefaults.colors(
                         thumbColor = accentColor,
                         activeTrackColor = accentColor

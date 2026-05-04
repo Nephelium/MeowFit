@@ -41,7 +41,7 @@ public final class UserDao_Impl implements UserDao {
       @Override
       @NonNull
       protected String createQuery() {
-        return "INSERT OR REPLACE INTO `user_profile` (`id`,`name`,`gender`,`age`,`birthDate`,`height`,`weight`,`targetWeight`,`activityLevel`,`goal`,`dailyCalorieTarget`,`sleepGoal`,`showMacros`,`excludedExercises`,`createdAt`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
+        return "INSERT OR REPLACE INTO `user_profile` (`id`,`name`,`gender`,`age`,`birthDate`,`height`,`weight`,`targetWeight`,`activityLevel`,`goal`,`dailyCalorieTarget`,`sleepGoal`,`showMacros`,`weekStartDay`,`selectedTodayThemeIndex`,`hasSelectedTodayTheme`,`excludedExercises`,`createdAt`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
       }
 
       @Override
@@ -61,15 +61,19 @@ public final class UserDao_Impl implements UserDao {
         statement.bindDouble(12, entity.getSleepGoal());
         final int _tmp = entity.getShowMacros() ? 1 : 0;
         statement.bindLong(13, _tmp);
-        statement.bindString(14, entity.getExcludedExercises());
-        statement.bindString(15, entity.getCreatedAt());
+        statement.bindLong(14, entity.getWeekStartDay());
+        statement.bindLong(15, entity.getSelectedTodayThemeIndex());
+        final int _tmp_1 = entity.getHasSelectedTodayTheme() ? 1 : 0;
+        statement.bindLong(16, _tmp_1);
+        statement.bindString(17, entity.getExcludedExercises());
+        statement.bindString(18, entity.getCreatedAt());
       }
     };
     this.__updateAdapterOfUserProfileEntity = new EntityDeletionOrUpdateAdapter<UserProfileEntity>(__db) {
       @Override
       @NonNull
       protected String createQuery() {
-        return "UPDATE OR ABORT `user_profile` SET `id` = ?,`name` = ?,`gender` = ?,`age` = ?,`birthDate` = ?,`height` = ?,`weight` = ?,`targetWeight` = ?,`activityLevel` = ?,`goal` = ?,`dailyCalorieTarget` = ?,`sleepGoal` = ?,`showMacros` = ?,`excludedExercises` = ?,`createdAt` = ? WHERE `id` = ?";
+        return "UPDATE OR ABORT `user_profile` SET `id` = ?,`name` = ?,`gender` = ?,`age` = ?,`birthDate` = ?,`height` = ?,`weight` = ?,`targetWeight` = ?,`activityLevel` = ?,`goal` = ?,`dailyCalorieTarget` = ?,`sleepGoal` = ?,`showMacros` = ?,`weekStartDay` = ?,`selectedTodayThemeIndex` = ?,`hasSelectedTodayTheme` = ?,`excludedExercises` = ?,`createdAt` = ? WHERE `id` = ?";
       }
 
       @Override
@@ -89,9 +93,13 @@ public final class UserDao_Impl implements UserDao {
         statement.bindDouble(12, entity.getSleepGoal());
         final int _tmp = entity.getShowMacros() ? 1 : 0;
         statement.bindLong(13, _tmp);
-        statement.bindString(14, entity.getExcludedExercises());
-        statement.bindString(15, entity.getCreatedAt());
-        statement.bindLong(16, entity.getId());
+        statement.bindLong(14, entity.getWeekStartDay());
+        statement.bindLong(15, entity.getSelectedTodayThemeIndex());
+        final int _tmp_1 = entity.getHasSelectedTodayTheme() ? 1 : 0;
+        statement.bindLong(16, _tmp_1);
+        statement.bindString(17, entity.getExcludedExercises());
+        statement.bindString(18, entity.getCreatedAt());
+        statement.bindLong(19, entity.getId());
       }
     };
   }
@@ -157,6 +165,9 @@ public final class UserDao_Impl implements UserDao {
           final int _cursorIndexOfDailyCalorieTarget = CursorUtil.getColumnIndexOrThrow(_cursor, "dailyCalorieTarget");
           final int _cursorIndexOfSleepGoal = CursorUtil.getColumnIndexOrThrow(_cursor, "sleepGoal");
           final int _cursorIndexOfShowMacros = CursorUtil.getColumnIndexOrThrow(_cursor, "showMacros");
+          final int _cursorIndexOfWeekStartDay = CursorUtil.getColumnIndexOrThrow(_cursor, "weekStartDay");
+          final int _cursorIndexOfSelectedTodayThemeIndex = CursorUtil.getColumnIndexOrThrow(_cursor, "selectedTodayThemeIndex");
+          final int _cursorIndexOfHasSelectedTodayTheme = CursorUtil.getColumnIndexOrThrow(_cursor, "hasSelectedTodayTheme");
           final int _cursorIndexOfExcludedExercises = CursorUtil.getColumnIndexOrThrow(_cursor, "excludedExercises");
           final int _cursorIndexOfCreatedAt = CursorUtil.getColumnIndexOrThrow(_cursor, "createdAt");
           final UserProfileEntity _result;
@@ -189,11 +200,19 @@ public final class UserDao_Impl implements UserDao {
             final int _tmp;
             _tmp = _cursor.getInt(_cursorIndexOfShowMacros);
             _tmpShowMacros = _tmp != 0;
+            final int _tmpWeekStartDay;
+            _tmpWeekStartDay = _cursor.getInt(_cursorIndexOfWeekStartDay);
+            final int _tmpSelectedTodayThemeIndex;
+            _tmpSelectedTodayThemeIndex = _cursor.getInt(_cursorIndexOfSelectedTodayThemeIndex);
+            final boolean _tmpHasSelectedTodayTheme;
+            final int _tmp_1;
+            _tmp_1 = _cursor.getInt(_cursorIndexOfHasSelectedTodayTheme);
+            _tmpHasSelectedTodayTheme = _tmp_1 != 0;
             final String _tmpExcludedExercises;
             _tmpExcludedExercises = _cursor.getString(_cursorIndexOfExcludedExercises);
             final String _tmpCreatedAt;
             _tmpCreatedAt = _cursor.getString(_cursorIndexOfCreatedAt);
-            _result = new UserProfileEntity(_tmpId,_tmpName,_tmpGender,_tmpAge,_tmpBirthDate,_tmpHeight,_tmpWeight,_tmpTargetWeight,_tmpActivityLevel,_tmpGoal,_tmpDailyCalorieTarget,_tmpSleepGoal,_tmpShowMacros,_tmpExcludedExercises,_tmpCreatedAt);
+            _result = new UserProfileEntity(_tmpId,_tmpName,_tmpGender,_tmpAge,_tmpBirthDate,_tmpHeight,_tmpWeight,_tmpTargetWeight,_tmpActivityLevel,_tmpGoal,_tmpDailyCalorieTarget,_tmpSleepGoal,_tmpShowMacros,_tmpWeekStartDay,_tmpSelectedTodayThemeIndex,_tmpHasSelectedTodayTheme,_tmpExcludedExercises,_tmpCreatedAt);
           } else {
             _result = null;
           }
@@ -234,6 +253,9 @@ public final class UserDao_Impl implements UserDao {
           final int _cursorIndexOfDailyCalorieTarget = CursorUtil.getColumnIndexOrThrow(_cursor, "dailyCalorieTarget");
           final int _cursorIndexOfSleepGoal = CursorUtil.getColumnIndexOrThrow(_cursor, "sleepGoal");
           final int _cursorIndexOfShowMacros = CursorUtil.getColumnIndexOrThrow(_cursor, "showMacros");
+          final int _cursorIndexOfWeekStartDay = CursorUtil.getColumnIndexOrThrow(_cursor, "weekStartDay");
+          final int _cursorIndexOfSelectedTodayThemeIndex = CursorUtil.getColumnIndexOrThrow(_cursor, "selectedTodayThemeIndex");
+          final int _cursorIndexOfHasSelectedTodayTheme = CursorUtil.getColumnIndexOrThrow(_cursor, "hasSelectedTodayTheme");
           final int _cursorIndexOfExcludedExercises = CursorUtil.getColumnIndexOrThrow(_cursor, "excludedExercises");
           final int _cursorIndexOfCreatedAt = CursorUtil.getColumnIndexOrThrow(_cursor, "createdAt");
           final UserProfileEntity _result;
@@ -266,11 +288,19 @@ public final class UserDao_Impl implements UserDao {
             final int _tmp;
             _tmp = _cursor.getInt(_cursorIndexOfShowMacros);
             _tmpShowMacros = _tmp != 0;
+            final int _tmpWeekStartDay;
+            _tmpWeekStartDay = _cursor.getInt(_cursorIndexOfWeekStartDay);
+            final int _tmpSelectedTodayThemeIndex;
+            _tmpSelectedTodayThemeIndex = _cursor.getInt(_cursorIndexOfSelectedTodayThemeIndex);
+            final boolean _tmpHasSelectedTodayTheme;
+            final int _tmp_1;
+            _tmp_1 = _cursor.getInt(_cursorIndexOfHasSelectedTodayTheme);
+            _tmpHasSelectedTodayTheme = _tmp_1 != 0;
             final String _tmpExcludedExercises;
             _tmpExcludedExercises = _cursor.getString(_cursorIndexOfExcludedExercises);
             final String _tmpCreatedAt;
             _tmpCreatedAt = _cursor.getString(_cursorIndexOfCreatedAt);
-            _result = new UserProfileEntity(_tmpId,_tmpName,_tmpGender,_tmpAge,_tmpBirthDate,_tmpHeight,_tmpWeight,_tmpTargetWeight,_tmpActivityLevel,_tmpGoal,_tmpDailyCalorieTarget,_tmpSleepGoal,_tmpShowMacros,_tmpExcludedExercises,_tmpCreatedAt);
+            _result = new UserProfileEntity(_tmpId,_tmpName,_tmpGender,_tmpAge,_tmpBirthDate,_tmpHeight,_tmpWeight,_tmpTargetWeight,_tmpActivityLevel,_tmpGoal,_tmpDailyCalorieTarget,_tmpSleepGoal,_tmpShowMacros,_tmpWeekStartDay,_tmpSelectedTodayThemeIndex,_tmpHasSelectedTodayTheme,_tmpExcludedExercises,_tmpCreatedAt);
           } else {
             _result = null;
           }

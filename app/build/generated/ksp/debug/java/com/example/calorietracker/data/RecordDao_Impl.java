@@ -104,7 +104,7 @@ public final class RecordDao_Impl implements RecordDao {
       @Override
       @NonNull
       protected String createQuery() {
-        return "INSERT OR REPLACE INTO `calorie_items` (`id`,`date`,`type`,`name`,`calories`,`carbs`,`protein`,`fat`,`time`,`imageUrl`,`notes`,`createdAt`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)";
+        return "INSERT OR REPLACE INTO `calorie_items` (`id`,`date`,`type`,`name`,`calories`,`carbs`,`protein`,`fat`,`time`,`mealCategory`,`imageUrl`,`notes`,`createdAt`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)";
       }
 
       @Override
@@ -114,22 +114,27 @@ public final class RecordDao_Impl implements RecordDao {
         statement.bindString(2, entity.getDate());
         statement.bindString(3, entity.getType());
         statement.bindString(4, entity.getName());
-        statement.bindLong(5, entity.getCalories());
-        statement.bindLong(6, entity.getCarbs());
-        statement.bindLong(7, entity.getProtein());
-        statement.bindLong(8, entity.getFat());
+        statement.bindDouble(5, entity.getCalories());
+        statement.bindDouble(6, entity.getCarbs());
+        statement.bindDouble(7, entity.getProtein());
+        statement.bindDouble(8, entity.getFat());
         statement.bindString(9, entity.getTime());
-        if (entity.getImageUrl() == null) {
+        if (entity.getMealCategory() == null) {
           statement.bindNull(10);
         } else {
-          statement.bindString(10, entity.getImageUrl());
+          statement.bindString(10, entity.getMealCategory());
         }
-        if (entity.getNotes() == null) {
+        if (entity.getImageUrl() == null) {
           statement.bindNull(11);
         } else {
-          statement.bindString(11, entity.getNotes());
+          statement.bindString(11, entity.getImageUrl());
         }
-        statement.bindString(12, entity.getCreatedAt());
+        if (entity.getNotes() == null) {
+          statement.bindNull(12);
+        } else {
+          statement.bindString(12, entity.getNotes());
+        }
+        statement.bindString(13, entity.getCreatedAt());
       }
     };
     this.__deletionAdapterOfCalorieItemEntity = new EntityDeletionOrUpdateAdapter<CalorieItemEntity>(__db) {
@@ -470,6 +475,7 @@ public final class RecordDao_Impl implements RecordDao {
           final int _cursorIndexOfProtein = CursorUtil.getColumnIndexOrThrow(_cursor, "protein");
           final int _cursorIndexOfFat = CursorUtil.getColumnIndexOrThrow(_cursor, "fat");
           final int _cursorIndexOfTime = CursorUtil.getColumnIndexOrThrow(_cursor, "time");
+          final int _cursorIndexOfMealCategory = CursorUtil.getColumnIndexOrThrow(_cursor, "mealCategory");
           final int _cursorIndexOfImageUrl = CursorUtil.getColumnIndexOrThrow(_cursor, "imageUrl");
           final int _cursorIndexOfNotes = CursorUtil.getColumnIndexOrThrow(_cursor, "notes");
           final int _cursorIndexOfCreatedAt = CursorUtil.getColumnIndexOrThrow(_cursor, "createdAt");
@@ -484,16 +490,22 @@ public final class RecordDao_Impl implements RecordDao {
             _tmpType = _cursor.getString(_cursorIndexOfType);
             final String _tmpName;
             _tmpName = _cursor.getString(_cursorIndexOfName);
-            final int _tmpCalories;
-            _tmpCalories = _cursor.getInt(_cursorIndexOfCalories);
-            final int _tmpCarbs;
-            _tmpCarbs = _cursor.getInt(_cursorIndexOfCarbs);
-            final int _tmpProtein;
-            _tmpProtein = _cursor.getInt(_cursorIndexOfProtein);
-            final int _tmpFat;
-            _tmpFat = _cursor.getInt(_cursorIndexOfFat);
+            final double _tmpCalories;
+            _tmpCalories = _cursor.getDouble(_cursorIndexOfCalories);
+            final double _tmpCarbs;
+            _tmpCarbs = _cursor.getDouble(_cursorIndexOfCarbs);
+            final double _tmpProtein;
+            _tmpProtein = _cursor.getDouble(_cursorIndexOfProtein);
+            final double _tmpFat;
+            _tmpFat = _cursor.getDouble(_cursorIndexOfFat);
             final String _tmpTime;
             _tmpTime = _cursor.getString(_cursorIndexOfTime);
+            final String _tmpMealCategory;
+            if (_cursor.isNull(_cursorIndexOfMealCategory)) {
+              _tmpMealCategory = null;
+            } else {
+              _tmpMealCategory = _cursor.getString(_cursorIndexOfMealCategory);
+            }
             final String _tmpImageUrl;
             if (_cursor.isNull(_cursorIndexOfImageUrl)) {
               _tmpImageUrl = null;
@@ -508,7 +520,7 @@ public final class RecordDao_Impl implements RecordDao {
             }
             final String _tmpCreatedAt;
             _tmpCreatedAt = _cursor.getString(_cursorIndexOfCreatedAt);
-            _item = new CalorieItemEntity(_tmpId,_tmpDate,_tmpType,_tmpName,_tmpCalories,_tmpCarbs,_tmpProtein,_tmpFat,_tmpTime,_tmpImageUrl,_tmpNotes,_tmpCreatedAt);
+            _item = new CalorieItemEntity(_tmpId,_tmpDate,_tmpType,_tmpName,_tmpCalories,_tmpCarbs,_tmpProtein,_tmpFat,_tmpTime,_tmpMealCategory,_tmpImageUrl,_tmpNotes,_tmpCreatedAt);
             _result.add(_item);
           }
           return _result;
@@ -666,6 +678,7 @@ public final class RecordDao_Impl implements RecordDao {
           final int _cursorIndexOfProtein = CursorUtil.getColumnIndexOrThrow(_cursor, "protein");
           final int _cursorIndexOfFat = CursorUtil.getColumnIndexOrThrow(_cursor, "fat");
           final int _cursorIndexOfTime = CursorUtil.getColumnIndexOrThrow(_cursor, "time");
+          final int _cursorIndexOfMealCategory = CursorUtil.getColumnIndexOrThrow(_cursor, "mealCategory");
           final int _cursorIndexOfImageUrl = CursorUtil.getColumnIndexOrThrow(_cursor, "imageUrl");
           final int _cursorIndexOfNotes = CursorUtil.getColumnIndexOrThrow(_cursor, "notes");
           final int _cursorIndexOfCreatedAt = CursorUtil.getColumnIndexOrThrow(_cursor, "createdAt");
@@ -680,16 +693,22 @@ public final class RecordDao_Impl implements RecordDao {
             _tmpType = _cursor.getString(_cursorIndexOfType);
             final String _tmpName;
             _tmpName = _cursor.getString(_cursorIndexOfName);
-            final int _tmpCalories;
-            _tmpCalories = _cursor.getInt(_cursorIndexOfCalories);
-            final int _tmpCarbs;
-            _tmpCarbs = _cursor.getInt(_cursorIndexOfCarbs);
-            final int _tmpProtein;
-            _tmpProtein = _cursor.getInt(_cursorIndexOfProtein);
-            final int _tmpFat;
-            _tmpFat = _cursor.getInt(_cursorIndexOfFat);
+            final double _tmpCalories;
+            _tmpCalories = _cursor.getDouble(_cursorIndexOfCalories);
+            final double _tmpCarbs;
+            _tmpCarbs = _cursor.getDouble(_cursorIndexOfCarbs);
+            final double _tmpProtein;
+            _tmpProtein = _cursor.getDouble(_cursorIndexOfProtein);
+            final double _tmpFat;
+            _tmpFat = _cursor.getDouble(_cursorIndexOfFat);
             final String _tmpTime;
             _tmpTime = _cursor.getString(_cursorIndexOfTime);
+            final String _tmpMealCategory;
+            if (_cursor.isNull(_cursorIndexOfMealCategory)) {
+              _tmpMealCategory = null;
+            } else {
+              _tmpMealCategory = _cursor.getString(_cursorIndexOfMealCategory);
+            }
             final String _tmpImageUrl;
             if (_cursor.isNull(_cursorIndexOfImageUrl)) {
               _tmpImageUrl = null;
@@ -704,7 +723,7 @@ public final class RecordDao_Impl implements RecordDao {
             }
             final String _tmpCreatedAt;
             _tmpCreatedAt = _cursor.getString(_cursorIndexOfCreatedAt);
-            _item = new CalorieItemEntity(_tmpId,_tmpDate,_tmpType,_tmpName,_tmpCalories,_tmpCarbs,_tmpProtein,_tmpFat,_tmpTime,_tmpImageUrl,_tmpNotes,_tmpCreatedAt);
+            _item = new CalorieItemEntity(_tmpId,_tmpDate,_tmpType,_tmpName,_tmpCalories,_tmpCarbs,_tmpProtein,_tmpFat,_tmpTime,_tmpMealCategory,_tmpImageUrl,_tmpNotes,_tmpCreatedAt);
             _result.add(_item);
           }
           return _result;
@@ -741,6 +760,7 @@ public final class RecordDao_Impl implements RecordDao {
           final int _cursorIndexOfProtein = CursorUtil.getColumnIndexOrThrow(_cursor, "protein");
           final int _cursorIndexOfFat = CursorUtil.getColumnIndexOrThrow(_cursor, "fat");
           final int _cursorIndexOfTime = CursorUtil.getColumnIndexOrThrow(_cursor, "time");
+          final int _cursorIndexOfMealCategory = CursorUtil.getColumnIndexOrThrow(_cursor, "mealCategory");
           final int _cursorIndexOfImageUrl = CursorUtil.getColumnIndexOrThrow(_cursor, "imageUrl");
           final int _cursorIndexOfNotes = CursorUtil.getColumnIndexOrThrow(_cursor, "notes");
           final int _cursorIndexOfCreatedAt = CursorUtil.getColumnIndexOrThrow(_cursor, "createdAt");
@@ -755,16 +775,22 @@ public final class RecordDao_Impl implements RecordDao {
             _tmpType = _cursor.getString(_cursorIndexOfType);
             final String _tmpName;
             _tmpName = _cursor.getString(_cursorIndexOfName);
-            final int _tmpCalories;
-            _tmpCalories = _cursor.getInt(_cursorIndexOfCalories);
-            final int _tmpCarbs;
-            _tmpCarbs = _cursor.getInt(_cursorIndexOfCarbs);
-            final int _tmpProtein;
-            _tmpProtein = _cursor.getInt(_cursorIndexOfProtein);
-            final int _tmpFat;
-            _tmpFat = _cursor.getInt(_cursorIndexOfFat);
+            final double _tmpCalories;
+            _tmpCalories = _cursor.getDouble(_cursorIndexOfCalories);
+            final double _tmpCarbs;
+            _tmpCarbs = _cursor.getDouble(_cursorIndexOfCarbs);
+            final double _tmpProtein;
+            _tmpProtein = _cursor.getDouble(_cursorIndexOfProtein);
+            final double _tmpFat;
+            _tmpFat = _cursor.getDouble(_cursorIndexOfFat);
             final String _tmpTime;
             _tmpTime = _cursor.getString(_cursorIndexOfTime);
+            final String _tmpMealCategory;
+            if (_cursor.isNull(_cursorIndexOfMealCategory)) {
+              _tmpMealCategory = null;
+            } else {
+              _tmpMealCategory = _cursor.getString(_cursorIndexOfMealCategory);
+            }
             final String _tmpImageUrl;
             if (_cursor.isNull(_cursorIndexOfImageUrl)) {
               _tmpImageUrl = null;
@@ -779,7 +805,183 @@ public final class RecordDao_Impl implements RecordDao {
             }
             final String _tmpCreatedAt;
             _tmpCreatedAt = _cursor.getString(_cursorIndexOfCreatedAt);
-            _item = new CalorieItemEntity(_tmpId,_tmpDate,_tmpType,_tmpName,_tmpCalories,_tmpCarbs,_tmpProtein,_tmpFat,_tmpTime,_tmpImageUrl,_tmpNotes,_tmpCreatedAt);
+            _item = new CalorieItemEntity(_tmpId,_tmpDate,_tmpType,_tmpName,_tmpCalories,_tmpCarbs,_tmpProtein,_tmpFat,_tmpTime,_tmpMealCategory,_tmpImageUrl,_tmpNotes,_tmpCreatedAt);
+            _result.add(_item);
+          }
+          return _result;
+        } finally {
+          _cursor.close();
+          _statement.release();
+        }
+      }
+    }, $completion);
+  }
+
+  @Override
+  public Object searchRecentItemsByTypeAndKeyword(final String type, final String keyword,
+      final int limit, final Continuation<? super List<CalorieItemEntity>> $completion) {
+    final String _sql = "\n"
+            + "        SELECT * FROM calorie_items\n"
+            + "        WHERE type = ? AND name LIKE '%' || ? || '%'\n"
+            + "        ORDER BY date DESC, time DESC\n"
+            + "        LIMIT ?\n"
+            + "        ";
+    final RoomSQLiteQuery _statement = RoomSQLiteQuery.acquire(_sql, 3);
+    int _argIndex = 1;
+    _statement.bindString(_argIndex, type);
+    _argIndex = 2;
+    _statement.bindString(_argIndex, keyword);
+    _argIndex = 3;
+    _statement.bindLong(_argIndex, limit);
+    final CancellationSignal _cancellationSignal = DBUtil.createCancellationSignal();
+    return CoroutinesRoom.execute(__db, false, _cancellationSignal, new Callable<List<CalorieItemEntity>>() {
+      @Override
+      @NonNull
+      public List<CalorieItemEntity> call() throws Exception {
+        final Cursor _cursor = DBUtil.query(__db, _statement, false, null);
+        try {
+          final int _cursorIndexOfId = CursorUtil.getColumnIndexOrThrow(_cursor, "id");
+          final int _cursorIndexOfDate = CursorUtil.getColumnIndexOrThrow(_cursor, "date");
+          final int _cursorIndexOfType = CursorUtil.getColumnIndexOrThrow(_cursor, "type");
+          final int _cursorIndexOfName = CursorUtil.getColumnIndexOrThrow(_cursor, "name");
+          final int _cursorIndexOfCalories = CursorUtil.getColumnIndexOrThrow(_cursor, "calories");
+          final int _cursorIndexOfCarbs = CursorUtil.getColumnIndexOrThrow(_cursor, "carbs");
+          final int _cursorIndexOfProtein = CursorUtil.getColumnIndexOrThrow(_cursor, "protein");
+          final int _cursorIndexOfFat = CursorUtil.getColumnIndexOrThrow(_cursor, "fat");
+          final int _cursorIndexOfTime = CursorUtil.getColumnIndexOrThrow(_cursor, "time");
+          final int _cursorIndexOfMealCategory = CursorUtil.getColumnIndexOrThrow(_cursor, "mealCategory");
+          final int _cursorIndexOfImageUrl = CursorUtil.getColumnIndexOrThrow(_cursor, "imageUrl");
+          final int _cursorIndexOfNotes = CursorUtil.getColumnIndexOrThrow(_cursor, "notes");
+          final int _cursorIndexOfCreatedAt = CursorUtil.getColumnIndexOrThrow(_cursor, "createdAt");
+          final List<CalorieItemEntity> _result = new ArrayList<CalorieItemEntity>(_cursor.getCount());
+          while (_cursor.moveToNext()) {
+            final CalorieItemEntity _item;
+            final String _tmpId;
+            _tmpId = _cursor.getString(_cursorIndexOfId);
+            final String _tmpDate;
+            _tmpDate = _cursor.getString(_cursorIndexOfDate);
+            final String _tmpType;
+            _tmpType = _cursor.getString(_cursorIndexOfType);
+            final String _tmpName;
+            _tmpName = _cursor.getString(_cursorIndexOfName);
+            final double _tmpCalories;
+            _tmpCalories = _cursor.getDouble(_cursorIndexOfCalories);
+            final double _tmpCarbs;
+            _tmpCarbs = _cursor.getDouble(_cursorIndexOfCarbs);
+            final double _tmpProtein;
+            _tmpProtein = _cursor.getDouble(_cursorIndexOfProtein);
+            final double _tmpFat;
+            _tmpFat = _cursor.getDouble(_cursorIndexOfFat);
+            final String _tmpTime;
+            _tmpTime = _cursor.getString(_cursorIndexOfTime);
+            final String _tmpMealCategory;
+            if (_cursor.isNull(_cursorIndexOfMealCategory)) {
+              _tmpMealCategory = null;
+            } else {
+              _tmpMealCategory = _cursor.getString(_cursorIndexOfMealCategory);
+            }
+            final String _tmpImageUrl;
+            if (_cursor.isNull(_cursorIndexOfImageUrl)) {
+              _tmpImageUrl = null;
+            } else {
+              _tmpImageUrl = _cursor.getString(_cursorIndexOfImageUrl);
+            }
+            final String _tmpNotes;
+            if (_cursor.isNull(_cursorIndexOfNotes)) {
+              _tmpNotes = null;
+            } else {
+              _tmpNotes = _cursor.getString(_cursorIndexOfNotes);
+            }
+            final String _tmpCreatedAt;
+            _tmpCreatedAt = _cursor.getString(_cursorIndexOfCreatedAt);
+            _item = new CalorieItemEntity(_tmpId,_tmpDate,_tmpType,_tmpName,_tmpCalories,_tmpCarbs,_tmpProtein,_tmpFat,_tmpTime,_tmpMealCategory,_tmpImageUrl,_tmpNotes,_tmpCreatedAt);
+            _result.add(_item);
+          }
+          return _result;
+        } finally {
+          _cursor.close();
+          _statement.release();
+        }
+      }
+    }, $completion);
+  }
+
+  @Override
+  public Object searchItemsByKeyword(final String keyword, final int limit,
+      final Continuation<? super List<CalorieItemEntity>> $completion) {
+    final String _sql = "\n"
+            + "        SELECT * FROM calorie_items\n"
+            + "        WHERE name LIKE '%' || ? || '%'\n"
+            + "        ORDER BY date DESC, time DESC\n"
+            + "        LIMIT ?\n"
+            + "        ";
+    final RoomSQLiteQuery _statement = RoomSQLiteQuery.acquire(_sql, 2);
+    int _argIndex = 1;
+    _statement.bindString(_argIndex, keyword);
+    _argIndex = 2;
+    _statement.bindLong(_argIndex, limit);
+    final CancellationSignal _cancellationSignal = DBUtil.createCancellationSignal();
+    return CoroutinesRoom.execute(__db, false, _cancellationSignal, new Callable<List<CalorieItemEntity>>() {
+      @Override
+      @NonNull
+      public List<CalorieItemEntity> call() throws Exception {
+        final Cursor _cursor = DBUtil.query(__db, _statement, false, null);
+        try {
+          final int _cursorIndexOfId = CursorUtil.getColumnIndexOrThrow(_cursor, "id");
+          final int _cursorIndexOfDate = CursorUtil.getColumnIndexOrThrow(_cursor, "date");
+          final int _cursorIndexOfType = CursorUtil.getColumnIndexOrThrow(_cursor, "type");
+          final int _cursorIndexOfName = CursorUtil.getColumnIndexOrThrow(_cursor, "name");
+          final int _cursorIndexOfCalories = CursorUtil.getColumnIndexOrThrow(_cursor, "calories");
+          final int _cursorIndexOfCarbs = CursorUtil.getColumnIndexOrThrow(_cursor, "carbs");
+          final int _cursorIndexOfProtein = CursorUtil.getColumnIndexOrThrow(_cursor, "protein");
+          final int _cursorIndexOfFat = CursorUtil.getColumnIndexOrThrow(_cursor, "fat");
+          final int _cursorIndexOfTime = CursorUtil.getColumnIndexOrThrow(_cursor, "time");
+          final int _cursorIndexOfMealCategory = CursorUtil.getColumnIndexOrThrow(_cursor, "mealCategory");
+          final int _cursorIndexOfImageUrl = CursorUtil.getColumnIndexOrThrow(_cursor, "imageUrl");
+          final int _cursorIndexOfNotes = CursorUtil.getColumnIndexOrThrow(_cursor, "notes");
+          final int _cursorIndexOfCreatedAt = CursorUtil.getColumnIndexOrThrow(_cursor, "createdAt");
+          final List<CalorieItemEntity> _result = new ArrayList<CalorieItemEntity>(_cursor.getCount());
+          while (_cursor.moveToNext()) {
+            final CalorieItemEntity _item;
+            final String _tmpId;
+            _tmpId = _cursor.getString(_cursorIndexOfId);
+            final String _tmpDate;
+            _tmpDate = _cursor.getString(_cursorIndexOfDate);
+            final String _tmpType;
+            _tmpType = _cursor.getString(_cursorIndexOfType);
+            final String _tmpName;
+            _tmpName = _cursor.getString(_cursorIndexOfName);
+            final double _tmpCalories;
+            _tmpCalories = _cursor.getDouble(_cursorIndexOfCalories);
+            final double _tmpCarbs;
+            _tmpCarbs = _cursor.getDouble(_cursorIndexOfCarbs);
+            final double _tmpProtein;
+            _tmpProtein = _cursor.getDouble(_cursorIndexOfProtein);
+            final double _tmpFat;
+            _tmpFat = _cursor.getDouble(_cursorIndexOfFat);
+            final String _tmpTime;
+            _tmpTime = _cursor.getString(_cursorIndexOfTime);
+            final String _tmpMealCategory;
+            if (_cursor.isNull(_cursorIndexOfMealCategory)) {
+              _tmpMealCategory = null;
+            } else {
+              _tmpMealCategory = _cursor.getString(_cursorIndexOfMealCategory);
+            }
+            final String _tmpImageUrl;
+            if (_cursor.isNull(_cursorIndexOfImageUrl)) {
+              _tmpImageUrl = null;
+            } else {
+              _tmpImageUrl = _cursor.getString(_cursorIndexOfImageUrl);
+            }
+            final String _tmpNotes;
+            if (_cursor.isNull(_cursorIndexOfNotes)) {
+              _tmpNotes = null;
+            } else {
+              _tmpNotes = _cursor.getString(_cursorIndexOfNotes);
+            }
+            final String _tmpCreatedAt;
+            _tmpCreatedAt = _cursor.getString(_cursorIndexOfCreatedAt);
+            _item = new CalorieItemEntity(_tmpId,_tmpDate,_tmpType,_tmpName,_tmpCalories,_tmpCarbs,_tmpProtein,_tmpFat,_tmpTime,_tmpMealCategory,_tmpImageUrl,_tmpNotes,_tmpCreatedAt);
             _result.add(_item);
           }
           return _result;

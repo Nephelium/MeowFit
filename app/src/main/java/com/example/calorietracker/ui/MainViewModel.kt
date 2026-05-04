@@ -1,5 +1,6 @@
 package com.example.calorietracker.ui
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -14,12 +15,25 @@ import kotlinx.coroutines.launch
 
 import com.example.calorietracker.data.update.UpdateManager
 import com.example.calorietracker.data.update.UpdateStatus
+import com.example.calorietracker.data.update.ReleaseInfo
 
 class MainViewModel(private val repository: CalorieRepository) : ViewModel() {
 
     private val updateManager = UpdateManager()
     private val _updateStatus = MutableStateFlow<UpdateStatus>(UpdateStatus.Idle)
     val updateStatus: StateFlow<UpdateStatus> = _updateStatus.asStateFlow()
+
+    // Auto-update on startup
+    private val _autoUpdateRelease = MutableStateFlow<ReleaseInfo?>(null)
+    val autoUpdateRelease: StateFlow<ReleaseInfo?> = _autoUpdateRelease.asStateFlow()
+
+    // Scroll offset for status bar blur effect (0f = not scrolled, 1f = fully scrolled)
+    private val _scrollBlurAmount = MutableStateFlow(0f)
+    val scrollBlurAmount: StateFlow<Float> = _scrollBlurAmount.asStateFlow()
+
+    fun updateScrollBlur(amount: Float) {
+        _scrollBlurAmount.value = amount.coerceIn(0f, 1f)
+    }
 
     private val _selectedDate = MutableStateFlow(CalorieUtils.getTodayString())
     val selectedDate: StateFlow<String> = _selectedDate.asStateFlow()
@@ -152,6 +166,43 @@ class MainViewModel(private val repository: CalorieRepository) : ViewModel() {
     
     fun resetUpdateStatus() {
         _updateStatus.value = UpdateStatus.Idle
+    }
+
+    fun checkAutoUpdate(context: Context, currentVersion: String) {
+        viewModelScope.launch {
+            try {
+                val prefs = context.getSharedPreferences("update_prefs", Context.MODE_PRIVATE)
+                val lastDismissed = prefs.getString("last_dismissed_version", "") ?: ""
+                
+                val status = updateManager.checkForUpdate(currentVersion)
+                if (status is UpdateStatus.UpdateAvailable) {
+                    val remoteVersion = status.release.tagName.removePrefix("v")
+                    if (remoteVersion != lastDismissed) {
+                        _autoUpdateRelease.value = status.release
+                    }
+                }
+            } catch (_: Exception) {
+                // Silently fail on auto-check - don't bother user
+            }
+        }
+    }
+
+    fun dismissAutoUpdate(context: Context) {
+        val release = _autoUpdateRelease.value ?: return
+        val version = release.tagName.removePrefix("v")
+        context.getSharedPreferences("update_prefs", Context.MODE_PRIVATE)
+            .edit()
+            .putString("last_dismissed_version", version)
+            .apply()
+        _autoUpdateRelease.value = null
+    }
+
+    fun openUpdateInBrowser(context: Context) {
+        val release = _autoUpdateRelease.value ?: return
+        val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(release.htmlUrl))
+        context.startActivity(intent)
+        // Also dismiss this version
+        dismissAutoUpdate(context)
     }
 }
 

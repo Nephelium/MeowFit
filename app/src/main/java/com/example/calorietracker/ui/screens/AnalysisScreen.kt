@@ -174,6 +174,30 @@ fun AnalysisScreen(
     var summaries by remember { mutableStateOf<List<WeeklySummaryEntity>>(emptyList()) }
     var summariesLoadFailed by remember { mutableStateOf(false) }
 
+    // Year / Month / Week navigation state
+    val now = LocalDate.now()
+    var selectedYear by remember { mutableIntStateOf(now.year) }
+    var selectedMonth by remember { mutableIntStateOf(now.monthValue) } // 1-12
+    var selectedWeekStart by remember { mutableStateOf<String?>(null) }
+    var isCompactMode by remember { mutableStateOf(true) }
+
+    // Derive available weeks for the selected month
+    val availableWeeks = remember(selectedYear, selectedMonth, summaries) {
+        val weeks = mutableListOf<Pair<String, WeeklySummaryEntity?>>()
+        val firstDay = LocalDate.of(selectedYear, selectedMonth, 1)
+        var monday = getWeekMonday(firstDay)
+        val lastDay = firstDay.withDayOfMonth(firstDay.lengthOfMonth())
+        while (!monday.isAfter(lastDay)) {
+            val weekStr = monday.toString()
+            val existing = summaries.find { it.weekStartDate == weekStr }
+            if (existing != null || (monday <= now)) {
+                weeks.add(weekStr to existing)
+            }
+            monday = monday.plusWeeks(1)
+        }
+        weeks
+    }
+
     LaunchedEffect(Unit) {
         val dao = analysisDao ?: return@LaunchedEffect
         try {
@@ -302,9 +326,11 @@ fun AnalysisScreen(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
+            .padding(top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding())
             .padding(16.dp)
     ) {
-        // Header
+        Spacer(modifier = Modifier.height(4.dp))
+        // Header row with title + compact toggle
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -316,15 +342,223 @@ fun AnalysisScreen(
                 fontWeight = FontWeight.Bold,
                 color = onCardColor
             )
+            // Compact / Expanded toggle
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    if (isCompactMode) "精简" else "详细",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = onCardColor.copy(alpha = 0.6f)
+                )
+                Switch(
+                    checked = !isCompactMode,
+                    onCheckedChange = { isCompactMode = !it },
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = accentColor,
+                        checkedTrackColor = accentColor.copy(alpha = 0.4f)
+                    ),
+                    modifier = Modifier.padding(start = 4.dp)
+                )
+            }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(6.dp))
 
+        // Year navigator
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = { selectedYear-- }) {
+                Icon(Icons.Default.ChevronLeft, "上一年", tint = accentColor)
+            }
+            Text(
+                "${selectedYear}年",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = onCardColor
+            )
+            IconButton(onClick = { selectedYear++ }) {
+                Icon(Icons.Default.ChevronRight, "下一年", tint = accentColor)
+            }
+        }
+
+        // Month selector (scrollable row)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            (1..12).forEach { m ->
+                val isSelected = selectedMonth == m
+                Surface(
+                    onClick = { selectedMonth = m; selectedWeekStart = null },
+                    shape = RoundedCornerShape(16.dp),
+                    color = if (isSelected) accentColor else cardColor.copy(alpha = 0.6f)
+                ) {
+                    Text(
+                        "${m}月",
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = if (isSelected) Color.White else onCardColor.copy(alpha = 0.8f),
+                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // Week selector
+        if (availableWeeks.isNotEmpty()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                availableWeeks.forEach { (weekStart, summary) ->
+                    val isSelected = selectedWeekStart == weekStart
+                    val label = getWeekLabel(weekStart)
+                    val hasReport = summary != null && summary.status == "generated"
+                    Surface(
+                        onClick = {
+                            selectedWeekStart = weekStart
+                            if (hasReport && !isCompactMode) {
+                                onNavigateToDetail(weekStart)
+                            }
+                        },
+                        shape = RoundedCornerShape(12.dp),
+                        color = if (isSelected) accentColor.copy(alpha = 0.2f)
+                                else cardColor.copy(alpha = 0.5f),
+                        border = if (isSelected) BorderStroke(1.dp, accentColor.copy(alpha = 0.6f))
+                                 else BorderStroke(0.dp, Color.Transparent)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(
+                                label,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (isSelected) accentColor else onCardColor.copy(alpha = 0.8f),
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                            )
+                            if (hasReport) {
+                                Text(
+                                    "有报告",
+                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
+                                    color = Color(0xFF4CAF50)
+                                )
+                            } else {
+                                Text(
+                                    "无数据",
+                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
+                                    color = onCardColor.copy(alpha = 0.35f)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            Text(
+                "${selectedYear}年${selectedMonth}月暂无周报数据",
+                style = MaterialTheme.typography.bodySmall,
+                color = onCardColor.copy(alpha = 0.4f),
+                modifier = Modifier.padding(vertical = 8.dp)
+            )
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+        
+        // If compact mode and a week is selected, show a mini preview + detail button
+        if (isCompactMode && selectedWeekStart != null) {
+            val selSummary = summaries.find { it.weekStartDate == selectedWeekStart }
+            if (selSummary != null && selSummary.status == "generated") {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = cardColor),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = { onNavigateToDetail(selectedWeekStart!!) }
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                "📅 ${getWeekLabel(selSummary.weekStartDate)}",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = onCardColor
+                            )
+                            Text(
+                                "🍽${selSummary.dietDays}天 🏃${selSummary.exerciseDays}天",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = onCardColor.copy(alpha = 0.5f)
+                            )
+                        }
+                        Icon(Icons.Default.ChevronRight, null, tint = accentColor)
+                    }
+                }
+            } else {
+                // No report for selected week - show quick generate button
+                TextButton(
+                    onClick = {
+                        scope.launch {
+                            val dao = analysisDao ?: return@launch
+                            try {
+                                generatingWeek = selectedWeekStart
+                                val dataText = buildWeeklyDataText(selectedWeekStart!!, records, allItems, userProfile)
+                                val result = aiService.generateWeeklyAnalysis(dataText)
+                                val monday = LocalDate.parse(selectedWeekStart)
+                                val sunday = getWeekSunday(monday)
+                                dao.insertSummary(
+                                    WeeklySummaryEntity(
+                                        weekStartDate = selectedWeekStart!!,
+                                        weekEndDate = sunday.toString(),
+                                        summaryText = result,
+                                        recommendations = "",
+                                        dietDays = records.count { r ->
+                                            try {
+                                                val d = LocalDate.parse(r.date)
+                                                !d.isBefore(monday) && !d.isAfter(sunday) && r.totalIntake > 0
+                                            } catch (_: Exception) { false }
+                                        },
+                                        exerciseDays = records.count { r ->
+                                            try {
+                                                val d = LocalDate.parse(r.date)
+                                                !d.isBefore(monday) && !d.isAfter(sunday) && r.totalBurned > 0
+                                            } catch (_: Exception) { false }
+                                        },
+                                        generatedAt = System.currentTimeMillis(),
+                                        status = "generated"
+                                    )
+                                )
+                                generatingWeek = null
+                            } catch (e: Exception) {
+                                generatingWeek = null
+                                errorMessage = "生成失败：${e.localizedMessage}"
+                            }
+                        }
+                    },
+                    enabled = generatingWeek == null
+                ) {
+                    Text("为此周生成周报", color = accentColor)
+                }
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+            // In compact mode, only show above, nothing below
+            return@Column
+        }
+
+        // ===== BELOW: DETAILED MODE =====
         Text(
             "AI 综合分析你的健康数据，提供个性化建议",
             style = MaterialTheme.typography.bodySmall,
-            color = onCardColor.copy(alpha = 0.6f),
-            modifier = Modifier.padding(top = 4.dp)
+            color = onCardColor.copy(alpha = 0.6f)
         )
 
         Spacer(modifier = Modifier.height(16.dp))
