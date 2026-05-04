@@ -39,7 +39,14 @@ fun AnalysisDetailScreen(
 ) {
     val context = LocalContext.current
     val app = context.applicationContext as CalorieTrackerApp
-    val analysisDao = app.database.analysisDao()
+    val analysisDao = remember {
+        try {
+            app.database.analysisDao()
+        } catch (e: Exception) {
+            android.util.Log.e("AnalysisDetailScreen", "Failed to get analysisDao", e)
+            null
+        }
+    }
     val aiService = remember { AiService(context) }
 
     val isDarkTheme = isSystemInDarkTheme()
@@ -53,7 +60,7 @@ fun AnalysisDetailScreen(
 
     LaunchedEffect(weekStartDate) {
         try {
-            summary = analysisDao.getSummary(weekStartDate)
+            summary = analysisDao?.getSummary(weekStartDate)
         } catch (_: Exception) {
             // 加载周报失败，summary 保持 null，UI 自动隐藏周报区域
         }
