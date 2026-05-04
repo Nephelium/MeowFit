@@ -56,7 +56,7 @@ fun SettingsScreen(
     onCheckUpdate: (String) -> Unit = {},
     onDismissUpdateDialog: () -> Unit = {}
 ) {
-    val currentVersion = "1.4.4"
+    val currentVersion = "1.5.0"
     val isDarkTheme = androidx.compose.foundation.isSystemInDarkTheme()
     val selectedThemeIndex = userProfile?.selectedTodayThemeIndex ?: 0
     val selectedTheme = remember(selectedThemeIndex) { getTodayVisualTheme(selectedThemeIndex) }
@@ -350,14 +350,27 @@ fun CheckUpdateDialog(
         titleContentColor = textColor,
         textContentColor = textColor,
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                modifier = Modifier.verticalScroll(rememberScrollState())
+            ) {
                 Text("当前版本: $currentVersion")
-                Text(
-                    "近期更新\n" +
-                        "1.4.1：新增记录图片上传与预览；优化餐次分组（早餐4:00起，22:00-4:00归宵夜）；首页分享升级为精美长图并支持主题背景、卡片阴影、宏量营养显示与缩略图展示；备份升级为含图片资源的zip方案；完善记录与运动交互并修复保存/分享稳定性问题。\n" +
-                        "1.4.0：日历与分享体验优化，界面与主题表现改进，已知问题修复。",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = textColor.copy(alpha = 0.9f)
+                MarkdownText(
+                    text = "**近期更新**\n\n" +
+                        "### 1.5.0\n" +
+                        "- 集成《中国食物成分表》1657条官方营养数据，支持智能搜索\n" +
+                        "- 双源备选项：历史记录（紫色标签）+ 官方数据（绿色标签）\n" +
+                        "- 官方数据默认100g，输入实际克数自动按比例折算\n" +
+                        "- 新增饮食分析页面，周度营养可视化\n" +
+                        "- 改进统计图表绘制方式\n" +
+                        "### 1.4.1\n" +
+                        "- 新增记录图片上传与预览\n" +
+                        "- 优化餐次分组、首页分享升级为精美长图\n" +
+                        "- 备份升级为含图片资源的zip方案\n" +
+                        "### 1.4.0\n" +
+                        "- 日历与分享体验优化，界面与主题表现改进",
+                    baseColor = textColor.copy(alpha = 0.9f),
+                    baseFontSize = 14f
                 )
                 
                 when (status) {
@@ -391,11 +404,13 @@ fun CheckUpdateDialog(
                             color = accentColor
                         )
                         if (status.release.body.isNotBlank()) {
-                            Text(
-                                status.release.body,
-                                style = MaterialTheme.typography.bodySmall,
-                                maxLines = 10,
-                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                            MarkdownText(
+                                text = status.release.body,
+                                baseColor = textColor.copy(alpha = 0.9f),
+                                baseFontSize = 14f,
+                                modifier = Modifier
+                                    .heightIn(max = 300.dp)
+                                    .verticalScroll(rememberScrollState())
                             )
                         }
                         Button(
