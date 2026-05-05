@@ -16,7 +16,6 @@ import kotlinx.coroutines.launch
 import com.example.calorietracker.data.update.UpdateManager
 import com.example.calorietracker.data.update.UpdateStatus
 import com.example.calorietracker.data.update.ReleaseInfo
-import com.example.calorietracker.util.CalorieUtils
 
 // Medication reminder state
 data class MedicationReminderState(
@@ -201,7 +200,7 @@ class MainViewModel(private val repository: CalorieRepository) : ViewModel() {
     fun checkMedicationReminder() {
         viewModelScope.launch {
             try {
-                val profile = userProfile.first()
+                val profile = userProfile.first() ?: return@launch
                 if (!profile.medicationEnabled || profile.medications.isBlank()) return@launch
                 
                 val meds = profile.medications.split(",").map { it.trim() }.filter { it.isNotBlank() }
@@ -258,7 +257,7 @@ class MainViewModel(private val repository: CalorieRepository) : ViewModel() {
     fun markMedicationsTaken(date: String, indices: List<Int>) {
         viewModelScope.launch {
             try {
-                val profile = userProfile.first()
+                val profile = userProfile.first() ?: return@launch
                 val meds = profile.medications.split(",").map { it.trim() }.filter { it.isNotBlank() }
                 val record = repository.getDailyRecord(date).first()
                 val currentTaken = record?.medicationTaken?.split(",")?.map { it.trim() }?.toMutableList()
