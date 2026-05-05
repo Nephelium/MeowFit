@@ -15,3 +15,9 @@
 .cxx
 local.properties
 /.obsidian
+*.apk
+.deepseek/
+images/
+run_download.bat
+APP 图标.png
+.idea/deploymentTargetSelector.xml
