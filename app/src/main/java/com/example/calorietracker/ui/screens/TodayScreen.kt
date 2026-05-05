@@ -453,7 +453,8 @@ fun TodayScreen(
     onUpdateWeight: (Float) -> Unit,
     onSaveExercise: (String, Double, String, String) -> Unit, // name, calories, startTime, endTime
     onUpdateWater: (Int) -> Unit,
-    onUpdateSleep: (Int) -> Unit // minutes
+    onUpdateSleep: (Int) -> Unit, // minutes
+    onUpdateMedicationTaken: (String) -> Unit = {}
 ) {
     val context = LocalContext.current
     val isDarkTheme = isSystemInDarkTheme()
@@ -476,6 +477,7 @@ fun TodayScreen(
     var showWeightDialog by remember { mutableStateOf(false) }
     var showWaterDialog by remember { mutableStateOf(false) }
     var showSleepDialog by remember { mutableStateOf(false) }
+    var showMedicationDialog by remember { mutableStateOf(false) }
     var isTimerRunning by remember { mutableStateOf(false) }
     var timerStartTime by remember { mutableStateOf<Long?>(null) }
     var showTimerDialog by remember { mutableStateOf(false) }
@@ -487,6 +489,7 @@ fun TodayScreen(
     var showShareDialog by remember { mutableStateOf(false) }
     var shareShowNotes by remember { mutableStateOf(true) }
     var shareMaskWeight by remember { mutableStateOf(false) }
+    var shareShowMeds by remember { mutableStateOf(false) }
     var showSearchDialog by remember { mutableStateOf(false) }
     var searchKeyword by remember { mutableStateOf("") }
     var pendingSearchItemId by remember { mutableStateOf<String?>(null) }
@@ -647,6 +650,20 @@ fun TodayScreen(
                             onCheckedChange = { shareMaskWeight = it }
                         )
                     }
+
+                    if (userProfile?.medicationEnabled == true && userProfile.medications.isNotBlank()) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text("包含服药信息")
+                            Switch(
+                                checked = shareShowMeds,
+                                onCheckedChange = { shareShowMeds = it }
+                            )
+                        }
+                    }
                 }
             },
             confirmButton = {
@@ -661,7 +678,8 @@ fun TodayScreen(
                             selectedDate = selectedDate,
                             selectedThemeIndex = selectedThemeIndex,
                             showNotes = shareShowNotes,
-                            maskWeight = shareMaskWeight
+                            maskWeight = shareMaskWeight,
+                            showMeds = shareShowMeds
                         )
                         val saved = saveTodayBitmap(context, bitmap)
                         if (saved) previewSavedBitmap = bitmap
@@ -686,7 +704,8 @@ fun TodayScreen(
                                 selectedDate = selectedDate,
                                 selectedThemeIndex = selectedThemeIndex,
                                 showNotes = shareShowNotes,
-                                maskWeight = shareMaskWeight
+                                maskWeight = shareMaskWeight,
+                                showMeds = shareShowMeds
                             )
                             previewShareBitmap = bitmap
                         } catch (e: Exception) {
@@ -756,6 +775,23 @@ fun TodayScreen(
             onConfirm = { 
                 onUpdateSleep(it)
                 showSleepDialog = false
+            },
+            containerColor = dashboardCardColor,
+            onContainerColor = dashboardOnCardColor,
+            accentColor = dialogAccentColor
+        )
+    }
+
+    if (showMedicationDialog && userProfile != null) {
+        val meds = if (userProfile.medications.isBlank()) emptyList() else userProfile.medications.split(",").map { it.trim() }.filter { it.isNotBlank() }
+        val taken = if (dailyRecord?.medicationTaken.isNullOrBlank()) mutableListOf() else dailyRecord!!.medicationTaken.split(",").map { it.trim() == "1" }.toMutableList()
+        MedicationCheckDialog(
+            medications = meds,
+            taken = taken,
+            onDismiss = { showMedicationDialog = false },
+            onConfirm = { newTaken ->
+                onUpdateMedicationTaken(newTaken.joinToString(","))
+                showMedicationDialog = false
             },
             containerColor = dashboardCardColor,
             onContainerColor = dashboardOnCardColor,
@@ -917,7 +953,7 @@ fun TodayScreen(
                 isDarkTheme = isDarkTheme,
                 modifier = Modifier
                     .matchParentSize()
-                    .blur(if (isDarkTheme) 22.dp else 10.dp)
+                    .blur(if (isDarkTheme) 35.dp else 18.dp)
             )
             LazyColumn(
                 modifier = Modifier
@@ -1042,6 +1078,47 @@ fun TodayScreen(
                             onContainerColor = dashboardOnCardColor,
                             isDarkTheme = isDarkTheme
                         )
+                    }
+                }
+            }
+
+            // Medication Card
+            if (userProfile?.medicationEnabled == true && userProfile.medications.isNotBlank()) {
+                item {
+                    val meds = userProfile.medications.split(",").map { it.trim() }.filter { it.isNotBlank() }
+                    val medTimes = if (userProfile.medicationTimes.isBlank()) emptyList<String>() else userProfile.medicationTimes.split(",").map { it.trim() }
+                    val taken = if (dailyRecord?.medicationTaken.isNullOrBlank()) emptyList<String>() else dailyRecord!!.medicationTaken.split(",").map { it.trim() }
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        meds.chunked(3).forEach { rowMeds ->
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                rowMeds.forEachIndexed { rowIndex, med ->
+                                    val globalIndex = meds.indexOf(med)
+                                    val isTaken = globalIndex < taken.size && taken[globalIndex] == "1"
+                                    val medTime = if (globalIndex < medTimes.size) medTimes[globalIndex] else ""
+                                    Box(modifier = Modifier.weight(1f)) {
+                                        MedicationCard(
+                                            name = med,
+                                            time = medTime,
+                                            isTaken = isTaken,
+                                            onToggle = {
+                                                val newTaken = MutableList(meds.size) { i ->
+                                                    if (i < taken.size) taken[i] else "0"
+                                                }
+                                                newTaken[globalIndex] = if (isTaken) "0" else "1"
+                                                onUpdateMedicationTaken(newTaken.joinToString(","))
+                                            },
+                                            containerColor = dashboardCardColor,
+                                            onContainerColor = dashboardOnCardColor,
+                                            isDarkTheme = isDarkTheme
+                                        )
+                                    }
+                                }
+                                // Fill remaining space if fewer than 3 in this row
+                                repeat(3 - rowMeds.size) {
+                                    Spacer(modifier = Modifier.weight(1f))
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -1941,6 +2018,132 @@ fun SleepCard(duration: Int, onEdit: () -> Unit, containerColor: Color, onContai
 }
 
 @Composable
+fun MedicationCard(
+    name: String,
+    time: String = "",
+    isTaken: Boolean,
+    onToggle: () -> Unit,
+    containerColor: Color,
+    onContainerColor: Color,
+    isDarkTheme: Boolean
+) {
+    // Warning/alerting colors for not-taken, calming colors for taken
+    val warnAccent = if (isDarkTheme) Color(0xFFFFB74D) else Color(0xFFE65100)
+    val warnBg = if (isDarkTheme) Color(0xFF3E2723) else Color(0xFFFFF3E0)
+    val calmAccent = if (isDarkTheme) Color(0xFF81C784) else Color(0xFF2E7D32)
+    val calmBg = if (isDarkTheme) Color(0xFF1B3A1E) else Color(0xFFE8F5E9)
+    val bgColor = if (isTaken) calmBg else warnBg
+    val borderColor = if (isTaken) calmAccent.copy(alpha = 0.5f) else warnAccent.copy(alpha = 0.55f)
+    val nameColor = if (isTaken) calmAccent else warnAccent
+    val statusColor = if (isTaken) calmAccent.copy(alpha = 0.8f) else warnAccent.copy(alpha = 0.85f)
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        elevation = CardDefaults.cardElevation(defaultElevation = if (isDarkTheme) 0.dp else 3.dp),
+        colors = CardDefaults.cardColors(containerColor = bgColor),
+        shape = RoundedCornerShape(12.dp),
+        border = BorderStroke(1.dp, borderColor)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { onToggle() }
+                .padding(horizontal = 10.dp, vertical = 8.dp)
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text = name,
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.Bold,
+                    color = nameColor,
+                    maxLines = 1
+                )
+                if (time.isNotBlank()) {
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = time,
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                        color = nameColor.copy(alpha = 0.7f)
+                    )
+                }
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = if (isTaken) "已服 ✓" else "待服",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = statusColor,
+                    fontWeight = if (isTaken) FontWeight.SemiBold else FontWeight.Medium
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun MedicationCheckDialog(
+    medications: List<String>,
+    taken: List<Boolean>,
+    onDismiss: () -> Unit,
+    onConfirm: (List<String>) -> Unit,
+    containerColor: Color,
+    onContainerColor: Color,
+    accentColor: Color
+) {
+    val checked = remember { mutableStateListOf<Boolean>().apply { addAll(taken) } }
+    // Pad to match medication count
+    while (checked.size < medications.size) checked.add(false)
+
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(containerColor = containerColor),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(modifier = Modifier.padding(24.dp)) {
+                Text("今日服药", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = onContainerColor)
+                Spacer(modifier = Modifier.height(16.dp))
+                medications.forEachIndexed { index, med ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { checked[index] = !checked[index] }
+                            .padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Checkbox(
+                            checked = checked[index],
+                            onCheckedChange = { checked[index] = it },
+                            colors = CheckboxDefaults.colors(checkedColor = accentColor)
+                        )
+                        Text(
+                            text = med,
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = if (checked[index]) accentColor else onContainerColor.copy(alpha = 0.7f),
+                            fontWeight = if (checked[index]) FontWeight.Bold else FontWeight.Normal
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(24.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    TextButton(onClick = onDismiss) { Text("取消") }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Button(
+                        onClick = {
+                            onConfirm(checked.map { if (it) "1" else "0" })
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = Color.White)
+                    ) { Text("保存") }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 fun EmptyState() {
     Box(
         modifier = Modifier
@@ -2546,7 +2749,8 @@ fun generateTodayLongScreenshot(
     selectedDate: String,
     selectedThemeIndex: Int = 0,
     showNotes: Boolean = true,
-    maskWeight: Boolean = false
+    maskWeight: Boolean = false,
+    showMeds: Boolean = false
 ): Bitmap {
     val effectiveWeight = CalorieUtils.getEffectiveWeight(selectedDate, allRecords, userProfile)
     val age = if (userProfile != null && userProfile.birthDate.isNotBlank()) {
@@ -2602,6 +2806,8 @@ fun generateTodayLongScreenshot(
     val showMacros = userProfile?.showMacros == true
     val summaryH = if (showMacros) 668f else 516f
     val metricsH = 192f
+    val showMedsInShare = showMeds && userProfile?.medicationEnabled == true && userProfile?.medications?.isNotBlank() == true
+    val hasMedsInShare = showMedsInShare
     val sectionHeaderH = 64f
     val itemH = 126f
     val footerH = 220f
@@ -2788,16 +2994,24 @@ fun generateTodayLongScreenshot(
 
     val metricsTop = summaryTop + summaryH + 24f
     val metricGap = 20f
-    val metricWidth = (width - padding * 2 - metricGap * 2) / 3f
+    val metricColumns = if (hasMedsInShare) 4 else 3
+    val metricWidth = (width - padding * 2 - metricGap * (metricColumns - 1)) / metricColumns
     val weightText = if (maskWeight) "****" else dailyRecord?.weight?.let { String.format(Locale.getDefault(), "%.1f kg", it) } ?: "记录"
     val waterText = "${dailyRecord?.totalWater ?: 0} ml"
     val sleepHour = (dailyRecord?.sleepDuration ?: 0) / 60
     val sleepMinute = (dailyRecord?.sleepDuration ?: 0) % 60
-    val metricList = listOf(
-        listOf("今日体重", weightText, "", android.graphics.Color.parseColor("#1E1E1E"), android.graphics.Color.parseColor("#FFF3CD"), android.graphics.Color.parseColor("#C28B00")),
-        listOf("今日饮水", waterText, "", android.graphics.Color.parseColor("#2196F3"), android.graphics.Color.parseColor("#E3F2FD"), android.graphics.Color.parseColor("#2196F3")),
-        listOf("今日睡眠", "${sleepHour}h ${sleepMinute}m", "", android.graphics.Color.parseColor("#673AB7"), android.graphics.Color.parseColor("#EDE7F6"), android.graphics.Color.parseColor("#673AB7"))
-    )
+    val medMeds = if (userProfile?.medications.isNullOrBlank()) emptyList<String>() else userProfile!!.medications.split(",").map { it.trim() }.filter { it.isNotBlank() }
+    val medTaken = if (dailyRecord?.medicationTaken.isNullOrBlank()) emptyList<String>() else dailyRecord!!.medicationTaken.split(",").map { it.trim() }
+    val medCount = medMeds.indices.count { it < medTaken.size && medTaken[it] == "1" }
+    val medText = if (medMeds.isEmpty()) "未设置" else "${medCount}/${medMeds.size} 种"
+    val metricList = buildList {
+        add(listOf("今日体重", weightText, "", android.graphics.Color.parseColor("#1E1E1E"), android.graphics.Color.parseColor("#FFF3CD"), android.graphics.Color.parseColor("#C28B00")))
+        add(listOf("今日饮水", waterText, "", android.graphics.Color.parseColor("#2196F3"), android.graphics.Color.parseColor("#E3F2FD"), android.graphics.Color.parseColor("#2196F3")))
+        if (hasMedsInShare) {
+            add(listOf("今日服药", medText, "", android.graphics.Color.parseColor("#E53935"), android.graphics.Color.parseColor("#FFEBEE"), android.graphics.Color.parseColor("#E53935")))
+        }
+        add(listOf("今日睡眠", "${sleepHour}h ${sleepMinute}m", "", android.graphics.Color.parseColor("#673AB7"), android.graphics.Color.parseColor("#EDE7F6"), android.graphics.Color.parseColor("#673AB7")))
+    }
     metricList.forEachIndexed { idx, pair ->
         val left = padding + idx * (metricWidth + metricGap)
         val rect = android.graphics.RectF(left, metricsTop, left + metricWidth, metricsTop + metricsH)
@@ -3119,4 +3333,66 @@ fun shareTodayBitmap(context: Context, bitmap: Bitmap) {
     } catch (e: Exception) {
         Toast.makeText(context, "分享失败: ${e.message}", Toast.LENGTH_SHORT).show()
     }
+}
+
+
+@Composable
+fun MedicationReminderDialog(
+    medicationNames: List<String>,
+    onTakeAll: () -> Unit,
+    onDismiss: () -> Unit,
+    containerColor: Color,
+    textColor: Color,
+    accentColor: Color
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = containerColor,
+        titleContentColor = textColor,
+        textContentColor = textColor,
+        title = {
+            Text("💊 服药提醒", color = textColor)
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    "以下药品已过服用时间，记得按时服药哦~",
+                    color = textColor.copy(alpha = 0.8f)
+                )
+                medicationNames.forEach { name ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(8.dp)
+                                .clip(CircleShape)
+                                .background(accentColor)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = name,
+                            color = accentColor,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onTakeAll,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = accentColor,
+                    contentColor = Color.White
+                ),
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                Text("已服药")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("稍后再说", color = textColor.copy(alpha = 0.6f))
+            }
+        }
+    )
 }

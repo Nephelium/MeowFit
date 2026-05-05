@@ -933,7 +933,6 @@ fun WeekStartDayDialog(
 }
 
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MedicationDialog(
     currentMedications: String,
@@ -956,40 +955,8 @@ fun MedicationDialog(
     val medicationTimes = remember { mutableStateListOf<String>().apply { addAll(currentTimesList) } }
     var newMedName by remember { mutableStateOf("") }
     var newMedTime by remember { mutableStateOf("") }
-    var showTimePicker by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
-
-    // Time picker dialog
-    if (showTimePicker) {
-        val timePickerState = rememberTimePickerState(
-            initialHour = 8,
-            initialMinute = 0,
-            is24Hour = true,
-        )
-        AlertDialog(
-            onDismissRequest = { showTimePicker = false },
-            containerColor = containerColor,
-            titleContentColor = textColor,
-            textContentColor = textColor,
-            title = { Text("选择时间", color = textColor) },
-            text = {
-                TimePicker(state = timePickerState)
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    newMedTime = String.format("%02d:%02d", timePickerState.hour, timePickerState.minute)
-                    showTimePicker = false
-                }) {
-                    Text("确定", color = accentColor)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showTimePicker = false }) {
-                    Text("取消", color = textColor.copy(alpha = 0.82f))
-                }
-            }
-        )
-    }
+    val context = LocalContext.current
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -1026,22 +993,29 @@ fun MedicationDialog(
                         )
                     )
                     Spacer(modifier = Modifier.width(6.dp))
-                    OutlinedTextField(
-                        value = newMedTime,
-                        onValueChange = {},
-                        label = { Text("时间") },
-                        placeholder = { Text("点击选择") },
-                        singleLine = true,
-                        readOnly = true,
-                        modifier = Modifier.width(100.dp).clickable { showTimePicker = true },
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = accentColor,
-                            unfocusedBorderColor = textColor.copy(alpha = 0.4f),
-                            focusedTextColor = textColor,
-                            unfocusedTextColor = textColor,
-                            cursorColor = accentColor
+                    OutlinedButton(
+                        onClick = {
+                            val cal = java.util.Calendar.getInstance()
+                            android.app.TimePickerDialog(
+                                context,
+                                { _, hour, minute ->
+                                    newMedTime = String.format("%02d:%02d", hour, minute)
+                                },
+                                cal.get(java.util.Calendar.HOUR_OF_DAY),
+                                cal.get(java.util.Calendar.MINUTE),
+                                true
+                            ).show()
+                        },
+                        modifier = Modifier.width(100.dp),
+                        shape = RoundedCornerShape(8.dp),
+                        border = BorderStroke(1.dp, accentColor.copy(alpha = 0.7f))
+                    ) {
+                        Text(
+                            text = if (newMedTime.isBlank()) "时间" else newMedTime,
+                            color = if (newMedTime.isBlank()) textColor.copy(alpha = 0.6f) else accentColor,
+                            maxLines = 1
                         )
-                    )
+                    }
                     Spacer(modifier = Modifier.width(6.dp))
                     Button(
                         onClick = {

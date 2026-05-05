@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
@@ -37,6 +38,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -70,6 +73,7 @@ class MainActivity : ComponentActivity() {
         WindowCompat.setDecorFitsSystemWindows(window, false)
         window.statusBarColor = android.graphics.Color.TRANSPARENT
         window.navigationBarColor = android.graphics.Color.TRANSPARENT
+        window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT))
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             window.isStatusBarContrastEnforced = false
             window.isNavigationBarContrastEnforced = false
@@ -165,7 +169,7 @@ fun MainApp(viewModel: MainViewModel, aiViewModel: AiViewModel, backupViewModel:
     }
 
     // Auto-update check on startup (only when online)
-    val currentVersion = "1.5.1"
+    val currentVersion = "1.5.2"
     val autoRelease by viewModel.autoUpdateRelease.collectAsState()
     LaunchedEffect(Unit) {
         viewModel.checkAutoUpdate(context, currentVersion)
@@ -216,11 +220,11 @@ fun MainApp(viewModel: MainViewModel, aiViewModel: AiViewModel, backupViewModel:
 
     // Nested scroll tracking for status bar blur
     val blurAmount by viewModel.scrollBlurAmount.collectAsState()
-    var cumulativeScroll by remember { mutableFloatStateOf(0f) }
+    var cumulativeScroll by remember { mutableStateOf(0f) }
     val scrollConnection = remember {
         object : NestedScrollConnection {
             override fun onPreScroll(available: Offset, source: androidx.compose.ui.input.nestedscroll.NestedScrollSource): Offset {
-                cumulativeScroll = (cumulativeScroll + available.y).coerceIn(0f, 300f)
+                cumulativeScroll = (cumulativeScroll - available.y).coerceIn(0f, 300f)
                 viewModel.updateScrollBlur(cumulativeScroll / 300f)
                 return Offset.Zero
             }
@@ -237,7 +241,7 @@ fun MainApp(viewModel: MainViewModel, aiViewModel: AiViewModel, backupViewModel:
             isDarkTheme = isDarkTheme,
             modifier = Modifier
                 .matchParentSize()
-                .blur(if (isDarkTheme) 22.dp else 10.dp)
+                .blur(if (isDarkTheme) 35.dp else 18.dp)
         )
         Scaffold(
         containerColor = Color.Transparent,
@@ -327,6 +331,11 @@ fun MainApp(viewModel: MainViewModel, aiViewModel: AiViewModel, backupViewModel:
                 val allRecords by viewModel.allRecords.collectAsState()
                 val allItems by viewModel.allCalorieItems.collectAsState()
 
+                // Trigger medication reminder check on today page
+                LaunchedEffect(Unit) {
+                    viewModel.checkMedicationReminder()
+                }
+
                 TodayScreen(
                     userProfile = userProfile,
                     dailyRecord = dailyRecord,
@@ -341,6 +350,7 @@ fun MainApp(viewModel: MainViewModel, aiViewModel: AiViewModel, backupViewModel:
                     onUpdateWeight = { viewModel.updateWeight(it, selectedDate) },
                     onUpdateWater = { viewModel.updateWater(it, selectedDate) },
                     onUpdateSleep = { viewModel.updateSleep(it, selectedDate) },
+                    onUpdateMedicationTaken = { viewModel.updateMedicationTaken(selectedDate, it) },
                     onSaveExercise = { name, calories, startTime, endTime ->
                         val minutes = com.example.calorietracker.util.CalorieUtils.calculateDuration(startTime, endTime)
                         val notes = if (minutes > 0) "时长: ${minutes}分钟" else ""
@@ -355,6 +365,23 @@ fun MainApp(viewModel: MainViewModel, aiViewModel: AiViewModel, backupViewModel:
                         )
                     }
                 )
+
+                // Medication reminder dialog (only show when update dialog is not active)
+                if (autoRelease == null) {
+                    val medReminder by viewModel.medicationReminder.collectAsState()
+                    if (medReminder.show) {
+                        MedicationReminderDialog(
+                            medicationNames = medReminder.medicationNames,
+                            onTakeAll = {
+                                viewModel.markMedicationsTaken(selectedDate, medReminder.medicationIndices)
+                            },
+                            onDismiss = { viewModel.dismissMedicationReminder() },
+                            containerColor = navCardColor,
+                            textColor = navOnCardColor,
+                            accentColor = accentColor
+                        )
+                    }
+                }
             }
             
             composable("stats") {
@@ -485,6 +512,8 @@ fun MainApp(viewModel: MainViewModel, aiViewModel: AiViewModel, backupViewModel:
                         onUpdateShowMacros = { viewModel.updateShowMacros(it) },
                         onUpdateTodayThemeIndex = { viewModel.updateTodayThemeIndex(it) },
                         onUpdateWeekStartDay = { viewModel.updateWeekStartDay(it) },
+                        onUpdateMedicationEnabled = { viewModel.updateMedicationEnabled(it) },
+                        onUpdateMedications = { meds, times -> viewModel.updateMedications(meds, times) },
                         onCheckUpdate = { currentVersion -> viewModel.checkForUpdate(currentVersion) },
                         onDismissUpdateDialog = { viewModel.resetUpdateStatus() }
                     )
@@ -561,6 +590,7 @@ fun MainApp(viewModel: MainViewModel, aiViewModel: AiViewModel, backupViewModel:
                         navController.popBackStack()
                     }
                 )
+
             }
         }
     }
@@ -577,7 +607,8 @@ fun MainApp(viewModel: MainViewModel, aiViewModel: AiViewModel, backupViewModel:
 
         // Status bar blur overlay (appears on scroll)
         if (blurAmount > 0.01f) {
-            val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+            val density = androidx.compose.ui.platform.LocalDensity.current
+            val statusBarHeight = with(density) { WindowInsets.statusBars.getTop(density).toDp() }
             val overlayColor = if (isDarkTheme) Color(0xFF121212) else Color(0xFFFFFFFF)
             Box(
                 modifier = Modifier
@@ -585,7 +616,7 @@ fun MainApp(viewModel: MainViewModel, aiViewModel: AiViewModel, backupViewModel:
                     .height(statusBarHeight + 8.dp)
                     .then(
                         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
-                            Modifier.blur((blurAmount * 20).dp)
+                            Modifier.blur((blurAmount * 30).dp)
                         } else {
                             Modifier
                         }

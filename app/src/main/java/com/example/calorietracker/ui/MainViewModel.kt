@@ -16,6 +16,14 @@ import kotlinx.coroutines.launch
 import com.example.calorietracker.data.update.UpdateManager
 import com.example.calorietracker.data.update.UpdateStatus
 import com.example.calorietracker.data.update.ReleaseInfo
+import com.example.calorietracker.util.CalorieUtils
+
+// Medication reminder state
+data class MedicationReminderState(
+    val show: Boolean = false,
+    val medicationNames: List<String> = emptyList(),
+    val medicationIndices: List<Int> = emptyList()
+)
 
 class MainViewModel(private val repository: CalorieRepository) : ViewModel() {
 
@@ -26,6 +34,10 @@ class MainViewModel(private val repository: CalorieRepository) : ViewModel() {
     // Auto-update on startup
     private val _autoUpdateRelease = MutableStateFlow<ReleaseInfo?>(null)
     val autoUpdateRelease: StateFlow<ReleaseInfo?> = _autoUpdateRelease.asStateFlow()
+
+    // Medication reminder
+    private val _medicationReminder = MutableStateFlow(MedicationReminderState())
+    val medicationReminder: StateFlow<MedicationReminderState> = _medicationReminder.asStateFlow()
 
     // Scroll offset for status bar blur effect (0f = not scrolled, 1f = fully scrolled)
     private val _scrollBlurAmount = MutableStateFlow(0f)
@@ -157,6 +169,24 @@ class MainViewModel(private val repository: CalorieRepository) : ViewModel() {
         }
     }
 
+    fun updateMedicationEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            repository.updateMedicationEnabled(enabled)
+        }
+    }
+
+    fun updateMedications(medications: String, medicationTimes: String = "") {
+        viewModelScope.launch {
+            repository.updateMedications(medications, medicationTimes)
+        }
+    }
+
+    fun updateMedicationTaken(date: String, taken: String) {
+        viewModelScope.launch {
+            repository.updateMedicationTaken(date, taken)
+        }
+    }
+
     fun checkForUpdate(currentVersion: String) {
         viewModelScope.launch {
             _updateStatus.value = UpdateStatus.Checking
@@ -166,6 +196,83 @@ class MainViewModel(private val repository: CalorieRepository) : ViewModel() {
     
     fun resetUpdateStatus() {
         _updateStatus.value = UpdateStatus.Idle
+    }
+
+    fun checkMedicationReminder() {
+        viewModelScope.launch {
+            try {
+                val profile = userProfile.first()
+                if (!profile.medicationEnabled || profile.medications.isBlank()) return@launch
+                
+                val meds = profile.medications.split(",").map { it.trim() }.filter { it.isNotBlank() }
+                val times = profile.medicationTimes.split(",").map { it.trim() }
+                
+                val today = CalorieUtils.getTodayString()
+                val record = repository.getDailyRecord(today).first()
+                val takenStr = record?.medicationTaken ?: ""
+                val taken = if (takenStr.isBlank()) List(meds.size) { "0" }
+                            else takenStr.split(",").map { it.trim() }
+                
+                val now = java.util.Calendar.getInstance()
+                val currentHour = now.get(java.util.Calendar.HOUR_OF_DAY)
+                val currentMinute = now.get(java.util.Calendar.MINUTE)
+                val currentTimeMinutes = currentHour * 60 + currentMinute
+                
+                val overdueNames = mutableListOf<String>()
+                val overdueIndices = mutableListOf<Int>()
+                
+                for (i in meds.indices) {
+                    val timeStr = times.getOrElse(i) { "" }
+                    if (timeStr.isBlank()) continue
+                    val parts = timeStr.split(":")
+                    if (parts.size != 2) continue
+                    val medHour = parts[0].toIntOrNull() ?: continue
+                    val medMinute = parts[1].toIntOrNull() ?: continue
+                    val medTimeMinutes = medHour * 60 + medMinute
+                    
+                    val isTaken = taken.getOrElse(i) { "0" } == "1"
+                    
+                    if (currentTimeMinutes >= medTimeMinutes && !isTaken) {
+                        overdueNames.add(meds[i])
+                        overdueIndices.add(i)
+                    }
+                }
+                
+                if (overdueNames.isNotEmpty()) {
+                    _medicationReminder.value = MedicationReminderState(
+                        show = true,
+                        medicationNames = overdueNames,
+                        medicationIndices = overdueIndices
+                    )
+                }
+            } catch (_: Exception) {
+                // Silently fail
+            }
+        }
+    }
+
+    fun dismissMedicationReminder() {
+        _medicationReminder.value = MedicationReminderState()
+    }
+
+    fun markMedicationsTaken(date: String, indices: List<Int>) {
+        viewModelScope.launch {
+            try {
+                val profile = userProfile.first()
+                val meds = profile.medications.split(",").map { it.trim() }.filter { it.isNotBlank() }
+                val record = repository.getDailyRecord(date).first()
+                val currentTaken = record?.medicationTaken?.split(",")?.map { it.trim() }?.toMutableList()
+                    ?: MutableList(meds.size) { "0" }
+                while (currentTaken.size < meds.size) currentTaken.add("0")
+                for (idx in indices) {
+                    if (idx < currentTaken.size) currentTaken[idx] = "1"
+                }
+                repository.updateMedicationTaken(date, currentTaken.joinToString(","))
+                _medicationReminder.value = MedicationReminderState()
+            } catch (_: Exception) {
+                // Silently fail
+            }
+        }
     }
 
     fun checkAutoUpdate(context: Context, currentVersion: String) {
