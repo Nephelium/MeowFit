@@ -53,10 +53,12 @@ fun SettingsScreen(
     onUpdateShowMacros: (Boolean) -> Unit,
     onUpdateTodayThemeIndex: (Int) -> Unit,
     onUpdateWeekStartDay: (Int) -> Unit,
+    onUpdateMedicationEnabled: (Boolean) -> Unit = {},
+    onUpdateMedications: (String, String) -> Unit = { _, _ -> },
     onCheckUpdate: (String) -> Unit = {},
     onDismissUpdateDialog: () -> Unit = {}
 ) {
-    val currentVersion = "1.5.1"
+    val currentVersion = "1.5.2"
     val isDarkTheme = androidx.compose.foundation.isSystemInDarkTheme()
     val selectedThemeIndex = userProfile?.selectedTodayThemeIndex ?: 0
     val selectedTheme = remember(selectedThemeIndex) { getTodayVisualTheme(selectedThemeIndex) }
@@ -70,6 +72,7 @@ fun SettingsScreen(
     var showExcludedDialog by remember { mutableStateOf(false) }
     var showTodayThemeDialog by remember { mutableStateOf(false) }
     var showWeekStartDialog by remember { mutableStateOf(false) }
+    var showMedicationDialog by remember { mutableStateOf(false) }
     
     // Auto-show dialog if status changes to something relevant
     if (updateStatus !is UpdateStatus.Idle) {
@@ -127,6 +130,21 @@ fun SettingsScreen(
         )
     }
 
+    if (showMedicationDialog && userProfile != null) {
+        MedicationDialog(
+            currentMedications = userProfile.medications,
+            currentMedicationTimes = userProfile.medicationTimes,
+            onDismiss = { showMedicationDialog = false },
+            onConfirm = { meds, times ->
+                onUpdateMedications(meds, times)
+                showMedicationDialog = false
+            },
+            containerColor = cardColor,
+            textColor = onCardColor,
+            accentColor = accentColor
+        )
+    }
+
     if (showWeekStartDialog) {
         WeekStartDayDialog(
             currentWeekStartDay = userProfile?.weekStartDay ?: java.util.Calendar.SUNDAY,
@@ -148,7 +166,7 @@ fun SettingsScreen(
             isDarkTheme = isDarkTheme,
             modifier = Modifier
                 .matchParentSize()
-                .blur(if (isDarkTheme) 22.dp else 10.dp)
+                .blur(if (isDarkTheme) 35.dp else 18.dp)
         )
         Column(
             modifier = Modifier
@@ -182,14 +200,7 @@ fun SettingsScreen(
             textColor = onCardColor
         )
 
-        Spacer(modifier = Modifier.height(16.dp))
-
-        Text(
-            "目标设置", 
-            style = MaterialTheme.typography.titleMedium,
-            color = sectionTitleColor,
-            modifier = Modifier.padding(bottom = 8.dp, start = 4.dp)
-        )
+        Spacer(modifier = Modifier.height(8.dp))
 
         SettingsItem(
             icon = Icons.Default.Bedtime,
@@ -201,7 +212,49 @@ fun SettingsScreen(
             textColor = onCardColor
         )
         
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Text(
+            "服药管理", 
+            style = MaterialTheme.typography.titleMedium,
+            color = sectionTitleColor,
+            modifier = Modifier.padding(bottom = 8.dp, start = 4.dp)
+        )
+
+        SwitchSettingsItem(
+            icon = Icons.Default.Face,
+            title = "启用服药提醒",
+            subtitle = "在首页和日历中跟踪每日服药情况",
+            checked = userProfile?.medicationEnabled ?: false,
+            onCheckedChange = onUpdateMedicationEnabled,
+            cardColor = cardColor,
+            iconTint = accentColor,
+            textColor = onCardColor
+        )
+
+        if (userProfile?.medicationEnabled == true) {
+            Spacer(modifier = Modifier.height(8.dp))
+            SettingsItem(
+                icon = Icons.Default.Edit,
+                title = "管理药品",
+                subtitle = if (userProfile.medications.isNotBlank()) 
+                    "当前药品: ${userProfile.medications}" 
+                else "点击添加需要服用的药品",
+                onClick = { showMedicationDialog = true },
+                cardColor = cardColor,
+                iconTint = accentColor,
+                textColor = onCardColor
+            )
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Text(
+            "目标设置", 
+            style = MaterialTheme.typography.titleMedium,
+            color = sectionTitleColor,
+            modifier = Modifier.padding(bottom = 8.dp, start = 4.dp)
+        )
 
         SettingsItem(
             icon = Icons.Default.Close, // Using Close as Block/Ban icon
@@ -863,6 +916,232 @@ fun WeekStartDayDialog(
         confirmButton = {
             Button(
                 onClick = { onConfirm(selectedDay) },
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = accentColor,
+                    contentColor = Color.White
+                )
+            ) {
+                Text("保存")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("取消", color = textColor.copy(alpha = 0.82f))
+            }
+        }
+    )
+}
+
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun MedicationDialog(
+    currentMedications: String,
+    currentMedicationTimes: String = "",
+    onDismiss: () -> Unit,
+    onConfirm: (String, String) -> Unit,
+    containerColor: Color,
+    textColor: Color,
+    accentColor: Color
+) {
+    val currentList = remember(currentMedications) {
+        if (currentMedications.isBlank()) mutableListOf<String>()
+        else currentMedications.split(",").map { it.trim() }.filter { it.isNotBlank() }.toMutableList()
+    }
+    val currentTimesList = remember(currentMedicationTimes) {
+        if (currentMedicationTimes.isBlank()) mutableListOf<String>()
+        else currentMedicationTimes.split(",").map { it.trim() }.toMutableList()
+    }
+    val medications = remember { mutableStateListOf<String>().apply { addAll(currentList) } }
+    val medicationTimes = remember { mutableStateListOf<String>().apply { addAll(currentTimesList) } }
+    var newMedName by remember { mutableStateOf("") }
+    var newMedTime by remember { mutableStateOf("") }
+    var showTimePicker by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    // Time picker dialog
+    if (showTimePicker) {
+        val timePickerState = rememberTimePickerState(
+            initialHour = 8,
+            initialMinute = 0,
+            is24Hour = true,
+        )
+        AlertDialog(
+            onDismissRequest = { showTimePicker = false },
+            containerColor = containerColor,
+            titleContentColor = textColor,
+            textContentColor = textColor,
+            title = { Text("选择时间", color = textColor) },
+            text = {
+                TimePicker(state = timePickerState)
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    newMedTime = String.format("%02d:%02d", timePickerState.hour, timePickerState.minute)
+                    showTimePicker = false
+                }) {
+                    Text("确定", color = accentColor)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showTimePicker = false }) {
+                    Text("取消", color = textColor.copy(alpha = 0.82f))
+                }
+            }
+        )
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("管理药品", color = textColor) },
+        containerColor = containerColor,
+        titleContentColor = textColor,
+        textContentColor = textColor,
+        text = {
+            Column(modifier = Modifier.heightIn(max = 400.dp)) {
+                Text(
+                    "添加你每天需要服用的药品，可在首页打卡。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = textColor.copy(alpha = 0.82f),
+                    modifier = Modifier.padding(bottom = 12.dp)
+                )
+
+                // Add new medication
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    OutlinedTextField(
+                        value = newMedName,
+                        onValueChange = { newMedName = it; error = null },
+                        label = { Text("药品名称", maxLines = 1) },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = accentColor,
+                            unfocusedBorderColor = textColor.copy(alpha = 0.4f),
+                            focusedTextColor = textColor,
+                            unfocusedTextColor = textColor,
+                            cursorColor = accentColor
+                        )
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    OutlinedTextField(
+                        value = newMedTime,
+                        onValueChange = {},
+                        label = { Text("时间") },
+                        placeholder = { Text("点击选择") },
+                        singleLine = true,
+                        readOnly = true,
+                        modifier = Modifier.width(100.dp).clickable { showTimePicker = true },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = accentColor,
+                            unfocusedBorderColor = textColor.copy(alpha = 0.4f),
+                            focusedTextColor = textColor,
+                            unfocusedTextColor = textColor,
+                            cursorColor = accentColor
+                        )
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Button(
+                        onClick = {
+                            val name = newMedName.trim()
+                            if (name.isBlank()) {
+                                error = "请输入药品名称"
+                            } else if (medications.contains(name)) {
+                                error = "该药品已存在"
+                            } else {
+                                medications.add(name)
+                                medicationTimes.add(newMedTime.trim())
+                                newMedName = ""
+                                newMedTime = ""
+                                error = null
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = accentColor,
+                            contentColor = Color.White
+                        ),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text("添加")
+                    }
+                }
+                if (error != null) {
+                    Text(
+                        text = error!!,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(start = 16.dp, top = 4.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // List existing medications
+                if (medications.isEmpty()) {
+                    Text(
+                        "还没有添加药品",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = textColor.copy(alpha = 0.5f)
+                    )
+                } else {
+                    medications.forEachIndexed { index, med ->
+                        val time = medicationTimes.getOrElse(index) { "" }
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = textColor.copy(alpha = 0.06f)
+                            ),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = med,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = textColor
+                                    )
+                                    if (time.isNotBlank()) {
+                                        Text(
+                                            text = time,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = textColor.copy(alpha = 0.6f)
+                                        )
+                                    }
+                                }
+                                IconButton(
+                                    onClick = {
+                                        medications.removeAt(index)
+                                        if (index < medicationTimes.size) medicationTimes.removeAt(index)
+                                    },
+                                    modifier = Modifier.size(32.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.Close,
+                                        contentDescription = "删除",
+                                        tint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f),
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    onConfirm(medications.joinToString(","), medicationTimes.joinToString(","))
+                },
                 colors = ButtonDefaults.buttonColors(
                     containerColor = accentColor,
                     contentColor = Color.White
