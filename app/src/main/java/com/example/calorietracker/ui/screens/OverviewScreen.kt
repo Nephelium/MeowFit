@@ -76,7 +76,8 @@ enum class HeatmapMetric(val label: String) {
     Net("热量缺口"),
     Intake("饮食"),
     Burned("运动"),
-    Weight("体重")
+    Weight("体重"),
+    Meds("服药")
 }
 
 private data class ParsedDate(val year: Int, val month: Int, val day: Int)
@@ -194,6 +195,16 @@ private fun prepareChartData(
             HeatmapMetric.Weight -> {
                 val w = record.weight
                 if (w != null && w.isFinite() && w > 0f) w else null
+            }
+            HeatmapMetric.Meds -> {
+                val profile = userProfile
+                if (profile == null || profile.medications.isBlank()) null
+                else {
+                    val meds = profile.medications.split(",").map { it.trim() }.filter { it.isNotBlank() }
+                    val taken = record.medicationTaken.split(",").map { it.trim() }
+                    val takenCount = meds.indices.count { it < taken.size && taken[it] == "1" }
+                    if (record.medicationTaken.isNotBlank()) takenCount.toFloat() else null
+                }
             }
         }
     }
@@ -375,7 +386,7 @@ fun OverviewScreen(
             isDarkTheme = isDarkTheme,
             modifier = Modifier
                 .matchParentSize()
-                .blur(if (isDarkTheme) 22.dp else 10.dp)
+                .blur(if (isDarkTheme) 35.dp else 18.dp)
         )
         Scaffold(
             containerColor = Color.Transparent,
@@ -387,7 +398,7 @@ fun OverviewScreen(
                     .fillMaxSize()
                     .verticalScroll(rememberScrollState())
                     .padding(top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding())
-                    .padding(16.dp)
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
             ) {
             OverviewTopBar(
                 selectedYear = selectedYear,
@@ -455,7 +466,7 @@ fun OverviewScreen(
                                 ) {
                                     Text(
                                         text = metric.label,
-                                        style = MaterialTheme.typography.labelSmall,
+                                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
                                         color = contentColor
                                     )
                                 }
@@ -660,6 +671,16 @@ fun generateCalendarBitmap(
             val count = relevantRecords.count { (it.weight ?: 0f) > 0 }
              "⚖️ 记录体重，见证蜕变！\n${periodStr}坚持记录${count} 天，遇见更好的自己！"
         }
+        HeatmapMetric.Meds -> {
+            val profile = userProfile
+            val medMeds = if (profile == null || profile.medications.isBlank()) emptyList<String>() else profile.medications.split(",").map { it.trim() }.filter { it.isNotBlank() }
+            val totalMeds = medMeds.size
+            val takenCount = relevantRecords.sumOf { r ->
+                val t = r.medicationTaken.split(",").map { it.trim() }
+                medMeds.indices.count { it < t.size && t[it] == "1" }
+            }
+            "💊 乖乖吃药！\n${periodStr}共服药 ${takenCount} 次~"
+        }
         else -> {
              val count = relevantRecords.count { 
                  when(metric) {
@@ -763,6 +784,12 @@ fun generateCalendarBitmap(
             primaryColor = android.graphics.Color.parseColor("#B2EBF2"),
             slogan = "轻盈生活，从记录开始~"
         )
+        HeatmapMetric.Meds -> CalendarTheme(
+            bgColor = android.graphics.Color.parseColor("#FFEBEE"), // Light Red/Pink
+            bgPatternEmoji = listOf("💊", "❤️", "🏥", "✨"),
+            primaryColor = android.graphics.Color.parseColor("#FFCDD2"),
+            slogan = "按时吃药，健健康康~"
+        )
     }
 
     // Draw Background Color
@@ -810,6 +837,7 @@ fun generateCalendarBitmap(
         HeatmapMetric.Sleep -> "🌙"
         HeatmapMetric.Net -> "⚖️"
         HeatmapMetric.Weight -> "⚖️"
+        HeatmapMetric.Meds -> "💊"
     }
     
     val displayTitle = "我的${metric.label}日历"
@@ -954,6 +982,11 @@ fun generateCalendarBitmap(
                 val progress = if (weightRange > 0) (weight - minWeight) / weightRange else 0.5f
                 lerp(android.graphics.Color.parseColor("#E0F7FA"), android.graphics.Color.parseColor("#006064"), progress)
             }
+            HeatmapMetric.Meds -> {
+                val totalMeds = userProfile?.medications?.split(",")?.map { it.trim() }?.filter { it.isNotBlank() }?.size ?: 5
+                val fraction = if (totalMeds > 0) value / totalMeds.toFloat() else 0f
+                lerp(android.graphics.Color.parseColor("#FFEBEE"), android.graphics.Color.parseColor("#C62828"), fraction.coerceIn(0f, 1f))
+            }
         }
     }
 
@@ -1065,6 +1098,16 @@ fun generateCalendarBitmap(
                             val w = record?.weight ?: 0f
                             if (w.isFinite() && w > 0f) encodeWeightForCalendar(w) else 0
                         }
+                        HeatmapMetric.Meds -> {
+                            val profile = userProfile
+                            if (profile == null || profile.medications.isBlank()) 0
+                            else {
+                                val meds = profile.medications.split(",").map { it.trim() }.filter { it.isNotBlank() }
+                                val takenStr = record?.medicationTaken ?: ""
+                                val taken = if (takenStr.isBlank()) emptyList() else takenStr.split(",").map { it.trim() }
+                                meds.indices.count { it < taken.size && taken[it] == "1" }
+                            }
+                        }
                     }
                     
                     val hasDataForMetric = when(metric) {
@@ -1076,6 +1119,14 @@ fun generateCalendarBitmap(
                         HeatmapMetric.Weight -> {
                             val w = record?.weight ?: 0f
                             w.isFinite() && w > 0f
+                        }
+                        HeatmapMetric.Meds -> {
+                            val profile = userProfile
+                            if (profile == null || profile.medications.isBlank()) false
+                            else {
+                                val takenStr = record?.medicationTaken ?: ""
+                                takenStr.isNotBlank() && takenStr.contains("1")
+                            }
                         }
                     }
                     
@@ -1168,6 +1219,16 @@ fun generateCalendarBitmap(
                     val w = record?.weight ?: 0f
                     if (w.isFinite() && w > 0f) encodeWeightForCalendar(w) else 0
                 }
+                HeatmapMetric.Meds -> {
+                    val profile = userProfile
+                    if (profile == null || profile.medications.isBlank()) 0
+                    else {
+                        val meds = profile.medications.split(",").map { it.trim() }.filter { it.isNotBlank() }
+                        val takenStr = record?.medicationTaken ?: ""
+                        val taken = if (takenStr.isBlank()) emptyList() else takenStr.split(",").map { it.trim() }
+                        meds.indices.count { it < taken.size && taken[it] == "1" }
+                    }
+                }
             }
             
             val hasDataForMetric = when(metric) {
@@ -1179,6 +1240,14 @@ fun generateCalendarBitmap(
                 HeatmapMetric.Weight -> {
                     val w = record?.weight ?: 0f
                     w.isFinite() && w > 0f
+                }
+                HeatmapMetric.Meds -> {
+                    val profile = userProfile
+                    if (profile == null || profile.medications.isBlank()) false
+                    else {
+                        val takenStr = record?.medicationTaken ?: ""
+                        takenStr.isNotBlank() && takenStr.contains("1")
+                    }
                 }
             }
             
@@ -1256,6 +1325,7 @@ fun generateCalendarBitmap(
         HeatmapMetric.Sleep -> "睡眠时间越长，颜色越深"
         HeatmapMetric.Net -> "绿色代表热量缺口，红色代表热量盈余"
         HeatmapMetric.Weight -> "颜色越深代表体重越接近今年最大值"
+        HeatmapMetric.Meds -> "服用的药品种数越多，颜色越深"
     }
     
     if (metric == HeatmapMetric.Net) {
@@ -1277,8 +1347,14 @@ fun generateCalendarBitmap(
          legendColors.add(getColor(encodeWeightForCalendar(minWeight + step), metric))
          legendColors.add(getColor(encodeWeightForCalendar(minWeight + step * 2), metric))
          legendColors.add(getColor(encodeWeightForCalendar(minWeight + weightRange), metric))
+    } else if (metric == HeatmapMetric.Meds) {
+        val totalMeds = userProfile?.medications?.split(",")?.map { it.trim() }?.filter { it.isNotBlank() }?.size ?: 5
+        legendColors.add(getColor(0, metric))
+        legendColors.add(getColor((totalMeds / 3).coerceAtLeast(1), metric))
+        legendColors.add(getColor((totalMeds * 2 / 3).coerceAtLeast(1), metric))
+        legendColors.add(getColor(totalMeds, metric))
     } else {
-        // Gradient for others
+        // Gradient for others (Intake, Burned, Water)
         val baseColor = getColor(3000, metric) // Max value approx
         val lightColor = getColor(500, metric)
         val lighterColor = getColor(100, metric)
@@ -1518,6 +1594,15 @@ fun getHeatmapColor(
                  progress
              )
         }
+        HeatmapMetric.Meds -> {
+            val totalMeds = userProfile?.medications?.split(",")?.map { it.trim() }?.filter { it.isNotBlank() }?.size ?: 5
+            val fraction = if (totalMeds > 0) value / totalMeds.toFloat() else 0f
+            androidx.compose.ui.graphics.lerp(
+                Color(0xFFFFEBEE), // Light Red
+                Color(0xFFB71C1C), // Deep Red
+                fraction.coerceIn(0f, 1f)
+            )
+        }
     }
 }
 
@@ -1651,6 +1736,16 @@ fun MonthCalendarMini(
                                     val w = record?.weight ?: 0f
                                     if (w.isFinite() && w > 0f) encodeWeightForCalendar(w) else 0
                                 }
+                                HeatmapMetric.Meds -> {
+                                    val profile = userProfile
+                                    if (profile == null || profile.medications.isBlank()) 0
+                                    else {
+                                        val meds = profile.medications.split(",").map { it.trim() }.filter { it.isNotBlank() }
+                                        val takenStr = record?.medicationTaken ?: ""
+                                        val taken = if (takenStr.isBlank()) emptyList() else takenStr.split(",").map { it.trim() }
+                                        meds.indices.count { it < taken.size && taken[it] == "1" }
+                                    }
+                                }
                             }
                             
                             val hasDataForMetric = when(metric) {
@@ -1662,6 +1757,14 @@ fun MonthCalendarMini(
                                 HeatmapMetric.Weight -> {
                                     val w = record?.weight ?: 0f
                                     w.isFinite() && w > 0f
+                                }
+                                HeatmapMetric.Meds -> {
+                                    val profile = userProfile
+                                    if (profile == null || profile.medications.isBlank()) false
+                                    else {
+                                        val takenStr = record?.medicationTaken ?: ""
+                                        takenStr.isNotBlank() && takenStr.contains("1")
+                                    }
                                 }
                             }
                             
@@ -1822,6 +1925,16 @@ fun MonthHeatmapView(
                                     val w = record?.weight ?: 0f
                                     if (w.isFinite() && w > 0f) encodeWeightForCalendar(w) else 0
                                 }
+                                HeatmapMetric.Meds -> {
+                                    val profile = userProfile
+                                    if (profile == null || profile.medications.isBlank()) 0
+                                    else {
+                                        val meds = profile.medications.split(",").map { it.trim() }.filter { it.isNotBlank() }
+                                        val takenStr = record?.medicationTaken ?: ""
+                                        val taken = if (takenStr.isBlank()) emptyList() else takenStr.split(",").map { it.trim() }
+                                        meds.indices.count { it < taken.size && taken[it] == "1" }
+                                    }
+                                }
                             }
                             
                             val hasDataForMetric = when(metric) {
@@ -1833,6 +1946,14 @@ fun MonthHeatmapView(
                                 HeatmapMetric.Weight -> {
                                     val w = record?.weight ?: 0f
                                     w.isFinite() && w > 0f
+                                }
+                                HeatmapMetric.Meds -> {
+                                    val profile = userProfile
+                                    if (profile == null || profile.medications.isBlank()) false
+                                    else {
+                                        val takenStr = record?.medicationTaken ?: ""
+                                        takenStr.isNotBlank() && takenStr.contains("1")
+                                    }
                                 }
                             }
                             
@@ -1906,6 +2027,7 @@ fun MonthHeatmapView(
                                         "${h}h${m}m"
                                     }
                                     HeatmapMetric.Weight -> formatWeightForCalendar(decodeWeightForCalendar(value))
+                                    HeatmapMetric.Meds -> "${value}种"
                                     else -> "${Math.abs(value)}"
                                 }
                                 
@@ -1971,7 +2093,7 @@ fun DetailRecordRow(item: CalorieItemEntity, textColor: Color) {
         Icon(
             if (isFood) Icons.Default.Restaurant else Icons.Default.FitnessCenter,
             contentDescription = null,
-            tint = if (isFood) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary,
+            tint = textColor,
             modifier = Modifier.size(16.dp)
         )
         Spacer(modifier = Modifier.width(8.dp))
@@ -1980,7 +2102,7 @@ fun DetailRecordRow(item: CalorieItemEntity, textColor: Color) {
             "${if (isFood) "+" else "-"}${CalorieUtils.formatNumber(item.calories)}",
             style = MaterialTheme.typography.bodyMedium,
             fontWeight = FontWeight.Bold,
-            color = if (isFood) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary
+            color = textColor
         )
     }
 }
@@ -2139,8 +2261,8 @@ fun DayDetailDialog(
                     else -> {
                         // Original Calorie/Weight View
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        StatBox("饮食", "${record?.totalIntake ?: 0}", MaterialTheme.colorScheme.primary)
-                        StatBox("运动", "${record?.totalBurned ?: 0}", MaterialTheme.colorScheme.secondary)
+                        StatBox("饮食", "${record?.totalIntake ?: 0}", accentColor)
+                        StatBox("运动", "${record?.totalBurned ?: 0}", accentColor)
                             
                             // Net = Intake - (Target + Burned)
                             // Calculate target dynamically using effective weight
@@ -2675,6 +2797,7 @@ fun MetricTrendChart(
                             HeatmapMetric.Sleep -> String.format("%.1fh", nearestPoint!!.value)
                             HeatmapMetric.Water -> "${nearestPoint!!.value.roundToInt()}ml"
                             HeatmapMetric.Net -> "${nearestPoint!!.value.roundToInt()}"
+                            HeatmapMetric.Meds -> "${nearestPoint!!.value.roundToInt()}种"
                             else -> "${nearestPoint!!.value.roundToInt()}"
                         }
                         val dateLabel = String.format("%02d-%02d", nearestPoint!!.date.monthValue, nearestPoint!!.date.dayOfMonth)

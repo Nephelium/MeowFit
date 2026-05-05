@@ -179,7 +179,7 @@ fun AnalysisScreen(
     var selectedYear by remember { mutableIntStateOf(now.year) }
     var selectedMonth by remember { mutableIntStateOf(now.monthValue) } // 1-12
     var selectedWeekStart by remember { mutableStateOf<String?>(null) }
-    var isCompactMode by remember { mutableStateOf(true) }
+    val isCompactMode = true // Always compact mode
 
     // Derive available weeks for the selected month
     val availableWeeks = remember(selectedYear, selectedMonth, summaries) {
@@ -223,13 +223,25 @@ fun AnalysisScreen(
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var autoGenerateAfterConsent by remember { mutableStateOf(false) }
 
+    // Date range dialog state
+    var showDateRangeDialog by remember { mutableStateOf(false) }
+    var rangeStartDate by remember { mutableStateOf(LocalDate.now().minusWeeks(12)) }
+    var rangeEndDate by remember { mutableStateOf(LocalDate.now()) }
+
     // Shared generation logic — used by buttons and auto-generation
-    suspend fun generateAllWeeks(dao: AnalysisDao) {
-        val pastWeeks = getPastWeeks(12)
-        for (monday in pastWeeks) {
+    // If startDate/endDate are null, defaults to past 12 weeks
+    suspend fun generateAllWeeks(dao: AnalysisDao, startDate: LocalDate? = null, endDate: LocalDate? = null) {
+        val start = startDate ?: getCurrentWeekMonday().minusWeeks(12)
+        val end = endDate ?: LocalDate.now()
+        var monday = getWeekMonday(start)
+        val endMonday = getWeekMonday(end)
+        while (!monday.isAfter(endMonday)) {
             val weekStartStr = monday.toString()
             val existing = dao.getSummary(weekStartStr)
-            if (existing != null && existing.status == "generated") continue
+            if (existing != null && existing.status == "generated") {
+                monday = monday.plusWeeks(1)
+                continue
+            }
 
             val sunday = getWeekSunday(monday)
             val weekRecords = records.filter { r ->
@@ -240,7 +252,10 @@ fun AnalysisScreen(
             }
             val dietDays = weekRecords.count { it.totalIntake > 0 }
             val exerciseDays = weekRecords.count { it.totalBurned > 0 }
-            if (dietDays + exerciseDays < 2) continue
+            if (dietDays + exerciseDays < 2) {
+                monday = monday.plusWeeks(1)
+                continue
+            }
 
             generatingWeek = weekStartStr
             val dataText = buildWeeklyDataText(weekStartStr, records, allItems, userProfile)
@@ -257,6 +272,7 @@ fun AnalysisScreen(
                     status = "generated"
                 )
             )
+            monday = monday.plusWeeks(1)
         }
     }
 
@@ -342,23 +358,7 @@ fun AnalysisScreen(
                 fontWeight = FontWeight.Bold,
                 color = onCardColor
             )
-            // Compact / Expanded toggle
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    if (isCompactMode) "精简" else "详细",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = onCardColor.copy(alpha = 0.6f)
-                )
-                Switch(
-                    checked = !isCompactMode,
-                    onCheckedChange = { isCompactMode = !it },
-                    colors = SwitchDefaults.colors(
-                        checkedThumbColor = accentColor,
-                        checkedTrackColor = accentColor.copy(alpha = 0.4f)
-                    ),
-                    modifier = Modifier.padding(start = 4.dp)
-                )
-            }
+            // Compact mode always on — toggle removed
         }
 
         Spacer(modifier = Modifier.height(6.dp))
@@ -425,7 +425,7 @@ fun AnalysisScreen(
                     Surface(
                         onClick = {
                             selectedWeekStart = weekStart
-                            if (hasReport && !isCompactMode) {
+                            if (hasReport) {
                                 onNavigateToDetail(weekStart)
                             }
                         },
@@ -473,371 +473,408 @@ fun AnalysisScreen(
 
         Spacer(modifier = Modifier.height(8.dp))
         
-        // If compact mode and a week is selected, show a mini preview + detail button
-        if (isCompactMode && selectedWeekStart != null) {
-            val selSummary = summaries.find { it.weekStartDate == selectedWeekStart }
-            if (selSummary != null && selSummary.status == "generated") {
+        // Clicking a week with report navigates directly to detail (handled in onClick above).
+        // Below is always visible: generation controls + summary cards.
+        Text(
+                "AI 综合分析你的健康数据，提供个性化建议",
+                style = MaterialTheme.typography.bodySmall,
+                color = onCardColor.copy(alpha = 0.6f)
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Generating banner
+            if (generatingWeek != null) {
                 Card(
-                    colors = CardDefaults.cardColors(containerColor = cardColor),
+                    colors = CardDefaults.cardColors(containerColor = accentColor.copy(alpha = 0.12f)),
                     shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.fillMaxWidth(),
-                    onClick = { onNavigateToDetail(selectedWeekStart!!) }
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)
                 ) {
                     Row(
-                        modifier = Modifier.padding(12.dp),
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                "📅 ${getWeekLabel(selSummary.weekStartDate)}",
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = onCardColor
-                            )
-                            Text(
-                                "🍽${selSummary.dietDays}天 🏃${selSummary.exerciseDays}天",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = onCardColor.copy(alpha = 0.5f)
-                            )
-                        }
-                        Icon(Icons.Default.ChevronRight, null, tint = accentColor)
-                    }
-                }
-            } else {
-                // No report for selected week - show quick generate button
-                TextButton(
-                    onClick = {
-                        scope.launch {
-                            val dao = analysisDao ?: return@launch
-                            try {
-                                generatingWeek = selectedWeekStart
-                                val dataText = buildWeeklyDataText(selectedWeekStart!!, records, allItems, userProfile)
-                                val result = aiService.generateWeeklyAnalysis(dataText)
-                                val monday = LocalDate.parse(selectedWeekStart)
-                                val sunday = getWeekSunday(monday)
-                                dao.insertSummary(
-                                    WeeklySummaryEntity(
-                                        weekStartDate = selectedWeekStart!!,
-                                        weekEndDate = sunday.toString(),
-                                        summaryText = result,
-                                        recommendations = "",
-                                        dietDays = records.count { r ->
-                                            try {
-                                                val d = LocalDate.parse(r.date)
-                                                !d.isBefore(monday) && !d.isAfter(sunday) && r.totalIntake > 0
-                                            } catch (_: Exception) { false }
-                                        },
-                                        exerciseDays = records.count { r ->
-                                            try {
-                                                val d = LocalDate.parse(r.date)
-                                                !d.isBefore(monday) && !d.isAfter(sunday) && r.totalBurned > 0
-                                            } catch (_: Exception) { false }
-                                        },
-                                        generatedAt = System.currentTimeMillis(),
-                                        status = "generated"
-                                    )
-                                )
-                                generatingWeek = null
-                            } catch (e: Exception) {
-                                generatingWeek = null
-                                errorMessage = "生成失败：${e.localizedMessage}"
-                            }
-                        }
-                    },
-                    enabled = generatingWeek == null
-                ) {
-                    Text("为此周生成周报", color = accentColor)
-                }
-            }
-            Spacer(modifier = Modifier.height(16.dp))
-            // In compact mode, only show above, nothing below
-            return@Column
-        }
-
-        // ===== BELOW: DETAILED MODE =====
-        Text(
-            "AI 综合分析你的健康数据，提供个性化建议",
-            style = MaterialTheme.typography.bodySmall,
-            color = onCardColor.copy(alpha = 0.6f)
-        )
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Generating banner
-        if (generatingWeek != null) {
-            Card(
-                colors = CardDefaults.cardColors(containerColor = accentColor.copy(alpha = 0.12f)),
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(18.dp),
-                        strokeWidth = 2.dp,
-                        color = accentColor
-                    )
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Column {
-                        Text(
-                            "⏳ 正在生成周报...",
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.Bold,
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            strokeWidth = 2.dp,
                             color = accentColor
                         )
-                        Text(
-                            "请勿离开此页面，否则当前周可能生成失败",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = accentColor.copy(alpha = 0.7f)
-                        )
-                    }
-                }
-            }
-        }
-
-        // --- Main content: gated by if-else (no early returns to avoid Compose slot corruption) ---
-
-        if (analysisDao == null) {
-            // Database error state
-            Card(
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
-                shape = RoundedCornerShape(16.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(
-                    modifier = Modifier.fillMaxWidth().padding(24.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text("⚠️ 数据库初始化失败", color = MaterialTheme.colorScheme.onErrorContainer,
-                        style = MaterialTheme.typography.titleMedium)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text("请尝试重启应用或清除应用数据", color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.7f),
-                        style = MaterialTheme.typography.bodySmall)
-                }
-            }
-        } else if (summariesLoadFailed) {
-            // Data load failed state
-            Card(
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
-                shape = RoundedCornerShape(16.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(
-                    modifier = Modifier.fillMaxWidth().padding(24.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text("⚠️ 数据加载失败", color = MaterialTheme.colorScheme.onErrorContainer,
-                        style = MaterialTheme.typography.titleMedium)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text("周报数据暂时无法加载，请检查数据库是否正常", color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.7f),
-                        style = MaterialTheme.typography.bodySmall)
-                }
-            }
-        } else if (!consentGiven && summaries.isEmpty()) {
-            // Empty state (no consent)
-            Card(
-                colors = CardDefaults.cardColors(containerColor = cardColor),
-                shape = RoundedCornerShape(16.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(32.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text("📊", fontSize = 48.sp)
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Text(
-                        "尚未开启每周分析",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = onCardColor
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        "点击上方按钮开启 AI 周报分析",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = onCardColor.copy(alpha = 0.6f)
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-                    OutlinedButton(
-                        onClick = { showConsentDialog = true },
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = accentColor)
-                    ) {
-                        Text("开启分析")
-                    }
-                }
-            }
-        } else {
-            // --- Normal content: consent given, DB ok, load succeeded ---
-
-            // "生成未总结的周" — prominent button
-            Button(
-                onClick = {
-                    scope.launch {
-                        val dao = analysisDao ?: return@launch
-                        try {
-                            generateAllWeeks(dao)
-                        } catch (e: Exception) {
-                            errorMessage = "生成失败：${e.localizedMessage}"
-                        } finally {
-                            generatingWeek = null
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column {
+                            Text(
+                                "⏳ 正在生成周报...",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = accentColor
+                            )
+                            Text(
+                                "请勿离开此页面，否则当前周可能生成失败",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = accentColor.copy(alpha = 0.7f)
+                            )
                         }
                     }
-                },
-                enabled = generatingWeek == null,
-                modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
-                shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = accentColor,
-                    contentColor = Color.White
-                ),
-                elevation = ButtonDefaults.buttonElevation(defaultElevation = 2.dp)
-            ) {
-                if (generatingWeek != null) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(16.dp),
-                        strokeWidth = 2.dp,
-                        color = accentColor
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
                 }
-                Icon(Icons.Default.AutoGraph, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                    if (generatingWeek != null) "生成中..." else "生成未总结的周",
-                    style = MaterialTheme.typography.bodyMedium
-                )
             }
 
-            // Error message
-            errorMessage?.let { msg ->
+            // --- Main content: gated by if-else (no early returns to avoid Compose slot corruption) ---
+
+            if (analysisDao == null) {
+                // Database error state
                 Card(
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
-                    modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Row(modifier = Modifier.padding(12.dp)) {
-                        Icon(Icons.Default.Warning, contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onErrorContainer)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(msg, color = MaterialTheme.colorScheme.onErrorContainer,
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text("⚠️ 数据库初始化失败", color = MaterialTheme.colorScheme.onErrorContainer,
+                            style = MaterialTheme.typography.titleMedium)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text("请尝试重启应用或清除应用数据", color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.7f),
                             style = MaterialTheme.typography.bodySmall)
                     }
                 }
-            }
-
-            if (summaries.isEmpty()) {
-                // Empty summaries: show generate button card
+            } else if (summariesLoadFailed) {
+                // Data load failed state
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text("⚠️ 数据加载失败", color = MaterialTheme.colorScheme.onErrorContainer,
+                            style = MaterialTheme.typography.titleMedium)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text("周报数据暂时无法加载，请检查数据库是否正常", color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.7f),
+                            style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            } else if (!consentGiven && summaries.isEmpty()) {
+                // Empty state (no consent)
                 Card(
                     colors = CardDefaults.cardColors(containerColor = cardColor),
                     shape = RoundedCornerShape(16.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(
-                        modifier = Modifier.fillMaxWidth().padding(32.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(32.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
+                        Text("📊", fontSize = 48.sp)
+                        Spacer(modifier = Modifier.height(12.dp))
                         Text(
-                            "还没有周报",
+                            "尚未开启每周分析",
                             style = MaterialTheme.typography.titleMedium,
                             color = onCardColor
                         )
-                        Spacer(modifier = Modifier.height(4.dp))
+                        Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            "条件：当周至少有2天饮食或运动记录",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = onCardColor.copy(alpha = 0.5f)
+                            "点击上方按钮开启 AI 周报分析",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = onCardColor.copy(alpha = 0.6f)
                         )
-                        Spacer(modifier = Modifier.height(12.dp))
+                        Spacer(modifier = Modifier.height(16.dp))
                         OutlinedButton(
-                            onClick = {
-                                scope.launch {
-                                    val dao = analysisDao ?: return@launch
-                                    try {
-                                        generateAllWeeks(dao)
-                                    } catch (e: Exception) {
-                                        errorMessage = "生成失败：${e.localizedMessage}"
-                                    } finally {
-                                        generatingWeek = null
-                                    }
-                                }
-                            },
-                            enabled = generatingWeek == null,
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = accentColor),
-                            shape = RoundedCornerShape(12.dp)
+                            onClick = { showConsentDialog = true },
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = accentColor)
                         ) {
-                            Text(if (generatingWeek != null) "生成中..." else "生成周报")
+                            Text("开启分析")
                         }
                     }
                 }
             } else {
-                // Weekly summary cards
-                summaries.forEach { summary ->
-                    WeeklySummaryCard(
-                        summary = summary,
-                        accentColor = accentColor,
-                        cardColor = cardColor,
-                        onCardColor = onCardColor,
-                        onClick = { onNavigateToDetail(summary.weekStartDate) },
-                        onDelete = {
-                            scope.launch {
-                                val dao = analysisDao ?: return@launch
-                                try {
-                                    dao.deleteSummary(summary.weekStartDate)
-                                } catch (e: Exception) {
-                                    errorMessage = "删除失败：${e.localizedMessage}"
-                                }
-                            }
-                        },
-                        onRetry = {
-                            scope.launch {
-                                val dao = analysisDao ?: return@launch
-                                try {
-                                    generatingWeek = summary.weekStartDate
-                                    val dataText = buildWeeklyDataText(summary.weekStartDate, records, allItems, userProfile)
-                                    val result = aiService.generateWeeklyAnalysis(dataText)
-                                    dao.insertSummary(
-                                        summary.copy(
-                                            summaryText = result,
-                                            generatedAt = System.currentTimeMillis(),
-                                            status = "generated"
-                                        )
-                                    )
-                                    generatingWeek = null
-                                } catch (e: Exception) {
-                                    generatingWeek = null
-                                    errorMessage = "重试失败：${e.localizedMessage}"
-                                }
-                            }
-                        },
-                        onReanalyze = {
-                            scope.launch {
-                                val dao = analysisDao ?: return@launch
-                                try {
-                                    generatingWeek = summary.weekStartDate
-                                    val dataText = buildWeeklyDataText(summary.weekStartDate, records, allItems, userProfile)
-                                    val result = aiService.generateWeeklyAnalysis(dataText)
-                                    dao.insertSummary(
-                                        summary.copy(
-                                            summaryText = result,
-                                            generatedAt = System.currentTimeMillis(),
-                                            status = "generated"
-                                        )
-                                    )
-                                    generatingWeek = null
-                                } catch (e: Exception) {
-                                    generatingWeek = null
-                                    errorMessage = "重新分析失败：${e.localizedMessage}"
-                                }
+                // --- Normal content: consent given, DB ok, load succeeded ---
+
+                // "生成未总结的周" — prominent button
+                Button(
+                    onClick = { showDateRangeDialog = true },
+                    enabled = generatingWeek == null,
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = accentColor,
+                        contentColor = Color.White
+                    ),
+                    elevation = ButtonDefaults.buttonElevation(defaultElevation = 2.dp)
+                ) {
+                    if (generatingWeek != null) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            strokeWidth = 2.dp,
+                            color = accentColor
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                    }
+                    Icon(Icons.Default.AutoGraph, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        if (generatingWeek != null) "生成中..." else "生成未总结的周",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+
+                // Error message
+                errorMessage?.let { msg ->
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
+                    ) {
+                        Row(modifier = Modifier.padding(12.dp)) {
+                            Icon(Icons.Default.Warning, contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onErrorContainer)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(msg, color = MaterialTheme.colorScheme.onErrorContainer,
+                                style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                }
+
+                if (summaries.isEmpty()) {
+                    // Empty summaries: show generate button card
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = cardColor),
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            modifier = Modifier.fillMaxWidth().padding(32.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(
+                                "还没有周报",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = onCardColor
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                "条件：当周至少有2天饮食或运动记录",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = onCardColor.copy(alpha = 0.5f)
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                            OutlinedButton(
+                                onClick = { showDateRangeDialog = true },
+                                enabled = generatingWeek == null,
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = accentColor),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Text(if (generatingWeek != null) "生成中..." else "生成周报")
                             }
                         }
+                    }
+                } else {
+                    // Weekly summary cards
+                    summaries.forEach { summary ->
+                        WeeklySummaryCard(
+                            summary = summary,
+                            accentColor = accentColor,
+                            cardColor = cardColor,
+                            onCardColor = onCardColor,
+                            onClick = { onNavigateToDetail(summary.weekStartDate) },
+                            onDelete = {
+                                scope.launch {
+                                    val dao = analysisDao ?: return@launch
+                                    try {
+                                        dao.deleteSummary(summary.weekStartDate)
+                                    } catch (e: Exception) {
+                                        errorMessage = "删除失败：${e.localizedMessage}"
+                                    }
+                                }
+                            },
+                            onRetry = {
+                                scope.launch {
+                                    val dao = analysisDao ?: return@launch
+                                    try {
+                                        generatingWeek = summary.weekStartDate
+                                        val dataText = buildWeeklyDataText(summary.weekStartDate, records, allItems, userProfile)
+                                        val result = aiService.generateWeeklyAnalysis(dataText)
+                                        dao.insertSummary(
+                                            summary.copy(
+                                                summaryText = result,
+                                                generatedAt = System.currentTimeMillis(),
+                                                status = "generated"
+                                            )
+                                        )
+                                        generatingWeek = null
+                                    } catch (e: Exception) {
+                                        generatingWeek = null
+                                        errorMessage = "重试失败：${e.localizedMessage}"
+                                    }
+                                }
+                            },
+                            onReanalyze = {
+                                scope.launch {
+                                    val dao = analysisDao ?: return@launch
+                                    try {
+                                        generatingWeek = summary.weekStartDate
+                                        val dataText = buildWeeklyDataText(summary.weekStartDate, records, allItems, userProfile)
+                                        val result = aiService.generateWeeklyAnalysis(dataText)
+                                        dao.insertSummary(
+                                            summary.copy(
+                                                summaryText = result,
+                                                generatedAt = System.currentTimeMillis(),
+                                                status = "generated"
+                                            )
+                                        )
+                                        generatingWeek = null
+                                    } catch (e: Exception) {
+                                        generatingWeek = null
+                                        errorMessage = "重新分析失败：${e.localizedMessage}"
+                                    }
+                                }
+                            }
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(80.dp))
+            }
+    
+        // Date range selection dialog for "生成未总结的周"
+        if (showDateRangeDialog) {
+            var showStartPicker by remember { mutableStateOf(false) }
+            var showEndPicker by remember { mutableStateOf(false) }
+            val dateFormatter = remember { DateTimeFormatter.ofPattern("yyyy/MM/dd") }
+
+            if (showStartPicker) {
+                val startPickerState = rememberDatePickerState(
+                    initialSelectedDateMillis = rangeStartDate.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+                )
+                DatePickerDialog(
+                    onDismissRequest = { showStartPicker = false },
+                    colors = DatePickerDefaults.colors(
+                        selectedDayContainerColor = accentColor,
+                        selectedDayContentColor = Color.White,
+                        todayContentColor = accentColor,
+                        todayDateBorderColor = accentColor,
+                    ),
+                    confirmButton = {
+                        TextButton(onClick = {
+                            startPickerState.selectedDateMillis?.let { millis ->
+                                rangeStartDate = java.time.Instant.ofEpochMilli(millis).atZone(java.time.ZoneId.systemDefault()).toLocalDate()
+                            }
+                            showStartPicker = false
+                        }) { Text("确定") }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showStartPicker = false }) { Text("取消") }
+                    }
+                ) {
+                    DatePicker(
+                        state = startPickerState,
+                        colors = DatePickerDefaults.colors(
+                            selectedDayContainerColor = accentColor,
+                            selectedDayContentColor = Color.White,
+                            todayContentColor = accentColor,
+                            todayDateBorderColor = accentColor,
+                        )
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(80.dp))
+            if (showEndPicker) {
+                val endPickerState = rememberDatePickerState(
+                    initialSelectedDateMillis = rangeEndDate.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+                )
+                DatePickerDialog(
+                    onDismissRequest = { showEndPicker = false },
+                    colors = DatePickerDefaults.colors(
+                        selectedDayContainerColor = accentColor,
+                        selectedDayContentColor = Color.White,
+                        todayContentColor = accentColor,
+                        todayDateBorderColor = accentColor,
+                    ),
+                    confirmButton = {
+                        TextButton(onClick = {
+                            endPickerState.selectedDateMillis?.let { millis ->
+                                rangeEndDate = java.time.Instant.ofEpochMilli(millis).atZone(java.time.ZoneId.systemDefault()).toLocalDate()
+                            }
+                            showEndPicker = false
+                        }) { Text("确定") }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showEndPicker = false }) { Text("取消") }
+                    }
+                ) {
+                    DatePicker(
+                        state = endPickerState,
+                        colors = DatePickerDefaults.colors(
+                            selectedDayContainerColor = accentColor,
+                            selectedDayContentColor = Color.White,
+                            todayContentColor = accentColor,
+                            todayDateBorderColor = accentColor,
+                        )
+                    )
+                }
+            }
+
+            AlertDialog(
+                onDismissRequest = { showDateRangeDialog = false },
+                title = {
+                    Text("选择生成范围", fontWeight = FontWeight.Bold, color = onCardColor)
+                },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("起始日期：", color = onCardColor.copy(alpha = 0.7f))
+                            Text(
+                                rangeStartDate.format(dateFormatter),
+                                color = onCardColor,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Spacer(modifier = Modifier.weight(1f))
+                            TextButton(onClick = { showStartPicker = true }) {
+                                Text("选择", color = accentColor)
+                            }
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("终止日期：", color = onCardColor.copy(alpha = 0.7f))
+                            Text(
+                                rangeEndDate.format(dateFormatter),
+                                color = onCardColor,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Spacer(modifier = Modifier.weight(1f))
+                            TextButton(onClick = { showEndPicker = true }) {
+                                Text("选择", color = accentColor)
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        showDateRangeDialog = false
+                        scope.launch {
+                            val dao = analysisDao ?: return@launch
+                            try {
+                                generateAllWeeks(dao, rangeStartDate, rangeEndDate)
+                            } catch (e: Exception) {
+                                errorMessage = "生成失败：${e.localizedMessage}"
+                            } finally {
+                                generatingWeek = null
+                            }
+                        }
+                    }) {
+                        Text("开始生成", color = accentColor)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showDateRangeDialog = false }) {
+                        Text("取消", color = onCardColor.copy(alpha = 0.6f))
+                    }
+                },
+                containerColor = cardColor,
+                titleContentColor = onCardColor,
+                textContentColor = onCardColor.copy(alpha = 0.8f)
+            )
         }
     }
 }

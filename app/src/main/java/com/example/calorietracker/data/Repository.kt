@@ -129,6 +129,30 @@ class CalorieRepository(private val userDao: UserDao, private val recordDao: Rec
         }
     }
 
+    suspend fun updateMedicationEnabled(enabled: Boolean) {
+        val profile = userDao.getUserProfile().firstOrNull()
+        if (profile != null) {
+            userDao.insertUserProfile(profile.copy(medicationEnabled = enabled))
+        }
+    }
+
+    suspend fun updateMedications(medications: String, medicationTimes: String = "") {
+        val profile = userDao.getUserProfile().firstOrNull()
+        if (profile != null) {
+            userDao.insertUserProfile(profile.copy(medications = medications, medicationTimes = medicationTimes))
+        }
+    }
+
+    suspend fun updateMedicationTaken(date: String, taken: String) {
+        var record = recordDao.getDailyRecordSync(date)
+        if (record == null) {
+            record = DailyRecordEntity(date = date, medicationTaken = taken)
+            recordDao.insertDailyRecord(record)
+        } else {
+            recordDao.updateDailyRecord(record.copy(medicationTaken = taken))
+        }
+    }
+
     suspend fun updateWeekStartDay(weekStartDay: Int) {
         val profile = userDao.getUserProfile().firstOrNull()
         if (profile != null) {

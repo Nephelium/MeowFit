@@ -24,6 +24,9 @@ data class UserProfileEntity(
     val selectedTodayThemeIndex: Int = 0, // Selected Today page background theme
     val hasSelectedTodayTheme: Boolean = false, // Whether user has explicitly selected a theme
     val excludedExercises: String = "", // Comma-separated list of excluded exercises
+    val medicationEnabled: Boolean = false, // Whether medication tracking is enabled
+    val medications: String = "", // Comma-separated medication names
+    val medicationTimes: String = "", // Comma-separated medication times (e.g. "08:00,12:00,20:00")
     val createdAt: String
 )
 
@@ -38,7 +41,8 @@ data class DailyRecordEntity(
     val totalProtein: Int = 0, // grams
     val totalFat: Int = 0, // grams
     val totalWater: Int = 0, // ml
-    val sleepDuration: Int = 0 // minutes
+    val sleepDuration: Int = 0, // minutes
+    val medicationTaken: String = "" // comma-separated "1,0,1" for each medication
 )
 
 @Entity(

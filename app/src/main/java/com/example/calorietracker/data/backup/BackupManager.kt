@@ -46,6 +46,8 @@ data class BackupUserProfile(
     val selectedTodayThemeIndex: Int? = null,
     val hasSelectedTodayTheme: Boolean? = null,
     val excludedExercises: String? = null,
+    val medicationEnabled: Boolean? = null,
+    val medications: String? = null,
     val createdAt: String? = null
 ) {
     fun toEntity(): UserProfileEntity {
@@ -67,6 +69,8 @@ data class BackupUserProfile(
             selectedTodayThemeIndex = selectedTodayThemeIndex ?: 0,
             hasSelectedTodayTheme = hasSelectedTodayTheme ?: false,
             excludedExercises = excludedExercises ?: "",
+            medicationEnabled = medicationEnabled ?: false,
+            medications = medications ?: "",
             createdAt = createdAt ?: java.time.Instant.now().toString()
         )
     }
@@ -91,6 +95,8 @@ data class BackupUserProfile(
                 selectedTodayThemeIndex = entity.selectedTodayThemeIndex,
                 hasSelectedTodayTheme = entity.hasSelectedTodayTheme,
                 excludedExercises = entity.excludedExercises,
+                medicationEnabled = entity.medicationEnabled,
+                medications = entity.medications,
                 createdAt = entity.createdAt
             )
         }
@@ -161,7 +167,8 @@ class BackupManager(
                 totalProtein = runCatching { record.totalProtein }.getOrDefault(0).coerceAtLeast(0),
                 totalFat = runCatching { record.totalFat }.getOrDefault(0).coerceAtLeast(0),
                 totalWater = runCatching { record.totalWater }.getOrDefault(0).coerceAtLeast(0),
-                sleepDuration = runCatching { record.sleepDuration }.getOrDefault(0).coerceAtLeast(0)
+                sleepDuration = runCatching { record.sleepDuration }.getOrDefault(0).coerceAtLeast(0),
+                medicationTaken = runCatching { record.medicationTaken }.getOrDefault("")
             )
         }.associateBy { it.date }.values.toList()
 

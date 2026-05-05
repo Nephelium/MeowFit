@@ -120,7 +120,7 @@ fun StatisticsScreen(
             isDarkTheme = isDarkTheme,
             modifier = Modifier
                 .matchParentSize()
-                .blur(if (isDarkTheme) 22.dp else 10.dp)
+                .blur(if (isDarkTheme) 35.dp else 18.dp)
         )
         Scaffold(
             containerColor = Color.Transparent,
@@ -135,7 +135,7 @@ fun StatisticsScreen(
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 item {
-                    Spacer(modifier = Modifier.fillMaxWidth().height(32.dp))
+                    Spacer(modifier = Modifier.fillMaxWidth().height(8.dp))
                 }
 
                 item {
