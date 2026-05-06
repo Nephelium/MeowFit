@@ -404,6 +404,7 @@ fun OverviewScreen(
                 selectedYear = selectedYear,
                 selectedMonth = selectedMonth,
                 onYearChange = { selectedYear = it },
+                onMonthChange = { selectedMonth = it },
                 onBackToYear = { selectedMonth = null },
                 onBackToMonth = {
                     val cal = Calendar.getInstance()
@@ -540,6 +541,7 @@ fun OverviewTopBar(
     selectedYear: Int,
     selectedMonth: Int?,
     onYearChange: (Int) -> Unit,
+    onMonthChange: (Int) -> Unit,
     onBackToYear: () -> Unit,
     onBackToMonth: () -> Unit,
     onShare: () -> Unit,
@@ -553,7 +555,29 @@ fun OverviewTopBar(
         windowInsets = WindowInsets(0, 0, 0, 0),
         title = {
             if (selectedMonth != null) {
-                Text("${selectedYear}年 ${selectedMonth + 1}月", fontWeight = FontWeight.Bold)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = {
+                        if (selectedMonth == 0) {
+                            onYearChange(selectedYear - 1)
+                            onMonthChange(11)
+                        } else {
+                            onMonthChange(selectedMonth - 1)
+                        }
+                    }) {
+                        Icon(Icons.Default.ChevronLeft, "Prev Month", tint = accentColor)
+                    }
+                    Text("${selectedYear}年 ${selectedMonth + 1}月", fontWeight = FontWeight.Bold)
+                    IconButton(onClick = {
+                        if (selectedMonth == 11) {
+                            onYearChange(selectedYear + 1)
+                            onMonthChange(0)
+                        } else {
+                            onMonthChange(selectedMonth + 1)
+                        }
+                    }) {
+                        Icon(Icons.Default.ChevronRight, "Next Month", tint = accentColor)
+                    }
+                }
             } else {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = { onYearChange(selectedYear - 1) }) {
@@ -1397,19 +1421,15 @@ fun generateCalendarBitmap(
     val iconSize = 100f
     
     // Load App Icon
-    val iconId = context.resources.getIdentifier("app_icon", "drawable", context.packageName)
-    if (iconId != 0) {
-        val iconBitmap = android.graphics.BitmapFactory.decodeResource(context.resources, iconId)
-        if (iconBitmap != null) {
-            val scaledIcon = Bitmap.createScaledBitmap(iconBitmap, iconSize.toInt(), iconSize.toInt(), true)
-            // Clip to rounded rect to avoid black corners
-            canvas.save()
-            val iconPath = android.graphics.Path()
-            iconPath.addRoundRect(android.graphics.RectF(padding, iconY, padding + iconSize, iconY + iconSize), 20f, 20f, android.graphics.Path.Direction.CW)
-            canvas.clipPath(iconPath)
-            canvas.drawBitmap(scaledIcon, padding, iconY, null)
-            canvas.restore()
-        }
+    val loadedIcon = com.example.calorietracker.util.IconManager.loadIconBitmap(context, iconSize.toInt())
+    if (loadedIcon != null) {
+        val scaledIcon = loadedIcon
+        canvas.save()
+        val iconPath = android.graphics.Path()
+        iconPath.addRoundRect(android.graphics.RectF(padding, iconY, padding + iconSize, iconY + iconSize), 20f, 20f, android.graphics.Path.Direction.CW)
+        canvas.clipPath(iconPath)
+        canvas.drawBitmap(scaledIcon, padding, iconY, null)
+        canvas.restore()
     } else {
         paint.color = theme.primaryColor
         canvas.drawRoundRect(android.graphics.RectF(padding, iconY, padding + iconSize, iconY + iconSize), 20f, 20f, paint)

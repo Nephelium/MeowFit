@@ -66,6 +66,10 @@ import com.example.calorietracker.ui.BackupViewModelFactory
 import com.example.calorietracker.ui.screens.*
 import com.example.calorietracker.ui.theme.CalorieTrackerTheme
 import com.example.calorietracker.ui.AiViewModel
+import com.example.calorietracker.util.IconManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import android.graphics.BitmapFactory
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -489,7 +493,24 @@ fun MainApp(viewModel: MainViewModel, aiViewModel: AiViewModel, backupViewModel:
             composable("settings") {
                 val allItems by viewModel.allCalorieItems.collectAsState()
                 val updateStatus by viewModel.updateStatus.collectAsState()
-                
+                val context = LocalContext.current
+                var iconVersion by remember { mutableStateOf(0L) }
+                val hasCustomIcon = remember(iconVersion) { IconManager.hasCustomIcon(context) }
+
+                val imagePicker = rememberLauncherForActivityResult(
+                    ActivityResultContracts.GetContent()
+                ) { uri ->
+                    if (uri != null) {
+                        val inputStream = context.contentResolver.openInputStream(uri)
+                        val bitmap = inputStream?.use { BitmapFactory.decodeStream(it) }
+                        inputStream?.close()
+                        if (bitmap != null) {
+                            IconManager.saveCustomIcon(context, bitmap)
+                            iconVersion++
+                        }
+                    }
+                }
+
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -515,7 +536,13 @@ fun MainApp(viewModel: MainViewModel, aiViewModel: AiViewModel, backupViewModel:
                         onUpdateMedicationEnabled = { viewModel.updateMedicationEnabled(it) },
                         onUpdateMedications = { meds, times -> viewModel.updateMedications(meds, times) },
                         onCheckUpdate = { currentVersion -> viewModel.checkForUpdate(currentVersion) },
-                        onDismissUpdateDialog = { viewModel.resetUpdateStatus() }
+                        onDismissUpdateDialog = { viewModel.resetUpdateStatus() },
+                        onPickAppIcon = { imagePicker.launch("image/*") },
+                        onResetAppIcon = {
+                            IconManager.deleteCustomIcon(context)
+                            iconVersion++
+                        },
+                        hasCustomIcon = hasCustomIcon
                     )
                 }
             }

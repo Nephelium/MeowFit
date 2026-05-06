@@ -38,6 +38,10 @@ import android.net.Uri
 import androidx.compose.ui.platform.LocalContext
 
 import com.example.calorietracker.data.update.UpdateStatus
+import com.example.calorietracker.util.IconManager
+import androidx.compose.foundation.Image
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 
 @Composable
 fun SettingsScreen(
@@ -56,7 +60,10 @@ fun SettingsScreen(
     onUpdateMedicationEnabled: (Boolean) -> Unit = {},
     onUpdateMedications: (String, String) -> Unit = { _, _ -> },
     onCheckUpdate: (String) -> Unit = {},
-    onDismissUpdateDialog: () -> Unit = {}
+    onDismissUpdateDialog: () -> Unit = {},
+    onPickAppIcon: () -> Unit = {},
+    onResetAppIcon: () -> Unit = {},
+    hasCustomIcon: Boolean = false
 ) {
     val currentVersion = "1.5.2"
     val isDarkTheme = androidx.compose.foundation.isSystemInDarkTheme()
@@ -73,7 +80,8 @@ fun SettingsScreen(
     var showTodayThemeDialog by remember { mutableStateOf(false) }
     var showWeekStartDialog by remember { mutableStateOf(false) }
     var showMedicationDialog by remember { mutableStateOf(false) }
-    
+    var showAppIconDialog by remember { mutableStateOf(false) }
+
     // Auto-show dialog if status changes to something relevant
     if (updateStatus !is UpdateStatus.Idle) {
         CheckUpdateDialog(
@@ -152,6 +160,24 @@ fun SettingsScreen(
             onConfirm = {
                 onUpdateWeekStartDay(it)
                 showWeekStartDialog = false
+            },
+            containerColor = cardColor,
+            textColor = onCardColor,
+            accentColor = accentColor
+        )
+    }
+
+    if (showAppIconDialog) {
+        AppIconDialog(
+            hasCustomIcon = hasCustomIcon,
+            onDismiss = { showAppIconDialog = false },
+            onPickFromGallery = {
+                showAppIconDialog = false
+                onPickAppIcon()
+            },
+            onReset = {
+                onResetAppIcon()
+                showAppIconDialog = false
             },
             containerColor = cardColor,
             textColor = onCardColor,
@@ -312,10 +338,22 @@ fun SettingsScreen(
             textColor = onCardColor
         )
 
+        Spacer(modifier = Modifier.height(8.dp))
+
+        SettingsItem(
+            icon = Icons.Default.Face,
+            title = "应用图标",
+            subtitle = if (hasCustomIcon) "已自定义" else "默认图标",
+            onClick = { showAppIconDialog = true },
+            cardColor = cardColor,
+            iconTint = accentColor,
+            textColor = onCardColor
+        )
+
         Spacer(modifier = Modifier.height(16.dp))
-        
+
         Text(
-            "AI 助手", 
+            "AI 助手",
             style = MaterialTheme.typography.titleMedium,
             color = sectionTitleColor,
             modifier = Modifier.padding(bottom = 8.dp, start = 4.dp)
@@ -1127,6 +1165,90 @@ fun MedicationDialog(
         dismissButton = {
             TextButton(onClick = onDismiss) {
                 Text("取消", color = textColor.copy(alpha = 0.82f))
+            }
+        }
+    )
+}
+
+@Composable
+fun AppIconDialog(
+    hasCustomIcon: Boolean,
+    onDismiss: () -> Unit,
+    onPickFromGallery: () -> Unit,
+    onReset: () -> Unit,
+    containerColor: Color,
+    textColor: Color,
+    accentColor: Color
+) {
+    val context = LocalContext.current
+    val iconBitmap = remember(hasCustomIcon) {
+        IconManager.loadIconBitmap(context, 160)
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("应用图标", color = textColor) },
+        containerColor = containerColor,
+        titleContentColor = textColor,
+        textContentColor = textColor,
+        text = {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Text(
+                    if (hasCustomIcon) "当前使用自定义图标" else "当前使用默认图标",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = textColor.copy(alpha = 0.82f)
+                )
+
+                Box(
+                    modifier = Modifier.size(120.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (iconBitmap != null) {
+                        Image(
+                            bitmap = iconBitmap.asImageBitmap(),
+                            contentDescription = "应用图标预览",
+                            modifier = Modifier.size(120.dp),
+                            contentScale = ContentScale.Fit
+                        )
+                    } else {
+                        Text("无图标", color = textColor.copy(alpha = 0.4f))
+                    }
+                }
+
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    OutlinedButton(
+                        onClick = onPickFromGallery,
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Text("从相册选择", color = accentColor)
+                    }
+
+                    if (hasCustomIcon) {
+                        OutlinedButton(
+                            onClick = onReset,
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Text("恢复默认", color = MaterialTheme.colorScheme.error)
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = onDismiss,
+                colors = ButtonDefaults.textButtonColors(contentColor = accentColor)
+            ) {
+                Text("关闭")
             }
         }
     )

@@ -10,6 +10,7 @@ import com.example.calorietracker.data.UserProfileEntity
 import com.example.calorietracker.data.WeeklySummaryEntity
 import com.example.calorietracker.data.AnalysisDao
 import com.example.calorietracker.util.ImageStorageUtils
+import com.example.calorietracker.util.IconManager
 import com.google.gson.Gson
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
@@ -323,6 +324,12 @@ class BackupManager(
                 }
             }
 
+            // Include custom app icon in backup if exists
+            val customIconFile = IconManager.getCustomIconFile(context)
+            if (customIconFile.exists() && customIconFile.isFile) {
+                mappedImages += customIconFile to "custom_app_icon.png"
+            }
+
             val weeklySummaries = analysisDao.getAllSummariesSync()
 
             // Read custom system prompts from SharedPreferences for backup
@@ -339,7 +346,8 @@ class BackupManager(
                     weeklySummaries,
                     customChatPrompt = customChatPrompt,
                     customImagePrompt = customImagePrompt,
-                    customAnalysisPrompt = customAnalysisPrompt
+                    customAnalysisPrompt = customAnalysisPrompt,
+                    version = 4
                 ),
                 mappedImages
             )
@@ -488,6 +496,11 @@ class BackupManager(
                 if (!entry.isDirectory) {
                     if (entry.name == "backup.json") {
                         backupJson = zip.readBytes().toString(Charsets.UTF_8)
+                    } else if (entry.name == "custom_app_icon.png") {
+                        val target = IconManager.getCustomIconFile(context)
+                        FileOutputStream(target).use { output ->
+                            zip.copyTo(output)
+                        }
                     } else if (isSafeImageEntryName(entry.name)) {
                         val filename = entry.name.removePrefix("images/")
                         if (filename.isNotBlank()) {
