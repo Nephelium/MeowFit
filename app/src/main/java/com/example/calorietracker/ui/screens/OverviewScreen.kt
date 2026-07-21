@@ -38,13 +38,17 @@ import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.asAndroidPath
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.example.calorietracker.data.CalorieItemEntity
 import com.example.calorietracker.data.DailyRecordEntity
 import com.example.calorietracker.ui.theme.*
+import com.example.calorietracker.domain.CalendarDisplayPolicy
+import com.example.calorietracker.domain.CalendarMetricId
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -59,6 +63,9 @@ import androidx.compose.material.icons.filled.Share
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import android.graphics.Bitmap
 import android.graphics.Canvas as AndroidCanvas
 import android.view.View
@@ -76,14 +83,18 @@ import android.provider.MediaStore
 import android.widget.Toast
 import kotlin.math.roundToInt
 
-enum class HeatmapMetric(val label: String) {
-    Sleep("睡眠"),
-    Water("饮水"),
-    Net("热量缺口"),
-    Intake("饮食"),
-    Burned("运动"),
-    Weight("体重"),
-    Meds("服药")
+enum class HeatmapMetric(
+    val id: CalendarMetricId,
+    val label: String,
+    val compactLabel: String
+) {
+    Sleep(CalendarMetricId.SLEEP, "睡眠", "😴"),
+    Water(CalendarMetricId.WATER, "饮水", "💧"),
+    Net(CalendarMetricId.NET, "热量缺口", "📉"),
+    Intake(CalendarMetricId.INTAKE, "饮食", "🍽️"),
+    Burned(CalendarMetricId.BURNED, "运动", "🏃"),
+    Weight(CalendarMetricId.WEIGHT, "体重", "⚖️"),
+    Meds(CalendarMetricId.MEDS, "服药", "💊")
 }
 
 private data class ParsedDate(val year: Int, val month: Int, val day: Int)
@@ -301,6 +312,7 @@ fun OverviewScreen(
     onUpdateWeight: (Float, String) -> Unit,
     onUpdateWater: (Int, String) -> Unit,
     onUpdateSleep: (Int, String) -> Unit,
+    visibleMetricIds: Set<CalendarMetricId> = CalendarMetricId.entries.toSet(),
     detailDate: String?,
     detailItems: List<CalorieItemEntity>,
     onDetailDateChange: (String?) -> Unit
@@ -318,7 +330,14 @@ fun OverviewScreen(
     // Default to current month
     var selectedMonth by remember { mutableStateOf<Int?>(Calendar.getInstance().get(Calendar.MONTH)) }
     
+    val visibleMetrics = remember(visibleMetricIds) {
+        HeatmapMetric.entries.filter { it.id in visibleMetricIds }
+            .ifEmpty { listOf(HeatmapMetric.Net) }
+    }
     var heatmapMetric by remember { mutableStateOf(HeatmapMetric.Net) }
+    LaunchedEffect(visibleMetrics) {
+        if (heatmapMetric !in visibleMetrics) heatmapMetric = visibleMetrics.first()
+    }
     var previewCalendarBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var isGeneratingShareImage by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -529,33 +548,15 @@ fun OverviewScreen(
                             color = onCardColor.copy(alpha = 0.8f)
                         )
                         
-                        // Metric Toggle
-                        Row(
-                            modifier = Modifier
-                                .background(onCardColor.copy(alpha = 0.12f), CircleShape)
-                                .padding(2.dp)
-                        ) {
-                            HeatmapMetric.values().forEach { metric ->
-                                val selected = heatmapMetric == metric
-                                val bgColor = if (selected) accentColor else Color.Transparent
-                                // 糖果色底上用深色字保证对比度（主题 onPrimary 已修为深色 PixelInk）
-                                val contentColor = if (selected) MaterialTheme.colorScheme.onPrimary else onCardColor.copy(alpha = 0.8f)
-                                
-                                Box(
-                                    modifier = Modifier
-                                        .clip(CircleShape)
-                                        .background(bgColor)
-                                        .clickable { heatmapMetric = metric }
-                                        .padding(horizontal = 8.dp, vertical = 4.dp)
-                                ) {
-                                    Text(
-                                        text = metric.label,
-                                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                                        color = contentColor
-                                    )
-                                }
-                            }
-                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        HeatmapMetricToggle(
+                            metrics = visibleMetrics,
+                            selectedMetric = heatmapMetric,
+                            onMetricSelected = { heatmapMetric = it },
+                            accentColor = accentColor,
+                            contentColor = onCardColor,
+                            modifier = Modifier.weight(1f)
+                        )
                     }
                     Spacer(modifier = Modifier.height(16.dp))
                     
@@ -613,6 +614,79 @@ fun OverviewScreen(
             }
             
                 Spacer(modifier = Modifier.height(80.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun HeatmapMetricToggle(
+    metrics: List<HeatmapMetric>,
+    selectedMetric: HeatmapMetric,
+    onMetricSelected: (HeatmapMetric) -> Unit,
+    accentColor: Color,
+    contentColor: Color,
+    modifier: Modifier = Modifier
+) {
+    val textMeasurer = rememberTextMeasurer()
+    val density = LocalDensity.current
+    val labelStyle = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp)
+    val horizontalPadding = 8.dp
+    val selectorPadding = 2.dp
+
+    BoxWithConstraints(modifier = modifier) {
+        val labelWidths = metrics.map { metric ->
+            textMeasurer.measure(
+                text = metric.label,
+                style = labelStyle,
+                maxLines = 1,
+                softWrap = false
+            ).size.width
+        }
+        val useCompactLabels = CalendarDisplayPolicy.shouldUseCompactLabels(
+            availableWidthPx = with(density) {
+                (maxWidth - selectorPadding * 2).coerceAtLeast(0.dp).roundToPx()
+            },
+            labelWidthsPx = labelWidths,
+            horizontalPaddingPx = with(density) { horizontalPadding.roundToPx() }
+        )
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(contentColor.copy(alpha = 0.12f), CircleShape)
+                .padding(selectorPadding),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            metrics.forEach { metric ->
+                val selected = selectedMetric == metric
+                val itemContentColor = if (selected) {
+                    MaterialTheme.colorScheme.onPrimary
+                } else {
+                    contentColor.copy(alpha = 0.8f)
+                }
+                Box(
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .background(if (selected) accentColor else Color.Transparent)
+                        .semantics {
+                            contentDescription = metric.label
+                            this.selected = selected
+                        }
+                        .clickable { onMetricSelected(metric) }
+                        .padding(horizontal = horizontalPadding, vertical = 4.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = if (useCompactLabels) metric.compactLabel else metric.label,
+                        style = labelStyle,
+                        color = itemContentColor,
+                        maxLines = 1,
+                        softWrap = false,
+                        overflow = TextOverflow.Clip
+                    )
+                }
             }
         }
     }

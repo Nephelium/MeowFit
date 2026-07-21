@@ -25,6 +25,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import com.example.calorietracker.data.UserProfileEntity
 import com.example.calorietracker.BuildConfig
+import com.example.calorietracker.domain.CalendarMetricId
 
 import androidx.compose.material.icons.filled.Backup
 import androidx.compose.material.icons.filled.Bedtime
@@ -69,7 +70,9 @@ fun SettingsScreen(
     onResetAppIcon: () -> Unit = {},
     hasCustomIcon: Boolean = false,
     fontMode: AppFontMode = AppFontMode.MEOW_FIT,
-    onFontModeChange: (AppFontMode) -> Unit = {}
+    onFontModeChange: (AppFontMode) -> Unit = {},
+    visibleCalendarMetricIds: Set<CalendarMetricId> = CalendarMetricId.entries.toSet(),
+    onVisibleCalendarMetricsChange: (Set<CalendarMetricId>) -> Unit = {}
 ) {
     val currentVersion = BuildConfig.VERSION_NAME
     val isDarkTheme = androidx.compose.foundation.isSystemInDarkTheme()
@@ -88,6 +91,7 @@ fun SettingsScreen(
     var showMedicationDialog by remember { mutableStateOf(false) }
     var showAppIconDialog by remember { mutableStateOf(false) }
     var showFontDialog by remember { mutableStateOf(false) }
+    var showCalendarMetricsDialog by remember { mutableStateOf(false) }
 
     // Auto-show dialog if status changes to something relevant
     if (updateStatus !is UpdateStatus.Idle) {
@@ -202,6 +206,20 @@ fun SettingsScreen(
             onSelect = {
                 onFontModeChange(it)
                 showFontDialog = false
+            }
+        )
+    }
+
+    if (showCalendarMetricsDialog) {
+        CalendarMetricVisibilityDialog(
+            currentVisibleMetricIds = visibleCalendarMetricIds,
+            cardColor = cardColor,
+            textColor = onCardColor,
+            accentColor = accentColor,
+            onDismiss = { showCalendarMetricsDialog = false },
+            onConfirm = {
+                onVisibleCalendarMetricsChange(it)
+                showCalendarMetricsDialog = false
             }
         )
     }
@@ -322,6 +340,24 @@ fun SettingsScreen(
             subtitle = "在首页和添加记录时显示三大营养素",
             checked = userProfile?.showMacros ?: false,
             onCheckedChange = { onUpdateShowMacros(it) },
+            cardColor = cardColor,
+            iconTint = accentColor,
+            textColor = onCardColor
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        SettingsItem(
+            icon = Icons.Default.DateRange,
+            title = "日历显示项目",
+            subtitle = if (visibleCalendarMetricIds.size == CalendarMetricId.entries.size) {
+                "全部 7 项"
+            } else {
+                HeatmapMetric.entries
+                    .filter { it.id in visibleCalendarMetricIds }
+                    .joinToString("、") { it.label }
+            },
+            onClick = { showCalendarMetricsDialog = true },
             cardColor = cardColor,
             iconTint = accentColor,
             textColor = onCardColor
@@ -646,6 +682,92 @@ private fun FontModeDialog(
         confirmButton = {},
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("取消", color = accentColor) }
+        }
+    )
+}
+
+@Composable
+private fun CalendarMetricVisibilityDialog(
+    currentVisibleMetricIds: Set<CalendarMetricId>,
+    cardColor: Color,
+    textColor: Color,
+    accentColor: Color,
+    onDismiss: () -> Unit,
+    onConfirm: (Set<CalendarMetricId>) -> Unit
+) {
+    var selectedMetricIds by remember(currentVisibleMetricIds) {
+        mutableStateOf(currentVisibleMetricIds.ifEmpty { setOf(CalendarMetricId.NET) })
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = cardColor,
+        titleContentColor = textColor,
+        textContentColor = textColor,
+        title = { Text("日历显示项目") },
+        text = {
+            Column(
+                modifier = Modifier
+                    .heightIn(max = 460.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                Text(
+                    "减少项目可以保留中文标签；空间不足时会自动改用 emoji。至少保留一项。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = textColor.copy(alpha = 0.72f),
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+                HeatmapMetric.entries.forEach { metric ->
+                    val checked = metric.id in selectedMetricIds
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                selectedMetricIds = if (checked) {
+                                    if (selectedMetricIds.size > 1) selectedMetricIds - metric.id
+                                    else selectedMetricIds
+                                } else {
+                                    selectedMetricIds + metric.id
+                                }
+                            }
+                            .padding(vertical = 5.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(metric.compactLabel, modifier = Modifier.width(34.dp))
+                        Text(metric.label, modifier = Modifier.weight(1f), color = textColor)
+                        Checkbox(
+                            checked = checked,
+                            onCheckedChange = { nextChecked ->
+                                selectedMetricIds = if (nextChecked) {
+                                    selectedMetricIds + metric.id
+                                } else if (selectedMetricIds.size > 1) {
+                                    selectedMetricIds - metric.id
+                                } else {
+                                    selectedMetricIds
+                                }
+                            },
+                            colors = CheckboxDefaults.colors(checkedColor = accentColor)
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { onConfirm(selectedMetricIds) },
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = accentColor,
+                    contentColor = MaterialTheme.colorScheme.onPrimary
+                )
+            ) {
+                Text("保存")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, colors = ButtonDefaults.textButtonColors(contentColor = accentColor)) {
+                Text("取消")
+            }
         }
     )
 }

@@ -64,6 +64,8 @@ import com.example.calorietracker.ui.screens.*
 import com.example.calorietracker.ui.theme.CalorieTrackerTheme
 import com.example.calorietracker.ui.theme.AppFontMode
 import com.example.calorietracker.ui.theme.FontPreferences
+import com.example.calorietracker.ui.theme.CalendarDisplayPreferences
+import com.example.calorietracker.domain.CalendarMetricId
 import com.example.calorietracker.ui.AiViewModel
 import com.example.calorietracker.ui.components.PixelBackdrop
 import com.example.calorietracker.ui.components.PixelNavDestination
@@ -95,6 +97,9 @@ class MainActivity : ComponentActivity() {
         setContent {
             val context = LocalContext.current
             var fontMode by remember { mutableStateOf(FontPreferences.read(context)) }
+            var visibleCalendarMetricIds by remember {
+                mutableStateOf(CalendarDisplayPreferences.read(context))
+            }
             CalorieTrackerTheme(fontMode = fontMode) {
                 val userProfile by viewModel.userProfile.collectAsState()
                 val isProfileLoaded by viewModel.isProfileLoaded.collectAsState()
@@ -118,6 +123,11 @@ class MainActivity : ComponentActivity() {
                         onFontModeChange = { mode ->
                             FontPreferences.write(context, mode)
                             fontMode = mode
+                        },
+                        visibleCalendarMetricIds = visibleCalendarMetricIds,
+                        onVisibleCalendarMetricsChange = { metricIds ->
+                            CalendarDisplayPreferences.write(context, metricIds)
+                            visibleCalendarMetricIds = CalendarDisplayPreferences.read(context)
                         }
                     )
                 }
@@ -169,7 +179,9 @@ fun MainApp(
     aiViewModel: AiViewModel,
     backupViewModel: BackupViewModel,
     fontMode: AppFontMode,
-    onFontModeChange: (AppFontMode) -> Unit
+    onFontModeChange: (AppFontMode) -> Unit,
+    visibleCalendarMetricIds: Set<CalendarMetricId>,
+    onVisibleCalendarMetricsChange: (Set<CalendarMetricId>) -> Unit
 ) {
     val navController = rememberNavController()
     val userProfile by viewModel.userProfile.collectAsState()
@@ -326,6 +338,7 @@ fun MainApp(
                                         PixelNavIcon(
                                             destination = destination,
                                             color = itemColor,
+                                            selected = selected,
                                             modifier = Modifier
                                                 .offset(y = BottomNavTuning.iconVerticalOffset)
                                                 .padding(bottom = BottomNavTuning.iconBottomPadding)
@@ -470,6 +483,7 @@ fun MainApp(
                         onUpdateSleep = { sleep, date ->
                             viewModel.updateSleep(sleep, date)
                         },
+                        visibleMetricIds = visibleCalendarMetricIds,
                         detailDate = selectedDate,
                         detailItems = itemsForDialog,
                         onDetailDateChange = setSelectedDate
@@ -574,7 +588,9 @@ fun MainApp(
                         },
                         hasCustomIcon = hasCustomIcon,
                         fontMode = fontMode,
-                        onFontModeChange = onFontModeChange
+                        onFontModeChange = onFontModeChange,
+                        visibleCalendarMetricIds = visibleCalendarMetricIds,
+                        onVisibleCalendarMetricsChange = onVisibleCalendarMetricsChange
                     )
                 }
             }

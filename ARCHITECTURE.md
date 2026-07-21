@@ -2,8 +2,10 @@
 
 ## 分层
 
-- `ui/screens` 组合页面与输入；`ui/components` 提供像素组件、主题化无文字底部导航和动态猫。底部导航只属于五个顶级页面，编辑/详情页保持全屏。
+- `ui/screens` 组合页面与输入；`ui/components` 提供像素组件、动态猫和 16×16 像素贴纸底部导航。底部导航只属于五个顶级页面，编辑/详情页保持全屏。
+- `ui/theme/CalendarDisplayPreference` 保存本机日历指标可见性；界面按当前可见文字的实测宽度决定显示中文还是 emoji，不按机型硬编码。
 - `ui/*ViewModel` 管理页面状态和协程，将批量记录以单次用例交给 Repository。
+- `domain/CalendarDisplayPolicy` 是不依赖 Android UI 的日历显示规则，负责过滤偏好、禁止空选择和判断文字是否会溢出。
 - `domain/nutrition` 是不依赖 Android UI 的营养换算规则，统一处理任意基准份量与 kJ/kcal。
 - `data/Repository` 是记录写入边界，在 Room 事务中创建日记录、批量写入条目并重算汇总。
 - `data/backup` 负责备份版本、ZIP 资源映射、输入限额、旧字段默认和事务恢复。
@@ -21,6 +23,6 @@ Room 当前版本为 17。公开版旧库通过连续的 `MIGRATION_15_16`、`MI
 
 ## 验证
 
-- 纯逻辑：`NutritionCalculatorTest`。
+- 纯逻辑：`NutritionCalculatorTest`、`CalendarDisplayPolicyTest`。
 - 数据库：`Migration16To17Test`，覆盖公开版 15→17 与 16→17，验证旧条目、旧对话、营养列和模板表。
-- 手测重点：覆盖安装、v5 及更旧备份导入、营养换算、AI 图片对话、首页长图和日历分享。
+- 手测重点：覆盖安装、v5 及更旧备份导入、营养换算、AI 图片对话、首页长图和日历分享；另检查窄屏/大字体日历指标、指标隐藏和底部导航五个入口。
