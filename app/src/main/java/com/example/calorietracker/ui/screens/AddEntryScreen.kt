@@ -3,8 +3,6 @@ package com.example.calorietracker.ui.screens
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -19,7 +17,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CutCornerShape as RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -57,10 +55,18 @@ import androidx.core.content.FileProvider
 import coil.compose.AsyncImage
 import com.example.calorietracker.CalorieTrackerApp
 import com.example.calorietracker.data.CalorieItemEntity
+import com.example.calorietracker.data.FoodTemplateEntity
 import com.example.calorietracker.data.NutritionDatabase
 import com.example.calorietracker.data.NutritionFoodItem
+import com.example.calorietracker.domain.nutrition.AmountUnit
+import com.example.calorietracker.domain.nutrition.EnergyUnit
+import com.example.calorietracker.domain.nutrition.NutritionCalculation
+import com.example.calorietracker.domain.nutrition.NutritionCalculator
+import com.example.calorietracker.domain.nutrition.NutritionInput
 import com.example.calorietracker.ui.AiUiState
 import com.example.calorietracker.ui.AiViewModel
+import com.example.calorietracker.ui.components.compactInput
+import com.example.calorietracker.ui.theme.OfficialGreen
 import com.example.calorietracker.util.CalorieUtils
 import com.example.calorietracker.util.ImageStorageUtils
 import java.io.InputStream
@@ -68,7 +74,11 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
+import java.util.UUID
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 data class EntryItem(
     val type: String, // "food" or "exercise"
@@ -80,12 +90,21 @@ data class EntryItem(
     val time: String = "",
     val mealCategory: String? = null,
     val notes: String = "",
-    val imagePath: String? = null
+    val imagePath: String? = null,
+    val nutritionReferenceAmount: Double? = null,
+    val nutritionActualAmount: Double? = null,
+    val nutritionAmountUnit: String? = null,
+    val nutritionReferenceEnergy: Double? = null,
+    val nutritionEnergyUnit: String? = null,
+    val nutritionReferenceCarbs: Double? = null,
+    val nutritionReferenceProtein: Double? = null,
+    val nutritionReferenceFat: Double? = null
 )
 
 private fun createTempCameraUri(context: Context): Uri? {
     return runCatching {
-        val file = File.createTempFile("meowfit_camera_", ".jpg", context.cacheDir)
+        val cameraDir = File(context.cacheDir, "camera").apply { mkdirs() }
+        val file = File.createTempFile("meowfit_camera_", ".jpg", cameraDir)
         FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
     }.getOrNull()
 }
@@ -93,6 +112,14 @@ private fun createTempCameraUri(context: Context): Uri? {
 private fun allowDecimalInput(text: String): Boolean {
     if (text.isEmpty()) return true
     return text.matches(Regex("\\d*(\\.\\d{0,2})?"))
+}
+
+// 剥离备注中残留的「时长: X 分钟」文本，避免重复追加导致统计口径不一致
+private fun stripDurationNote(notes: String): String {
+    return notes
+        .replace(Regex("时长[:：]\\s*\\d+\\s*分钟"), "")
+        .replace(Regex("[,，;；]\\s*[,，;；]"), ",")
+        .trim(' ', ',', '，', ';', '；')
 }
 
 @Composable
@@ -105,15 +132,16 @@ private fun SuggestionRow(
     onClick: () -> Unit
 ) {
     Surface(
-        onClick = onClick,
         shape = RoundedCornerShape(8.dp),
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f),
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 3.dp),
+                .padding(horizontal = 8.dp, vertical = 2.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -207,6 +235,9 @@ fun AddEntryScreen(
     selectedThemeIndex: Int = 0,
     userWeight: Float = 70f,
     showMacros: Boolean = false,
+    foodTemplates: List<FoodTemplateEntity> = emptyList(),
+    onSaveFoodTemplate: (FoodTemplateEntity) -> Unit = {},
+    onDeleteFoodTemplate: (FoodTemplateEntity) -> Unit = {},
     onSave: (List<EntryItem>) -> Unit,
     onCancel: () -> Unit
 ) {
@@ -274,21 +305,46 @@ fun AddEntryScreen(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(cardColor.copy(alpha = if (isDarkTheme) 0.94f else 0.96f))
             ) {
-                when (selectedTab) {
-                    0 -> AiDialogueTab(aiViewModel, userWeight, showMacros, onSave, accentColor, cardColor, onCardColor)
-                    1 -> PhotoRecognitionTab(aiViewModel, userWeight, showMacros, onSave, accentColor, cardColor, onCardColor)
-                    2 -> ManualInputTab(showMacros, onSave = { item -> onSave(listOf(item)) }, onCancel = onCancel, accentColor = accentColor, cardColor = cardColor, onCardColor = onCardColor)
+                TodayBackground(
+                    theme = selectedTheme,
+                    seed = (selectedThemeIndex + 1) * 1291,
+                    isDarkTheme = isDarkTheme,
+                    modifier = Modifier.matchParentSize()
+                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(cardColor.copy(alpha = if (isDarkTheme) 0.78f else 0.72f))
+                ) {
+                    when (selectedTab) {
+                        0 -> AiDialogueTab(aiViewModel, userWeight, showMacros, onSave, accentColor, cardColor, onCardColor)
+                        1 -> PhotoRecognitionTab(aiViewModel, userWeight, showMacros, onSave, accentColor, cardColor, onCardColor)
+                        2 -> ManualInputTab(
+                            showMacros = showMacros,
+                            foodTemplates = foodTemplates,
+                            onSaveFoodTemplate = onSaveFoodTemplate,
+                            onDeleteFoodTemplate = onDeleteFoodTemplate,
+                            onSave = { item -> onSave(listOf(item)) },
+                            onCancel = onCancel,
+                            accentColor = accentColor,
+                            cardColor = cardColor,
+                            onCardColor = onCardColor
+                        )
+                    }
                 }
             }
         }
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ManualInputTab(
     showMacros: Boolean,
+    foodTemplates: List<FoodTemplateEntity>,
+    onSaveFoodTemplate: (FoodTemplateEntity) -> Unit,
+    onDeleteFoodTemplate: (FoodTemplateEntity) -> Unit,
     onSave: (EntryItem) -> Unit,
     onCancel: () -> Unit,
     accentColor: Color,
@@ -308,6 +364,8 @@ fun ManualInputTab(
     var selectedImageUri by remember { mutableStateOf<Uri?>(null) }
     var pendingCameraUri by remember { mutableStateOf<Uri?>(null) }
     var showMediaSourceDialog by remember { mutableStateOf(false) }
+    var isSaving by remember { mutableStateOf(false) }
+    val coroutineScope = rememberCoroutineScope()
     var historySuggestions by remember { mutableStateOf<List<CalorieItemEntity>>(emptyList()) }
     var nutritionSuggestions by remember { mutableStateOf<List<NutritionFoodItem>>(emptyList()) }
 
@@ -323,6 +381,50 @@ fun ManualInputTab(
     var baseProtein by remember { mutableStateOf(0.0) }
     var baseFat by remember { mutableStateOf(0.0) }
 
+    var nutritionMode by remember { mutableStateOf(false) }
+    var referenceAmount by remember { mutableStateOf("100") }
+    var actualAmount by remember { mutableStateOf("100") }
+    var amountUnit by remember { mutableStateOf(AmountUnit.GRAM) }
+    var referenceEnergy by remember { mutableStateOf("") }
+    var energyUnit by remember { mutableStateOf(EnergyUnit.KCAL) }
+    var referenceCarbs by remember { mutableStateOf("") }
+    var referenceProtein by remember { mutableStateOf("") }
+    var referenceFat by remember { mutableStateOf("") }
+
+    val nutritionCalculation = remember(
+        referenceAmount,
+        actualAmount,
+        amountUnit,
+        referenceEnergy,
+        energyUnit,
+        referenceCarbs,
+        referenceProtein,
+        referenceFat
+    ) {
+        NutritionCalculator.calculate(
+            NutritionInput(
+                referenceAmount = referenceAmount.toDoubleOrNull() ?: Double.NaN,
+                actualAmount = actualAmount.toDoubleOrNull() ?: Double.NaN,
+                amountUnit = amountUnit,
+                energyValue = referenceEnergy.toDoubleOrNull() ?: Double.NaN,
+                energyUnit = energyUnit,
+                carbs = referenceCarbs.toDoubleOrNull() ?: 0.0,
+                protein = referenceProtein.toDoubleOrNull() ?: 0.0,
+                fat = referenceFat.toDoubleOrNull() ?: 0.0
+            )
+        )
+    }
+
+    LaunchedEffect(nutritionMode, nutritionCalculation) {
+        if (nutritionMode && nutritionCalculation is NutritionCalculation.Success) {
+            val result = nutritionCalculation.value
+            calories = CalorieUtils.formatNumber(result.energyKcal)
+            carbs = CalorieUtils.formatNumber(result.carbs)
+            protein = CalorieUtils.formatNumber(result.protein)
+            fat = CalorieUtils.formatNumber(result.fat)
+        }
+    }
+
     val context = LocalContext.current
     val imagePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
@@ -334,6 +436,15 @@ fun ManualInputTab(
     ) { success ->
         if (success) {
             selectedImageUri = pendingCameraUri
+        } else {
+            // 取消/失败时清理临时拍照文件
+            pendingCameraUri?.let { uri ->
+                runCatching {
+                    val fileName = uri.lastPathSegment?.substringAfterLast('/')
+                    if (fileName != null) File(File(context.cacheDir, "camera"), fileName).delete()
+                }
+            }
+            pendingCameraUri = null
         }
     }
     val cameraPermissionLauncher = rememberLauncherForActivityResult(
@@ -366,9 +477,19 @@ fun ManualInputTab(
 
     LaunchedEffect(type) {
         if (type == "exercise") {
+            nutritionMode = false
             selectedMealCategory = null
             mealCategoryTouched = false
         }
+        // 切换类型时清理残留状态，避免带入错误数据
+        time = ""
+        startTime = ""
+        endTime = ""
+        suggestionSource = null
+        baseCalories = 0.0
+        baseCarbs = 0.0
+        baseProtein = 0.0
+        baseFat = 0.0
     }
 
     LaunchedEffect(type, time) {
@@ -410,8 +531,8 @@ fun ManualInputTab(
 
 
     LazyColumn(
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
         modifier = Modifier.fillMaxSize()
     ) {
         item {
@@ -422,12 +543,12 @@ fun ManualInputTab(
                 shape = RoundedCornerShape(16.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Row(modifier = Modifier.padding(8.dp)) {
+                Row(modifier = Modifier.padding(6.dp)) {
                     val types = listOf("food" to "食物", "exercise" to "运动")
                     types.forEach { (key, label) ->
                         val selected = type == key
                         val bgColor = if (selected) accentColor else Color.Transparent
-                        val contentColor = if (selected) Color.White else onCardColor.copy(alpha = 0.78f)
+                        val contentColor = if (selected) MaterialTheme.colorScheme.onPrimary else onCardColor.copy(alpha = 0.78f)
                         
                         Box(
                             modifier = Modifier
@@ -435,7 +556,7 @@ fun ManualInputTab(
                                 .clip(RoundedCornerShape(12.dp))
                                 .background(bgColor)
                                 .clickable { type = key }
-                                .padding(vertical = 12.dp),
+                                .padding(vertical = 8.dp),
                             contentAlignment = Alignment.Center
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -468,15 +589,15 @@ fun ManualInputTab(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                    modifier = Modifier.padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     OutlinedTextField(
                         value = name,
                         onValueChange = { name = it },
                         label = { Text("名称") },
                         placeholder = { Text(if(type=="food") "例如: 米饭" else "例如: 跑步") },
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().compactInput(),
                         leadingIcon = { Icon(if (type == "food") Icons.Default.Restaurant else Icons.Default.FitnessCenter, null) },
                         shape = RoundedCornerShape(12.dp),
                         singleLine = true
@@ -492,8 +613,8 @@ fun ManualInputTab(
                                     MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
                                     RoundedCornerShape(12.dp)
                                 )
-                                .padding(6.dp),
-                            verticalArrangement = Arrangement.spacedBy(1.dp)  // tighter spacing
+                                .padding(4.dp),
+                            verticalArrangement = Arrangement.spacedBy(2.dp)
                         ) {
                             // History items first
                             historySuggestions.forEach { historyItem ->
@@ -513,7 +634,8 @@ fun ManualInputTab(
                                         carbs = CalorieUtils.formatNumber(historyItem.carbs)
                                         protein = CalorieUtils.formatNumber(historyItem.protein)
                                         fat = CalorieUtils.formatNumber(historyItem.fat)
-                                        notes = historyItem.notes.orEmpty()
+                                        notes = stripDurationNote(historyItem.notes.orEmpty())
+                                        nutritionMode = false
                                         suggestionSource = "history"
                                         useSameWeight = true
                                         previousGrams = ""
@@ -529,7 +651,7 @@ fun ManualInputTab(
                                     name = nutritionItem.foodName,
                                     calories = nutritionItem.calories,
                                     source = "官方",
-                                    sourceColor = Color(0xFF4CAF50),
+                                    sourceColor = OfficialGreen,
                                     onCardColor = onCardColor,
                                     onClick = {
                                         name = nutritionItem.foodName
@@ -541,6 +663,7 @@ fun ManualInputTab(
                                         carbs = CalorieUtils.formatNumber(nutritionItem.carbsG)
                                         protein = CalorieUtils.formatNumber(nutritionItem.proteinG)
                                         fat = CalorieUtils.formatNumber(nutritionItem.fatG)
+                                        nutritionMode = false
                                         suggestionSource = "official"
                                         weightGrams = "100"
                                         historySuggestions = emptyList()
@@ -551,55 +674,235 @@ fun ManualInputTab(
                         }
                     }
 
-                    OutlinedTextField(
-                        value = calories,
-                        onValueChange = { if (allowDecimalInput(it)) calories = it },
-                        label = { Text("热量 (kcal)") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                        modifier = Modifier.fillMaxWidth(),
-                        leadingIcon = { Icon(Icons.Default.Star, null) }, // Use star icon as fallback for calories
-                        shape = RoundedCornerShape(12.dp),
-                        singleLine = true
-                    )
-                    
-                    if (showMacros && type == "food") {
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedTextField(
-                                value = carbs,
-                                onValueChange = { if (allowDecimalInput(it)) carbs = it },
-                                label = { Text("碳水") },
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                                modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(12.dp),
-                                singleLine = true
-                            )
-                            OutlinedTextField(
-                                value = protein,
-                                onValueChange = { if (allowDecimalInput(it)) protein = it },
-                                label = { Text("蛋白质") },
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                                modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(12.dp),
-                                singleLine = true
-                            )
-                            OutlinedTextField(
-                                value = fat,
-                                onValueChange = { if (allowDecimalInput(it)) fat = it },
-                                label = { Text("脂肪") },
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                                modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(12.dp),
-                                singleLine = true
-                            )
+                    if (type == "food") {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(accentColor.copy(alpha = 0.08f))
+                                .padding(4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            listOf(false to "直接输入", true to "营养标签换算").forEach { (mode, label) ->
+                                val selected = nutritionMode == mode
+                                Surface(
+                                    onClick = {
+                                        nutritionMode = mode
+                                        if (mode) suggestionSource = null
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = if (selected) accentColor else Color.Transparent
+                                ) {
+                                    Text(
+                                        label,
+                                        modifier = Modifier.padding(vertical = 8.dp),
+                                        color = if (selected) MaterialTheme.colorScheme.onPrimary else onCardColor,
+                                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                        style = MaterialTheme.typography.labelLarge,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    if (type == "food" && nutritionMode) {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = CardDefaults.cardColors(containerColor = accentColor.copy(alpha = 0.07f)),
+                            border = BorderStroke(1.dp, accentColor.copy(alpha = 0.35f))
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(10.dp),
+                                verticalArrangement = Arrangement.spacedBy(7.dp)
+                            ) {
+                                Text("▣ 抄营养成分表", color = accentColor, fontWeight = FontWeight.Black)
+                                Text(
+                                    "可输入每任意克数、毫升或份数；kJ 会自动除以 4.184 换算为 kcal。",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = onCardColor.copy(alpha = 0.7f)
+                                )
+
+                                if (foodTemplates.isNotEmpty()) {
+                                    Text("已存标签", style = MaterialTheme.typography.labelMedium, color = onCardColor)
+                                    foodTemplates.take(4).forEach { template ->
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(cardColor.copy(alpha = 0.75f)),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            TextButton(
+                                                modifier = Modifier.weight(1f),
+                                                onClick = {
+                                                    name = template.name
+                                                    referenceAmount = CalorieUtils.formatNumber(template.referenceAmount)
+                                                    actualAmount = CalorieUtils.formatNumber(template.referenceAmount)
+                                                    amountUnit = AmountUnit.fromStorage(template.amountUnit)
+                                                    referenceEnergy = CalorieUtils.formatNumber(template.energyValue)
+                                                    energyUnit = EnergyUnit.fromStorage(template.energyUnit)
+                                                    referenceCarbs = CalorieUtils.formatNumber(template.carbs)
+                                                    referenceProtein = CalorieUtils.formatNumber(template.protein)
+                                                    referenceFat = CalorieUtils.formatNumber(template.fat)
+                                                }
+                                            ) {
+                                                Text(template.name, color = onCardColor, maxLines = 1)
+                                            }
+                                            IconButton(onClick = { onDeleteFoodTemplate(template) }) {
+                                                Icon(Icons.Default.Close, "删除标签", tint = onCardColor.copy(alpha = 0.5f))
+                                            }
+                                        }
+                                    }
+                                }
+
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    OutlinedTextField(
+                                        value = referenceAmount,
+                                        onValueChange = { if (allowDecimalInput(it)) referenceAmount = it },
+                                        label = { Text("每多少") },
+                                        suffix = { Text(amountUnit.suffix) },
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                        modifier = Modifier.weight(1f).compactInput(),
+                                        singleLine = true
+                                    )
+                                    OutlinedTextField(
+                                        value = actualAmount,
+                                        onValueChange = { if (allowDecimalInput(it)) actualAmount = it },
+                                        label = { Text("当前重量/份量") },
+                                        suffix = { Text(amountUnit.suffix) },
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                        modifier = Modifier.weight(1f).compactInput(),
+                                        singleLine = true
+                                    )
+                                }
+
+                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    AmountUnit.entries.forEach { unit ->
+                                        FilterChip(
+                                            selected = amountUnit == unit,
+                                            onClick = { amountUnit = unit },
+                                            label = { Text(unit.label) }
+                                        )
+                                    }
+                                }
+
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    OutlinedTextField(
+                                        value = referenceEnergy,
+                                        onValueChange = { if (allowDecimalInput(it)) referenceEnergy = it },
+                                        label = { Text("标签能量") },
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                        modifier = Modifier.weight(1f).compactInput(),
+                                        singleLine = true
+                                    )
+                                    EnergyUnit.entries.forEach { unit ->
+                                        FilterChip(
+                                            selected = energyUnit == unit,
+                                            onClick = { energyUnit = unit },
+                                            label = { Text(unit.label) }
+                                        )
+                                    }
+                                }
+
+                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    listOf(
+                                        Triple("碳水", referenceCarbs, { value: String -> referenceCarbs = value }),
+                                        Triple("蛋白", referenceProtein, { value: String -> referenceProtein = value }),
+                                        Triple("脂肪", referenceFat, { value: String -> referenceFat = value })
+                                    ).forEach { (label, value, setter) ->
+                                        OutlinedTextField(
+                                            value = value,
+                                            onValueChange = { if (allowDecimalInput(it)) setter(it) },
+                                            label = { Text(label) },
+                                            suffix = { Text("g") },
+                                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                            modifier = Modifier.weight(1f).compactInput(),
+                                            singleLine = true
+                                        )
+                                    }
+                                }
+
+                                when (val result = nutritionCalculation) {
+                                    is NutritionCalculation.Success -> {
+                                        Text(
+                                            "▶ 当前份量 ≈ ${CalorieUtils.formatNumber(result.value.energyKcal)} kcal" +
+                                                if (showMacros) "  ·  碳水 ${CalorieUtils.formatNumber(result.value.carbs)}g  ·  蛋白 ${CalorieUtils.formatNumber(result.value.protein)}g  ·  脂肪 ${CalorieUtils.formatNumber(result.value.fat)}g" else "",
+                                            color = accentColor,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        TextButton(
+                                            enabled = name.isNotBlank(),
+                                            onClick = {
+                                                val now = System.currentTimeMillis()
+                                                onSaveFoodTemplate(
+                                                    FoodTemplateEntity(
+                                                        id = UUID.randomUUID().toString(),
+                                                        name = name.trim(),
+                                                        referenceAmount = referenceAmount.toDouble(),
+                                                        amountUnit = amountUnit.name,
+                                                        energyValue = referenceEnergy.toDouble(),
+                                                        energyUnit = energyUnit.name,
+                                                        carbs = referenceCarbs.toDoubleOrNull() ?: 0.0,
+                                                        protein = referenceProtein.toDoubleOrNull() ?: 0.0,
+                                                        fat = referenceFat.toDoubleOrNull() ?: 0.0,
+                                                        createdAt = now,
+                                                        updatedAt = now
+                                                    )
+                                                )
+                                            }
+                                        ) { Text("★ 保存这张营养标签", color = accentColor) }
+                                    }
+                                    is NutritionCalculation.Invalid -> Text(
+                                        "请填写大于 0 的基准份量，并检查能量数值。",
+                                        color = MaterialTheme.colorScheme.error,
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
+                                }
+                            }
+                        }
+                    } else {
+                        OutlinedTextField(
+                            value = calories,
+                            onValueChange = { if (allowDecimalInput(it)) calories = it },
+                            label = { Text("热量 (kcal)") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                            modifier = Modifier.fillMaxWidth().compactInput(),
+                            leadingIcon = { Icon(Icons.Default.Star, null) },
+                            shape = RoundedCornerShape(12.dp),
+                            singleLine = true
+                        )
+
+                        if (showMacros && type == "food") {
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                listOf(
+                                    Triple("碳水", carbs, { value: String -> carbs = value }),
+                                    Triple("蛋白质", protein, { value: String -> protein = value }),
+                                    Triple("脂肪", fat, { value: String -> fat = value })
+                                ).forEach { (label, value, setter) ->
+                                    OutlinedTextField(
+                                        value = value,
+                                        onValueChange = { if (allowDecimalInput(it)) setter(it) },
+                                        label = { Text(label) },
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                        modifier = Modifier.weight(1f).compactInput(),
+                                        shape = RoundedCornerShape(12.dp),
+                                        singleLine = true
+                                    )
+                                }
+                            }
                         }
                     }
 
                     // ========== Weight Adjustment Section ==========
-                    if (type == "food" && suggestionSource != null) {
+                    if (type == "food" && !nutritionMode && suggestionSource != null) {
                         Card(
                             colors = CardDefaults.cardColors(
                                 containerColor = if (suggestionSource == "official") 
-                                    Color(0xFF4CAF50).copy(alpha = 0.08f) 
+                                    OfficialGreen.copy(alpha = 0.08f) 
                                 else 
                                     accentColor.copy(alpha = 0.06f)
                             ),
@@ -616,7 +919,7 @@ fun ManualInputTab(
                                         Text(
                                             "📋 官方数据",
                                             style = MaterialTheme.typography.labelSmall,
-                                            color = Color(0xFF4CAF50),
+                                            color = OfficialGreen,
                                             fontWeight = FontWeight.Bold
                                         )
                                         Spacer(modifier = Modifier.weight(1f))
@@ -634,7 +937,7 @@ fun ManualInputTab(
                                         placeholder = { Text("例如: 250") },
                                         suffix = { Text("g") },
                                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                                        modifier = Modifier.fillMaxWidth(),
+                                        modifier = Modifier.fillMaxWidth().compactInput(),
                                         shape = RoundedCornerShape(8.dp),
                                         singleLine = true
                                     )
@@ -681,7 +984,7 @@ fun ManualInputTab(
                                                 label = { Text("之前克数") },
                                                 suffix = { Text("g") },
                                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                                                modifier = Modifier.weight(1f),
+                                                modifier = Modifier.weight(1f).compactInput(),
                                                 shape = RoundedCornerShape(8.dp),
                                                 singleLine = true
                                             )
@@ -691,7 +994,7 @@ fun ManualInputTab(
                                                 label = { Text("现在克数") },
                                                 suffix = { Text("g") },
                                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                                                modifier = Modifier.weight(1f),
+                                                modifier = Modifier.weight(1f).compactInput(),
                                                 shape = RoundedCornerShape(8.dp),
                                                 singleLine = true
                                             )
@@ -732,7 +1035,7 @@ fun ManualInputTab(
                                 readOnly = true,
                                 label = { Text("时间 (可选)") },
                                 placeholder = { Text("HH:mm") },
-                                modifier = Modifier.fillMaxWidth(),
+                                modifier = Modifier.fillMaxWidth().compactInput(),
                                 leadingIcon = { Icon(Icons.Default.Schedule, null) },
                                 shape = RoundedCornerShape(12.dp),
                                 singleLine = true
@@ -751,7 +1054,7 @@ fun ManualInputTab(
                                 readOnly = true,
                                 label = { Text("类别") },
                                 placeholder = { Text("请选择类别") },
-                                modifier = Modifier.fillMaxWidth(),
+                                modifier = Modifier.fillMaxWidth().compactInput(),
                                 leadingIcon = { Icon(Icons.Default.Restaurant, null) },
                                 shape = RoundedCornerShape(12.dp),
                                 singleLine = true
@@ -771,7 +1074,7 @@ fun ManualInputTab(
                                     readOnly = true,
                                     label = { Text("开始") },
                                     placeholder = { Text("HH:mm") },
-                                    modifier = Modifier.fillMaxWidth(),
+                                    modifier = Modifier.fillMaxWidth().compactInput(),
                                     leadingIcon = { Icon(Icons.Default.Timer, null) },
                                     shape = RoundedCornerShape(12.dp),
                                     singleLine = true
@@ -790,7 +1093,7 @@ fun ManualInputTab(
                                     readOnly = true,
                                     label = { Text("结束") },
                                     placeholder = { Text("HH:mm") },
-                                    modifier = Modifier.fillMaxWidth(),
+                                    modifier = Modifier.fillMaxWidth().compactInput(),
                                     leadingIcon = { Icon(Icons.Outlined.Timer, null) },
                                     shape = RoundedCornerShape(12.dp),
                                     singleLine = true
@@ -870,40 +1173,76 @@ fun ManualInputTab(
                     val carbsValue = CalorieUtils.parseDecimalInput(carbs) ?: 0.0
                     val proteinValue = CalorieUtils.parseDecimalInput(protein) ?: 0.0
                     val fatValue = CalorieUtils.parseDecimalInput(fat) ?: 0.0
-                    
-                    if (name.isNotEmpty() && calValue > 0.0) {
-                        val compressedImagePath = selectedImageUri?.let { ImageStorageUtils.compressAndSaveImage(context, it) }
-                        if (type == "exercise") {
-                            val duration = CalorieUtils.calculateDuration(startTime, endTime)
-                            // Use startTime as the record time
-                            val recordTime = if (startTime.isNotBlank()) startTime else time
-                            val durationNote = if (duration > 0) "时长: $duration 分钟" else ""
-                            val finalNotes = if (notes.isNotBlank()) "$notes${if(durationNote.isNotBlank()) ", $durationNote" else ""}" else durationNote
-                            
-                            onSave(EntryItem(type = type, name = name, calories = calValue, time = recordTime, notes = finalNotes, imagePath = compressedImagePath))
-                        } else {
-                            onSave(
-                                EntryItem(
-                                    type = type,
-                                    name = name,
-                                    calories = calValue,
-                                    carbs = carbsValue,
-                                    protein = proteinValue,
-                                    fat = fatValue,
-                                    time = time,
-                                    mealCategory = selectedMealCategory,
-                                    notes = notes,
-                                    imagePath = compressedImagePath
+
+                    val nutritionIsValid = !nutritionMode || nutritionCalculation is NutritionCalculation.Success
+                    if (name.isNotBlank() && calValue > 0.0 && nutritionIsValid) {
+                        isSaving = true
+                        coroutineScope.launch {
+                            try {
+                            val compressedImagePath = withContext(Dispatchers.IO) {
+                                selectedImageUri?.let { ImageStorageUtils.compressAndSaveImage(context, it) }
+                            }
+                            if (type == "exercise") {
+                                val duration = CalorieUtils.calculateDuration(startTime, endTime)
+                                val recordTime = if (startTime.isNotBlank()) startTime else time
+                                val durationNote = if (duration > 0) "时长: $duration 分钟" else ""
+                                // 先剥离 notes 中残留的旧时长，避免与新时长重复
+                                val cleanedNotes = stripDurationNote(notes)
+                                val finalNotes = if (cleanedNotes.isNotBlank()) {
+                                    "$cleanedNotes${if (durationNote.isNotBlank()) ", $durationNote" else ""}"
+                                } else {
+                                    durationNote
+                                }
+
+                                onSave(
+                                    EntryItem(
+                                        type = type,
+                                        name = name,
+                                        calories = calValue,
+                                        time = recordTime,
+                                        notes = finalNotes,
+                                        imagePath = compressedImagePath
+                                    )
                                 )
-                            )
+                            } else {
+                                onSave(
+                                    EntryItem(
+                                        type = type,
+                                        name = name,
+                                        calories = calValue,
+                                        carbs = carbsValue,
+                                        protein = proteinValue,
+                                        fat = fatValue,
+                                        time = time,
+                                        mealCategory = selectedMealCategory,
+                                        notes = notes,
+                                        imagePath = compressedImagePath,
+                                        nutritionReferenceAmount = referenceAmount.toDoubleOrNull().takeIf { nutritionMode },
+                                        nutritionActualAmount = actualAmount.toDoubleOrNull().takeIf { nutritionMode },
+                                        nutritionAmountUnit = amountUnit.name.takeIf { nutritionMode },
+                                        nutritionReferenceEnergy = referenceEnergy.toDoubleOrNull().takeIf { nutritionMode },
+                                        nutritionEnergyUnit = energyUnit.name.takeIf { nutritionMode },
+                                        nutritionReferenceCarbs = (referenceCarbs.toDoubleOrNull() ?: 0.0).takeIf { nutritionMode },
+                                        nutritionReferenceProtein = (referenceProtein.toDoubleOrNull() ?: 0.0).takeIf { nutritionMode },
+                                        nutritionReferenceFat = (referenceFat.toDoubleOrNull() ?: 0.0).takeIf { nutritionMode }
+                                    )
+                                )
+                            }
+                            } finally {
+                                isSaving = false
+                            }
                         }
                     }
                 },
+                enabled = !isSaving,
                 modifier = Modifier.fillMaxWidth().height(50.dp),
                 shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = Color.White)
+                colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = MaterialTheme.colorScheme.onPrimary)
             ) {
-                Text("保存记录", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    if (isSaving) "正在处理图片..." else "保存记录",
+                    style = MaterialTheme.typography.titleMedium
+                )
             }
         }
     }
@@ -1047,6 +1386,15 @@ fun AiDialogueTab(
     ) { success ->
         if (success && pendingCameraUri != null) {
             selectedImageUris = selectedImageUris + listOfNotNull(pendingCameraUri)
+        } else if (!success) {
+            // 取消/失败时清理临时拍照文件
+            pendingCameraUri?.let { uri ->
+                runCatching {
+                    val fileName = uri.lastPathSegment?.substringAfterLast('/')
+                    if (fileName != null) File(File(context.cacheDir, "camera"), fileName).delete()
+                }
+            }
+            pendingCameraUri = null
         }
     }
     val cameraPermissionLauncher = rememberLauncherForActivityResult(
@@ -1087,7 +1435,7 @@ fun AiDialogueTab(
     // Auto scroll
     LaunchedEffect(displayMessages.size, uiState) {
         if (displayMessages.isNotEmpty()) {
-            val targetIndex = displayMessages.size + (if (uiState is AiUiState.Loading) 0 else -1)
+            val targetIndex = displayMessages.size + (if (uiState is AiUiState.Loading || uiState is AiUiState.Error) 0 else -1)
             if (targetIndex >= 0) {
                  listState.animateScrollToItem(targetIndex)
             }
@@ -1113,17 +1461,17 @@ fun AiDialogueTab(
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+        Column(modifier = Modifier.fillMaxSize().padding(12.dp)) {
             // Header removed (Clear Chat moved to FAB)
 
             // Chat Area
             LazyColumn(
                 state = listState,
                 modifier = Modifier.weight(1f).padding(bottom = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-                contentPadding = PaddingValues(bottom = 16.dp)
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                contentPadding = PaddingValues(bottom = 10.dp)
             ) {
-            items(displayMessages) { msg ->
+            items(displayMessages, key = { it.id }) { msg ->
                 ChatBubble(msg, accentColor, cardColor, onCardColor)
             }
             if (uiState is AiUiState.Loading) {
@@ -1181,20 +1529,20 @@ fun AiDialogueTab(
                 shape = RoundedCornerShape(16.dp),
                 modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
             ) {
-                Column(modifier = Modifier.padding(12.dp)) {
+                Column(modifier = Modifier.padding(9.dp)) {
                     Text(
                         "待添加记录 (${recognizedItems.size})", 
                         style = MaterialTheme.typography.labelSmall,
                         color = accentColor,
                         fontWeight = FontWeight.Bold
                     )
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(5.dp))
                     
                     LazyColumn(
                         modifier = Modifier
                             .heightIn(max = 150.dp)
                             .fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                        verticalArrangement = Arrangement.spacedBy(3.dp)
                     ) {
                         itemsIndexed(recognizedItems) { index, item ->
                             RecognizedItemCard(
@@ -1209,7 +1557,7 @@ fun AiDialogueTab(
                         }
                     }
                     
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(5.dp))
                     
                     Button(
                         onClick = { 
@@ -1218,7 +1566,7 @@ fun AiDialogueTab(
                         },
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = Color.White)
+                        colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = MaterialTheme.colorScheme.onPrimary)
                     ) {
                         val totalCal = recognizedItems.sumOf { if (it.type == "food") it.calories else -it.calories }
                         Text("确认添加 (${CalorieUtils.formatNumber(totalCal)} kcal)")
@@ -1242,7 +1590,7 @@ fun AiDialogueTab(
                              horizontalArrangement = Arrangement.spacedBy(8.dp),
                              contentPadding = PaddingValues(end = 32.dp)
                          ) {
-                             items(selectedImageUris) { uri ->
+                             items(selectedImageUris, key = { it }) { uri ->
                                  AsyncImage(
                                      model = uri,
                                      contentDescription = "Selected Image",
@@ -1286,14 +1634,7 @@ fun AiDialogueTab(
                     IconButton(onClick = {
                         if (inputText.isNotBlank() || selectedImageUris.isNotEmpty()) {
                             if (selectedImageUris.isNotEmpty()) {
-                                val bitmaps = selectedImageUris.mapNotNull { uri ->
-                                    try {
-                                        val stream = context.contentResolver.openInputStream(uri)
-                                        BitmapFactory.decodeStream(stream)
-                                    } catch (e: Exception) { null }
-                                }
-                                val uriStrings = selectedImageUris.map { it.toString() }
-                                viewModel.sendMessageWithImage(inputText, bitmaps, uriStrings, userWeight)
+                                viewModel.sendMessageWithImageUris(inputText, selectedImageUris, userWeight)
                                 selectedImageUris = emptyList()
                             } else {
                                 viewModel.sendMessage(inputText, userWeight)
@@ -1386,7 +1727,7 @@ fun ChatBubble(
                          horizontalArrangement = Arrangement.spacedBy(8.dp),
                          modifier = Modifier.padding(bottom = 4.dp)
                      ) {
-                         items(uris) { uriStr ->
+                         items(uris, key = { it }) { uriStr ->
                              AsyncImage(
                                  model = Uri.parse(uriStr),
                                  contentDescription = "User Image",
@@ -1421,18 +1762,28 @@ fun ChatBubble(
                     color = if (isUser) accentColor else cardColor.copy(alpha = 0.94f),
                     shadowElevation = 1.dp,
                     modifier = Modifier
-                        .widthIn(max = 280.dp)
+                        .widthIn(max = 300.dp)
                         .clickable {
                             clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(message.content))
                             android.widget.Toast.makeText(context, "已复制", android.widget.Toast.LENGTH_SHORT).show()
                         }
                 ) {
-                    Text(
-                        text = message.content,
-                        modifier = Modifier.padding(12.dp),
-                        color = if (isUser) Color.White else onCardColor.copy(alpha = 0.88f),
-                        style = MaterialTheme.typography.bodyMedium
-                    )
+                    if (isUser) {
+                        Text(
+                            text = message.content,
+                            modifier = Modifier.padding(12.dp),
+                            color = MaterialTheme.colorScheme.onPrimary,
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    } else {
+                        MarkdownText(
+                            text = message.content,
+                            baseColor = onCardColor.copy(alpha = 0.88f),
+                            baseFontSize = 14f,
+                            lineHeight = 20f,
+                            modifier = Modifier.padding(12.dp)
+                        )
+                    }
                 }
             }
         }
@@ -1492,6 +1843,15 @@ fun PhotoRecognitionTab(
             selectedImageUris = selectedImageUris + listOfNotNull(pendingCameraUri)
             viewModel.clearPhotoState()
             viewModel.clearPhotoItems()
+        } else if (!success) {
+            // 取消/失败时清理临时拍照文件
+            pendingCameraUri?.let { uri ->
+                runCatching {
+                    val fileName = uri.lastPathSegment?.substringAfterLast('/')
+                    if (fileName != null) File(File(context.cacheDir, "camera"), fileName).delete()
+                }
+            }
+            pendingCameraUri = null
         }
     }
     val cameraPermissionLauncher = rememberLauncherForActivityResult(
@@ -1549,7 +1909,7 @@ fun PhotoRecognitionTab(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         contentPadding = PaddingValues(8.dp)
                     ) {
-                        items(selectedImageUris) { uri ->
+                        items(selectedImageUris, key = { it }) { uri ->
                              AsyncImage(
                                 model = uri,
                                 contentDescription = null,
@@ -1593,23 +1953,13 @@ fun PhotoRecognitionTab(
             Button(
                 onClick = {
                     if (selectedImageUris.isNotEmpty()) {
-                        val bitmaps = selectedImageUris.mapNotNull { uri ->
-                            try {
-                                val inputStream = context.contentResolver.openInputStream(uri)
-                                BitmapFactory.decodeStream(inputStream)
-                            } catch (e: Exception) {
-                                null
-                            }
-                        }
-                        if (bitmaps.isNotEmpty()) {
-                            viewModel.analyzeImage(bitmaps, userWeight, notes)
-                        }
+                        viewModel.analyzeImageUris(selectedImageUris, userWeight, notes)
                     }
                 },
                 enabled = selectedImageUris.isNotEmpty() && uiState !is AiUiState.Loading,
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = Color.White)
+                colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = MaterialTheme.colorScheme.onPrimary)
             ) {
                 if (uiState is AiUiState.Loading) {
                     CircularProgressIndicator(
@@ -1695,7 +2045,7 @@ fun PhotoRecognitionTab(
                     enabled = recognizedItems.isNotEmpty(),
                     modifier = Modifier.fillMaxWidth().height(50.dp),
                     shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = Color.White)
+                    colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = MaterialTheme.colorScheme.onPrimary)
                 ) {
                     Text("确认添加", style = MaterialTheme.typography.titleMedium)
                 }
@@ -1750,11 +2100,11 @@ fun RecognizedItemCard(
         border = androidx.compose.foundation.BorderStroke(1.dp, onCardColor.copy(alpha = 0.2f))
     ) {
         Row(
-            modifier = Modifier.padding(12.dp),
+            modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                Text(item.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = onCardColor)
+                Text(item.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = onCardColor)
                 val timeInfo = if (item.time.isNotBlank()) " · ${item.time}" else ""
                 val notesInfo = if (item.notes.isNotBlank()) " · ${item.notes}" else ""
                 val imageInfo = if (!item.imagePath.isNullOrBlank()) " · 已附图" else ""
@@ -1763,11 +2113,11 @@ fun RecognizedItemCard(
                 } else ""
                 Text("${CalorieUtils.formatNumber(item.calories)} kcal · ${if (item.type == "food") "食物" else "运动"}$macroInfo$timeInfo$notesInfo$imageInfo", style = MaterialTheme.typography.bodySmall, color = onCardColor.copy(alpha = 0.72f))
             }
-            IconButton(onClick = onEdit) {
-                Icon(Icons.Default.Edit, contentDescription = "Edit", tint = accentColor)
+            IconButton(onClick = onEdit, modifier = Modifier.size(34.dp)) {
+                Icon(Icons.Default.Edit, contentDescription = "Edit", tint = accentColor, modifier = Modifier.size(18.dp))
             }
-            IconButton(onClick = onDelete) {
-                Icon(Icons.Default.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error)
+            IconButton(onClick = onDelete, modifier = Modifier.size(34.dp)) {
+                Icon(Icons.Default.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
             }
         }
     }
@@ -1790,6 +2140,7 @@ fun EditEntryDialog(
     var fat by remember { mutableStateOf(CalorieUtils.formatNumber(item.fat)) }
     var time by remember { mutableStateOf(item.time) }
     var notes by remember { mutableStateOf(item.notes) }
+    val context = LocalContext.current
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -1801,7 +2152,7 @@ fun EditEntryDialog(
                     value = name,
                     onValueChange = { name = it },
                     label = { Text("名称") },
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().compactInput(),
                     shape = RoundedCornerShape(12.dp)
                 )
                 OutlinedTextField(
@@ -1809,7 +2160,7 @@ fun EditEntryDialog(
                     onValueChange = { if (allowDecimalInput(it)) calories = it },
                     label = { Text("卡路里") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().compactInput(),
                     shape = RoundedCornerShape(12.dp)
                 )
                 
@@ -1820,7 +2171,7 @@ fun EditEntryDialog(
                             onValueChange = { if (allowDecimalInput(it)) carbs = it },
                             label = { Text("碳水") },
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier.weight(1f).compactInput(),
                             shape = RoundedCornerShape(12.dp)
                         )
                         OutlinedTextField(
@@ -1828,7 +2179,7 @@ fun EditEntryDialog(
                             onValueChange = { if (allowDecimalInput(it)) protein = it },
                             label = { Text("蛋白质") },
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier.weight(1f).compactInput(),
                             shape = RoundedCornerShape(12.dp)
                         )
                         OutlinedTextField(
@@ -1836,7 +2187,7 @@ fun EditEntryDialog(
                             onValueChange = { if (allowDecimalInput(it)) fat = it },
                             label = { Text("脂肪") },
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier.weight(1f).compactInput(),
                             shape = RoundedCornerShape(12.dp)
                         )
                     }
@@ -1846,7 +2197,7 @@ fun EditEntryDialog(
                     value = time,
                     onValueChange = { time = it },
                     label = { Text("时间") },
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().compactInput(),
                     shape = RoundedCornerShape(12.dp)
                 )
                 OutlinedTextField(
@@ -1870,10 +2221,14 @@ fun EditEntryDialog(
                 val f = CalorieUtils.parseDecimalInput(fat) ?: 0.0
 
                 if (name.isNotBlank()) {
-                    onConfirm(item.copy(name = name, calories = cal, carbs = c, protein = p, fat = f, time = time, notes = notes))
+                    if (time.isNotBlank() && !time.matches(Regex("^\\d{1,2}:\\d{2}$"))) {
+                        Toast.makeText(context, "时间格式应为 HH:mm", Toast.LENGTH_SHORT).show()
+                    } else {
+                        onConfirm(item.copy(name = name, calories = cal, carbs = c, protein = p, fat = f, time = time, notes = notes))
+                    }
                 }
             },
-                colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = Color.White)
+                colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = MaterialTheme.colorScheme.onPrimary)
             ) {
                 Text("保存")
             }
@@ -1881,7 +2236,7 @@ fun EditEntryDialog(
         dismissButton = {
             Button(
                 onClick = onDismiss,
-                colors = ButtonDefaults.buttonColors(containerColor = accentColor.copy(alpha = 0.72f), contentColor = Color.White)
+                colors = ButtonDefaults.buttonColors(containerColor = accentColor.copy(alpha = 0.72f), contentColor = MaterialTheme.colorScheme.onPrimary)
             ) {
                 Text("取消")
             }

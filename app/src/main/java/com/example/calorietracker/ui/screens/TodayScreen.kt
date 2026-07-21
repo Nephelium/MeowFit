@@ -6,7 +6,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
@@ -27,7 +26,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CutCornerShape as RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
@@ -42,6 +41,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
@@ -66,6 +66,17 @@ import coil.compose.AsyncImage
 import com.example.calorietracker.data.CalorieItemEntity
 import com.example.calorietracker.data.DailyRecordEntity
 import com.example.calorietracker.data.UserProfileEntity
+import com.example.calorietracker.ui.components.PixelCatStatusCard
+import com.example.calorietracker.ui.components.compactInput
+import com.example.calorietracker.ui.components.resolvePixelCatStatus
+import com.example.calorietracker.ui.theme.InfoBlue
+import com.example.calorietracker.ui.theme.MacroCarb
+import com.example.calorietracker.ui.theme.MacroFat
+import com.example.calorietracker.ui.theme.MacroProtein
+import com.example.calorietracker.ui.theme.PixelInk
+import com.example.calorietracker.ui.theme.deficitColor
+import com.example.calorietracker.ui.theme.mealCategoryColors
+import com.example.calorietracker.util.BitmapUtils
 import com.example.calorietracker.util.CalorieUtils
 import com.example.calorietracker.util.ImageStorageUtils
 import java.io.File
@@ -73,6 +84,9 @@ import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.Stop
@@ -115,7 +129,8 @@ fun calculatePerceivedLuminance(color: Color): Float {
 
 private fun createTempCameraUri(context: Context): Uri? {
     return runCatching {
-        val file = File.createTempFile("meowfit_edit_", ".jpg", context.cacheDir)
+        val cameraDir = File(context.cacheDir, "camera").apply { mkdirs() }
+        val file = File.createTempFile("meowfit_edit_", ".jpg", cameraDir)
         FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
     }.getOrNull()
 }
@@ -274,7 +289,7 @@ private fun ThemedCalendarPickerDialog(
                                             Text(
                                                 text = day.toString(),
                                                 color = when {
-                                                    isSelected -> Color.White
+                                                    isSelected -> PixelInk
                                                     else -> textColor
                                                 },
                                                 style = MaterialTheme.typography.bodyLarge,
@@ -286,7 +301,7 @@ private fun ThemedCalendarPickerDialog(
                                                     modifier = Modifier
                                                         .size(5.dp)
                                                         .clip(CircleShape)
-                                                        .background(if (isSelected) Color.White else accentColor)
+                                                        .background(if (isSelected) PixelInk else accentColor)
                                                 )
                                             } else {
                                                 Spacer(modifier = Modifier.height(7.dp))
@@ -478,10 +493,10 @@ fun TodayScreen(
     var showWaterDialog by remember { mutableStateOf(false) }
     var showSleepDialog by remember { mutableStateOf(false) }
     var showMedicationDialog by remember { mutableStateOf(false) }
-    var isTimerRunning by remember { mutableStateOf(false) }
-    var timerStartTime by remember { mutableStateOf<Long?>(null) }
+    var isTimerRunning by rememberSaveable { mutableStateOf(false) }
+    var timerStartTime by rememberSaveable { mutableStateOf<Long?>(null) }
     var showTimerDialog by remember { mutableStateOf(false) }
-    var exerciseName by remember { mutableStateOf("") }
+    var exerciseName by rememberSaveable { mutableStateOf("") }
     var editingItem by remember { mutableStateOf<CalorieItemEntity?>(null) }
     var previewImagePath by remember { mutableStateOf<String?>(null) }
     var previewSavedBitmap by remember { mutableStateOf<Bitmap?>(null) }
@@ -493,6 +508,8 @@ fun TodayScreen(
     var showSearchDialog by remember { mutableStateOf(false) }
     var searchKeyword by remember { mutableStateOf("") }
     var pendingSearchItemId by remember { mutableStateOf<String?>(null) }
+    var isShareWorking by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
 
     val searchResults = remember(searchKeyword, allItems) {
         val keyword = searchKeyword.trim()
@@ -514,17 +531,7 @@ fun TodayScreen(
     val effectiveWeight = remember(dailyRecord, allRecords, selectedDate, userProfile) {
         CalorieUtils.getEffectiveWeight(selectedDate, allRecords, userProfile)
     }
-    val foodSections = listOf(
-        Triple(CalorieUtils.MealCategory.BREAKFAST, "早餐", MaterialTheme.colorScheme.primary),
-        Triple(CalorieUtils.MealCategory.MORNING_EXTRA, "早加餐", Color(0xFF6D4C41)),
-        Triple(CalorieUtils.MealCategory.LUNCH, "午餐", Color(0xFF26A69A)),
-        Triple(CalorieUtils.MealCategory.AFTERNOON_EXTRA, "午加餐", Color(0xFF00897B)),
-        Triple(CalorieUtils.MealCategory.AFTERNOON_TEA, "下午茶", Color(0xFFFFB300)),
-        Triple(CalorieUtils.MealCategory.DINNER, "晚餐", Color(0xFFFF7043)),
-        Triple(CalorieUtils.MealCategory.EVENING_EXTRA, "晚加餐", Color(0xFF5D4037)),
-        Triple(CalorieUtils.MealCategory.SNACK, "零食", Color(0xFF8E24AA)),
-        Triple(CalorieUtils.MealCategory.NIGHT_SNACK, "夜宵", Color(0xFF7E57C2))
-    ).map { (category, title, color) ->
+    val foodSections = mealCategoryColors().map { (category, title, color) ->
         Triple(
             title,
             color,
@@ -537,7 +544,12 @@ fun TodayScreen(
 
     LaunchedEffect(items, pendingSearchItemId) {
         val targetId = pendingSearchItemId ?: return@LaunchedEffect
-        val target = items.firstOrNull { it.id == targetId } ?: return@LaunchedEffect
+        val target = items.firstOrNull { it.id == targetId }
+        if (target == null) {
+            // Target no longer exists; clear to avoid re-running on every items change
+            if (items.isNotEmpty()) pendingSearchItemId = null
+            return@LaunchedEffect
+        }
         editingItem = target
         pendingSearchItemId = null
     }
@@ -562,7 +574,10 @@ fun TodayScreen(
     }
 
     if (previewSavedBitmap != null) {
-        Dialog(onDismissRequest = { previewSavedBitmap = null }) {
+        Dialog(onDismissRequest = {
+            previewSavedBitmap?.recycle()
+            previewSavedBitmap = null
+        }) {
             Card(
                 shape = RoundedCornerShape(18.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
@@ -581,7 +596,10 @@ fun TodayScreen(
     }
 
     if (previewShareBitmap != null) {
-        Dialog(onDismissRequest = { previewShareBitmap = null }) {
+        Dialog(onDismissRequest = {
+            previewShareBitmap?.recycle()
+            previewShareBitmap = null
+        }) {
             Card(
                 shape = RoundedCornerShape(18.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
@@ -602,16 +620,28 @@ fun TodayScreen(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.End
                     ) {
-                        TextButton(onClick = { previewShareBitmap = null }) {
+                        TextButton(onClick = {
+                            previewShareBitmap?.recycle()
+                            previewShareBitmap = null
+                        }) {
                             Text("取消")
                         }
                         TextButton(onClick = {
-                            try {
-                                shareTodayBitmap(context, previewShareBitmap!!)
-                            } catch (e: Exception) {
-                                Toast.makeText(context, "分享失败: ${e.message}", Toast.LENGTH_SHORT).show()
+                            val bitmapToShare = previewShareBitmap
+                            if (bitmapToShare != null) {
+                                scope.launch {
+                                    try {
+                                        shareTodayBitmap(context, bitmapToShare)
+                                    } catch (e: Exception) {
+                                        Toast.makeText(context, "分享失败: ${e.message}", Toast.LENGTH_SHORT).show()
+                                    }
+                                    // File already written & share intent fired; safe to release the big bitmap
+                                    bitmapToShare.recycle()
+                                    previewShareBitmap = null
+                                }
+                            } else {
+                                previewShareBitmap = null
                             }
-                            previewShareBitmap = null
                         }) {
                             Text("分享给朋友")
                         }
@@ -667,53 +697,81 @@ fun TodayScreen(
                 }
             },
             confirmButton = {
-                TextButton(onClick = {
-                    try {
-                        val bitmap = generateTodayLongScreenshot(
-                            context = context,
-                            userProfile = userProfile,
-                            dailyRecord = dailyRecord,
-                            allRecords = allRecords,
-                            items = items,
-                            selectedDate = selectedDate,
-                            selectedThemeIndex = selectedThemeIndex,
-                            showNotes = shareShowNotes,
-                            maskWeight = shareMaskWeight,
-                            showMeds = shareShowMeds
-                        )
-                        val saved = saveTodayBitmap(context, bitmap)
-                        if (saved) previewSavedBitmap = bitmap
-                    } catch (e: Exception) {
-                        Toast.makeText(context, "保存失败: ${e.message}", Toast.LENGTH_SHORT).show()
-                    }
-                    showShareDialog = false
-                }) {
-                    Text("保存图片")
+                TextButton(
+                    onClick = onClick@{
+                        if (isShareWorking) return@onClick
+                        isShareWorking = true
+                        scope.launch {
+                            try {
+                                val bitmap = withContext(Dispatchers.IO) {
+                                    generateTodayLongScreenshot(
+                                        context = context,
+                                        userProfile = userProfile,
+                                        dailyRecord = dailyRecord,
+                                        allRecords = allRecords,
+                                        items = items,
+                                        selectedDate = selectedDate,
+                                        selectedThemeIndex = selectedThemeIndex,
+                                        showNotes = shareShowNotes,
+                                        maskWeight = shareMaskWeight,
+                                        showMeds = shareShowMeds
+                                    )
+                                }
+                                val saved = withContext(Dispatchers.IO) {
+                                    saveTodayBitmap(context, bitmap)
+                                }
+                                if (saved) {
+                                    Toast.makeText(context, "图片已保存到相册", Toast.LENGTH_SHORT).show()
+                                    previewSavedBitmap = bitmap
+                                } else {
+                                    bitmap.recycle()
+                                    Toast.makeText(context, "保存失败", Toast.LENGTH_SHORT).show()
+                                }
+                            } catch (e: Exception) {
+                                Toast.makeText(context, "保存失败: ${e.message}", Toast.LENGTH_SHORT).show()
+                            }
+                            isShareWorking = false
+                            showShareDialog = false
+                        }
+                    },
+                    enabled = !isShareWorking
+                ) {
+                    Text(if (isShareWorking) "生成中..." else "保存图片")
                 }
             },
             dismissButton = {
                 Row {
-                    TextButton(onClick = {
-                        try {
-                            val bitmap = generateTodayLongScreenshot(
-                                context = context,
-                                userProfile = userProfile,
-                                dailyRecord = dailyRecord,
-                                allRecords = allRecords,
-                                items = items,
-                                selectedDate = selectedDate,
-                                selectedThemeIndex = selectedThemeIndex,
-                                showNotes = shareShowNotes,
-                                maskWeight = shareMaskWeight,
-                                showMeds = shareShowMeds
-                            )
-                            previewShareBitmap = bitmap
-                        } catch (e: Exception) {
-                            Toast.makeText(context, "分享失败: ${e.message}", Toast.LENGTH_SHORT).show()
-                        }
-                        showShareDialog = false
-                    }) {
-                        Text("分享")
+                    TextButton(
+                        onClick = onClick@{
+                            if (isShareWorking) return@onClick
+                            isShareWorking = true
+                            scope.launch {
+                                try {
+                                    val bitmap = withContext(Dispatchers.IO) {
+                                        generateTodayLongScreenshot(
+                                            context = context,
+                                            userProfile = userProfile,
+                                            dailyRecord = dailyRecord,
+                                            allRecords = allRecords,
+                                            items = items,
+                                            selectedDate = selectedDate,
+                                            selectedThemeIndex = selectedThemeIndex,
+                                            showNotes = shareShowNotes,
+                                            maskWeight = shareMaskWeight,
+                                            showMeds = shareShowMeds
+                                        )
+                                    }
+                                    previewShareBitmap = bitmap
+                                } catch (e: Exception) {
+                                    Toast.makeText(context, "分享失败: ${e.message}", Toast.LENGTH_SHORT).show()
+                                }
+                                isShareWorking = false
+                                showShareDialog = false
+                            }
+                        },
+                        enabled = !isShareWorking
+                    ) {
+                        Text(if (isShareWorking) "生成中..." else "分享")
                     }
                     TextButton(onClick = { showShareDialog = false }) {
                         Text("取消")
@@ -847,7 +905,7 @@ fun TodayScreen(
                     },
                     colors = ButtonDefaults.buttonColors(
                         containerColor = dialogAccentColor,
-                        contentColor = Color.White
+                        contentColor = PixelInk
                     )
                 ) {
                     Text("开始计时")
@@ -921,7 +979,7 @@ fun TodayScreen(
                             isTimerRunning = true
                         }
                     },
-                    containerColor = if (isTimerRunning) MaterialTheme.colorScheme.error else Color(0xFF2196F3),
+                    containerColor = if (isTimerRunning) MaterialTheme.colorScheme.error else InfoBlue,
                     contentColor = Color.White,
                     shape = CircleShape,
                     elevation = FloatingActionButtonDefaults.elevation(8.dp)
@@ -937,7 +995,7 @@ fun TodayScreen(
                         onAddClick(selectedDate)
                     },
                     containerColor = dialogAccentColor,
-                    contentColor = Color.White,
+                    contentColor = PixelInk,
                     shape = CircleShape,
                     elevation = FloatingActionButtonDefaults.elevation(8.dp)
                 ) {
@@ -959,8 +1017,8 @@ fun TodayScreen(
                 modifier = Modifier
                     .padding(padding)
                     .fillMaxSize(),
-                contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
             item {
                 val dateNavColor = if (isDarkTheme) Color.White else dashboardOnCardColor
@@ -973,11 +1031,14 @@ fun TodayScreen(
                     IconButton(onClick = {
                         val cal = Calendar.getInstance()
                         val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-                        try {
-                            cal.time = sdf.parse(selectedDate)!!
+                        val parsedDate = try { sdf.parse(selectedDate) } catch (_: Exception) { null }
+                        if (parsedDate != null) {
+                            cal.time = parsedDate
                             cal.add(Calendar.DAY_OF_YEAR, -1)
                             onDateChange(sdf.format(cal.time))
-                        } catch (_: Exception) {}
+                        } else {
+                            Toast.makeText(context, "日期格式错误，无法切换", Toast.LENGTH_SHORT).show()
+                        }
                     }) {
                         Icon(Icons.Default.ArrowBack, "Previous Day", tint = dateNavColor)
                     }
@@ -987,7 +1048,7 @@ fun TodayScreen(
                             .weight(1f)
                             .clip(RoundedCornerShape(8.dp))
                             .clickable { showDatePicker = true }
-                            .padding(vertical = 8.dp),
+                            .padding(vertical = 4.dp),
                         horizontalArrangement = Arrangement.Center
                     ) {
                         Text(
@@ -1019,15 +1080,31 @@ fun TodayScreen(
                     IconButton(onClick = {
                         val cal = Calendar.getInstance()
                         val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-                        try {
-                            cal.time = sdf.parse(selectedDate)!!
+                        val parsedDate = try { sdf.parse(selectedDate) } catch (_: Exception) { null }
+                        if (parsedDate != null) {
+                            cal.time = parsedDate
                             cal.add(Calendar.DAY_OF_YEAR, 1)
                             onDateChange(sdf.format(cal.time))
-                        } catch (_: Exception) {}
+                        } else {
+                            Toast.makeText(context, "日期格式错误，无法切换", Toast.LENGTH_SHORT).show()
+                        }
                     }) {
                         Icon(Icons.Default.ArrowForward, "Next Day", tint = dateNavColor)
                     }
                 }
+            }
+            item {
+                PixelCatStatusCard(
+                    status = resolvePixelCatStatus(
+                        intake = dailyRecord?.totalIntake ?: 0,
+                        burned = dailyRecord?.totalBurned ?: 0,
+                        target = userProfile?.dailyCalorieTarget ?: 0,
+                        water = dailyRecord?.totalWater ?: 0,
+                        sleepMinutes = dailyRecord?.sleepDuration ?: 0
+                    ),
+                    containerColor = dashboardCardColor,
+                    modifier = Modifier.fillMaxWidth()
+                )
             }
             // Timer Status Banner
             if (isTimerRunning && timerStartTime != null) {
@@ -1051,7 +1128,7 @@ fun TodayScreen(
 
             // Weight Card
             item {
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Box(modifier = Modifier.weight(1f)) {
                         WeightCard(
                             weight = dailyRecord?.weight,
@@ -1089,10 +1166,10 @@ fun TodayScreen(
                     val medTimes = if (userProfile.medicationTimes.isBlank()) emptyList<String>() else userProfile.medicationTimes.split(",").map { it.trim() }
                     val taken = if (dailyRecord?.medicationTaken.isNullOrBlank()) emptyList<String>() else dailyRecord!!.medicationTaken.split(",").map { it.trim() }
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        meds.chunked(3).forEach { rowMeds ->
+                        meds.chunked(3).forEachIndexed { chunkIndex, rowMeds ->
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 rowMeds.forEachIndexed { rowIndex, med ->
-                                    val globalIndex = meds.indexOf(med)
+                                    val globalIndex = chunkIndex * 3 + rowIndex
                                     val isTaken = globalIndex < taken.size && taken[globalIndex] == "1"
                                     val medTime = if (globalIndex < medTimes.size) medTimes[globalIndex] else ""
                                     Box(modifier = Modifier.weight(1f)) {
@@ -1141,13 +1218,13 @@ fun TodayScreen(
             }
             foodSections.forEach { section ->
                 item { RecordSectionHeader(section.first, section.third.sumOf { it.calories }, section.second) }
-                items(section.third) { item ->
+                items(section.third, key = { it.id }) { item ->
                     RecordItem(item = item, onDelete = onDeleteItem, onEdit = { editingItem = it }, onImagePreview = { previewImagePath = it }, containerColor = dashboardCardColor, onContainerColor = dashboardOnCardColor, isDarkTheme = isDarkTheme)
                 }
             }
             if (exerciseItems.isNotEmpty()) {
                 item { RecordSectionHeader("运动", exerciseItems.sumOf { it.calories }, MaterialTheme.colorScheme.secondary) }
-                items(exerciseItems) { item ->
+                items(exerciseItems, key = { it.id }) { item ->
                     RecordItem(item = item, onDelete = onDeleteItem, onEdit = { editingItem = it }, onImagePreview = { previewImagePath = it }, containerColor = dashboardCardColor, onContainerColor = dashboardOnCardColor, isDarkTheme = isDarkTheme)
                 }
             }
@@ -1268,7 +1345,9 @@ fun EditRecordDialog(
     var pendingCameraUri by remember { mutableStateOf<Uri?>(null) }
     var showMediaSourceDialog by remember { mutableStateOf(false) }
     var currentImagePath by remember { mutableStateOf(item.imageUrl) }
+    var isSaving by remember { mutableStateOf(false) }
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
     val imagePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
     ) { uri ->
@@ -1348,7 +1427,7 @@ fun EditRecordDialog(
             colors = CardDefaults.cardColors(containerColor = containerColor),
             modifier = Modifier.fillMaxWidth()
         ) {
-            Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
                 Text("编辑记录", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = onContainerColor)
                 
                 OutlinedTextField(
@@ -1356,7 +1435,7 @@ fun EditRecordDialog(
                     onValueChange = { name = it },
                     label = { Text("名称") },
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth().compactInput()
                 )
                 
                 OutlinedTextField(
@@ -1365,7 +1444,7 @@ fun EditRecordDialog(
                     label = { Text("卡路里 (kcal)") },
                     singleLine = true,
                     keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal),
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth().compactInput()
                 )
                 
                 if (!isExercise) {
@@ -1376,7 +1455,7 @@ fun EditRecordDialog(
                             label = { Text("碳水") },
                             singleLine = true,
                             keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal),
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier.weight(1f).compactInput()
                         )
                         OutlinedTextField(
                             value = protein,
@@ -1384,7 +1463,7 @@ fun EditRecordDialog(
                             label = { Text("蛋白质") },
                             singleLine = true,
                             keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal),
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier.weight(1f).compactInput()
                         )
                         OutlinedTextField(
                             value = fat,
@@ -1392,7 +1471,7 @@ fun EditRecordDialog(
                             label = { Text("脂肪") },
                             singleLine = true,
                             keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal),
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier.weight(1f).compactInput()
                         )
                     }
                 }
@@ -1404,14 +1483,14 @@ fun EditRecordDialog(
                             onValueChange = { startTimeStr = it },
                             label = { Text("开始时间") },
                             singleLine = true,
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier.weight(1f).compactInput()
                         )
                         OutlinedTextField(
                             value = endTimeStr,
                             onValueChange = { endTimeStr = it },
                             label = { Text("结束时间") },
                             singleLine = true,
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier.weight(1f).compactInput()
                         )
                     }
                 } else {
@@ -1420,7 +1499,7 @@ fun EditRecordDialog(
                         onValueChange = { time = it },
                         label = { Text("时间") },
                         singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth().compactInput()
                     )
                     Box {
                         OutlinedTextField(
@@ -1429,7 +1508,7 @@ fun EditRecordDialog(
                             readOnly = true,
                             label = { Text("类别") },
                             placeholder = { Text("请选择类别") },
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier.fillMaxWidth().compactInput(),
                             leadingIcon = { Icon(Icons.Default.Restaurant, null) },
                             singleLine = true
                         )
@@ -1505,7 +1584,7 @@ fun EditRecordDialog(
                         onClick = onDismiss,
                         colors = ButtonDefaults.buttonColors(
                             containerColor = accentColor.copy(alpha = 0.72f),
-                            contentColor = Color.White
+                            contentColor = PixelInk
                         )
                     ) {
                         Text("取消")
@@ -1513,46 +1592,84 @@ fun EditRecordDialog(
                     Spacer(modifier = Modifier.width(8.dp))
                     Button(
                         onClick = {
-                        val cal = CalorieUtils.parseDecimalInput(calories)
-                        val c = CalorieUtils.parseDecimalInput(carbs) ?: 0.0
-                        val p = CalorieUtils.parseDecimalInput(protein) ?: 0.0
-                        val f = CalorieUtils.parseDecimalInput(fat) ?: 0.0
-                        val finalImagePath = selectedImageUri?.let { ImageStorageUtils.compressAndSaveImage(context, it) } ?: currentImagePath
-                        
-                        if (name.isNotBlank() && cal != null) {
-                            if (isExercise) {
-                                // Recalculate duration and update notes
-                                var newNotes = notes
-                                try {
-                                    val sdf = SimpleDateFormat("HH:mm", Locale.getDefault())
-                                    val start = sdf.parse(startTimeStr)
-                                    val end = sdf.parse(endTimeStr)
-                                    if (start != null && end != null) {
-                                        var diff = end.time - start.time
-                                        if (diff < 0) diff += 24 * 60 * 60 * 1000
-                                        val minutes = diff / (1000 * 60)
-                                        // Update duration in notes. Regex replace or append?
-                                        // Simple approach: Replace existing duration string or append
-                                        if (newNotes.contains("时长:")) {
-                                            newNotes = newNotes.replace(Regex("时长:\\s*\\d+\\s*分钟"), "时长: ${minutes}分钟")
-                                        } else {
-                                            newNotes = if (newNotes.isBlank()) "时长: ${minutes}分钟" else "$newNotes, 时长: ${minutes}分钟"
+                            val cal = CalorieUtils.parseDecimalInput(calories)
+                            val c = CalorieUtils.parseDecimalInput(carbs) ?: 0.0
+                            val p = CalorieUtils.parseDecimalInput(protein) ?: 0.0
+                            val f = CalorieUtils.parseDecimalInput(fat) ?: 0.0
+
+                            if (name.isNotBlank() && cal != null) {
+                                isSaving = true
+                                coroutineScope.launch {
+                                    val finalImagePath = withContext(Dispatchers.IO) {
+                                        selectedImageUri?.let {
+                                            ImageStorageUtils.compressAndSaveImage(context, it)
                                         }
+                                    } ?: currentImagePath
+
+                                    if (isExercise) {
+                                        var newNotes = notes
+                                        try {
+                                            val sdf = SimpleDateFormat("HH:mm", Locale.getDefault())
+                                            val start = sdf.parse(startTimeStr)
+                                            val end = sdf.parse(endTimeStr)
+                                            if (start != null && end != null) {
+                                                var diff = end.time - start.time
+                                                if (diff < 0) diff += 24 * 60 * 60 * 1000
+                                                val minutes = diff / (1000 * 60)
+                                                val durationRegex = Regex("时长[:：]\\s*\\d+\\s*分钟")
+                                                newNotes = if (durationRegex.containsMatchIn(newNotes)) {
+                                                    newNotes.replace(
+                                                        durationRegex,
+                                                        "时长: ${minutes}分钟"
+                                                    )
+                                                } else if (newNotes.isBlank()) {
+                                                    "时长: ${minutes}分钟"
+                                                } else {
+                                                    "$newNotes, 时长: ${minutes}分钟"
+                                                }
+                                            }
+                                        } catch (_: Exception) {
+                                            // Keep the user's notes when the optional time format is invalid.
+                                        }
+                                        onConfirm(
+                                            item.copy(
+                                                name = name,
+                                                calories = cal,
+                                                carbs = 0.0,
+                                                protein = 0.0,
+                                                fat = 0.0,
+                                                time = startTimeStr,
+                                                mealCategory = null,
+                                                notes = newNotes,
+                                                imageUrl = finalImagePath
+                                            )
+                                        )
+                                    } else {
+                                        onConfirm(
+                                            item.copy(
+                                                name = name,
+                                                calories = cal,
+                                                carbs = c,
+                                                protein = p,
+                                                fat = f,
+                                                time = time,
+                                                mealCategory = selectedMealCategory,
+                                                notes = notes,
+                                                imageUrl = finalImagePath
+                                            )
+                                        )
                                     }
-                                } catch (e: Exception) {}
-                                
-                                onConfirm(item.copy(name = name, calories = cal, carbs = 0.0, protein = 0.0, fat = 0.0, time = startTimeStr, mealCategory = null, notes = newNotes, imageUrl = finalImagePath))
-                            } else {
-                                onConfirm(item.copy(name = name, calories = cal, carbs = c, protein = p, fat = f, time = time, mealCategory = selectedMealCategory, notes = notes, imageUrl = finalImagePath))
+                                    isSaving = false
+                                }
                             }
-                        }
-                    },
+                        },
+                        enabled = !isSaving,
                         colors = ButtonDefaults.buttonColors(
                             containerColor = accentColor,
-                            contentColor = Color.White
+                            contentColor = PixelInk
                         )
                     ) {
-                        Text("保存")
+                        Text(if (isSaving) "处理中..." else "保存")
                     }
                 }
             }
@@ -1669,7 +1786,7 @@ fun SummaryCard(
         colors = CardDefaults.cardColors(containerColor = containerColor),
         shape = RoundedCornerShape(24.dp)
     ) {
-        Column(modifier = Modifier.padding(24.dp)) {
+        Column(modifier = Modifier.padding(16.dp)) {
             // Target is treated as BMR/Base TDEE, calculated dynamically based on effective weight
             val age = if (userProfile != null && userProfile.birthDate.isNotBlank()) {
                 CalorieUtils.calculateAge(userProfile.birthDate)
@@ -1696,7 +1813,7 @@ fun SummaryCard(
             val balance = intake - (target + burned)
             
             val isSurplus = balance > 0
-            val statusColor = if (isSurplus) MaterialTheme.colorScheme.error else if (isDarkTheme) Color(0xFF81C784) else Color(0xFF2E7D32)
+            val statusColor = if (isSurplus) MaterialTheme.colorScheme.error else deficitColor()
             val statusText = if (isSurplus) "今日热量盈余" else "今日热量缺口"
             val balanceAbs = Math.abs(balance)
 
@@ -1726,7 +1843,7 @@ fun SummaryCard(
                 }
             }
             
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(14.dp))
             
             // Visualization Bar (Center Zero)
             // Let's make a simple bar: [ Intake ] vs [ Target + Burned ]
@@ -1753,7 +1870,7 @@ fun SummaryCard(
                 
                 // Macros (if enabled)
                 if (userProfile?.showMacros == true) {
-                    Spacer(modifier = Modifier.height(16.dp))
+                    Spacer(modifier = Modifier.height(10.dp))
                     
                     val macroTargets = CalorieUtils.calculateMacroTargets(
                         gender = userProfile.gender,
@@ -1776,28 +1893,28 @@ fun SummaryCard(
                             label = "碳水化合物",
                             current = currentCarbs,
                             target = macroTargets.first,
-                            color = Color(0xFF69F0AE), // Cyan/Greenish
+                            color = MacroProtein, // Cyan/Greenish
                             modifier = Modifier.weight(1f).padding(end = 4.dp)
                         )
                         MacroProgressBar(
                             label = "蛋白质",
                             current = currentProtein,
                             target = macroTargets.second,
-                            color = Color(0xFF40C4FF), // Light Blue
+                            color = MacroCarb, // Light Blue
                             modifier = Modifier.weight(1f).padding(horizontal = 4.dp)
                         )
                         MacroProgressBar(
                             label = "脂肪",
                             current = currentFat,
                             target = macroTargets.third,
-                            color = Color(0xFFFF8A80), // Pink/Red
+                            color = MacroFat, // Pink/Red
                             modifier = Modifier.weight(1f).padding(start = 4.dp)
                         )
                     }
                 }
             }
             
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(14.dp))
             
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -1863,8 +1980,8 @@ fun WeightCard(weight: Float?, onEdit: () -> Unit, containerColor: Color, onCont
         shape = RoundedCornerShape(16.dp)
     ) {
         Column(
-            modifier = Modifier.padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            modifier = Modifier.padding(10.dp),
+            verticalArrangement = Arrangement.spacedBy(5.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -1915,8 +2032,8 @@ fun WaterCard(water: Int, onEdit: () -> Unit, containerColor: Color, onContainer
         shape = RoundedCornerShape(16.dp)
     ) {
         Column(
-            modifier = Modifier.padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            modifier = Modifier.padding(10.dp),
+            verticalArrangement = Arrangement.spacedBy(5.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -1963,8 +2080,8 @@ fun SleepCard(duration: Int, onEdit: () -> Unit, containerColor: Color, onContai
         shape = RoundedCornerShape(16.dp)
     ) {
         Column(
-            modifier = Modifier.padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            modifier = Modifier.padding(10.dp),
+            verticalArrangement = Arrangement.spacedBy(5.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -2030,7 +2147,7 @@ fun MedicationCard(
     // Warning/alerting colors for not-taken, calming colors for taken
     val warnAccent = if (isDarkTheme) Color(0xFFFFB74D) else Color(0xFFE65100)
     val warnBg = if (isDarkTheme) Color(0xFF3E2723) else Color(0xFFFFF3E0)
-    val calmAccent = if (isDarkTheme) Color(0xFF81C784) else Color(0xFF2E7D32)
+    val calmAccent = deficitColor()
     val calmBg = if (isDarkTheme) Color(0xFF1B3A1E) else Color(0xFFE8F5E9)
     val bgColor = if (isTaken) calmBg else warnBg
     val borderColor = if (isTaken) calmAccent.copy(alpha = 0.5f) else warnAccent.copy(alpha = 0.55f)
@@ -2090,9 +2207,13 @@ fun MedicationCheckDialog(
     onContainerColor: Color,
     accentColor: Color
 ) {
-    val checked = remember { mutableStateListOf<Boolean>().apply { addAll(taken) } }
-    // Pad to match medication count
-    while (checked.size < medications.size) checked.add(false)
+    // Pad to match medication count inside remember (no snapshot writes during composition)
+    val checked = remember(medications) {
+        mutableStateListOf<Boolean>().apply {
+            addAll(taken)
+            repeat((medications.size - taken.size).coerceAtLeast(0)) { add(false) }
+        }
+    }
 
     Dialog(onDismissRequest = onDismiss) {
         Card(
@@ -2135,7 +2256,7 @@ fun MedicationCheckDialog(
                         onClick = {
                             onConfirm(checked.map { if (it) "1" else "0" })
                         },
-                        colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = Color.White)
+                        colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = PixelInk)
                     ) { Text("保存") }
                 }
             }
@@ -2211,10 +2332,26 @@ private fun loadEmojiKeywordRulesFromFile(context: Context): List<Pair<String, L
     }
 }
 
+/**
+ * 线程安全缓存 emoji 规则，避免每条记录每次重组都重读 assets 文件。
+ * （分享长图在 IO 线程也会调用，故用 @Volatile + synchronized。）
+ */
+private object EmojiKeywordRulesCache {
+    @Volatile
+    private var cached: List<Pair<String, List<String>>>? = null
+
+    fun get(context: Context): List<Pair<String, List<String>>> {
+        cached?.let { return it }
+        return synchronized(this) {
+            cached ?: loadEmojiKeywordRulesFromFile(context.applicationContext).also { cached = it }
+        }
+    }
+}
+
 fun resolveDefaultEmoji(context: Context, name: String, type: String): String {
     val locale = Locale.getDefault()
     val primaryText = name.trim().lowercase(locale)
-    val rules = loadEmojiKeywordRulesFromFile(context)
+    val rules = EmojiKeywordRulesCache.get(context)
 
     rules.lastOrNull { (_, keywords) ->
         keywords.any { keyword ->
@@ -2404,7 +2541,7 @@ fun TimerStatusCard(
                     .background(accentColor.copy(alpha = if (isDarkTheme) 0.85f else 1f)),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(Icons.Default.FitnessCenter, null, tint = Color.White)
+                Icon(Icons.Default.FitnessCenter, null, tint = PixelInk)
             }
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
@@ -2536,7 +2673,7 @@ fun ExerciseTimerDialog(
                         },
                         colors = ButtonDefaults.buttonColors(
                             containerColor = accentColor,
-                            contentColor = Color.White
+                            contentColor = PixelInk
                         )
                     ) {
                         Text("保存记录")
@@ -3063,11 +3200,12 @@ fun generateTodayLongScreenshot(
     }
 
     fun decodeThumbnail(path: String): Bitmap? {
+        // Icons are drawn at ~108px diameter (itemH=126); decode at 2x target size to avoid OOM
         return try {
             if (path.startsWith("content://")) {
-                context.contentResolver.openInputStream(Uri.parse(path))?.use { BitmapFactory.decodeStream(it) }
+                BitmapUtils.decodeSampledFromUri(context.contentResolver, Uri.parse(path), 216)
             } else {
-                BitmapFactory.decodeFile(path)
+                BitmapUtils.decodeSampledFromPath(path, 216)
             }
         } catch (_: Exception) {
             null
@@ -3274,52 +3412,59 @@ fun generateTodayLongScreenshot(
     return bitmap
 }
 
+// 注意：本函数包含磁盘 IO，请在后台线程调用；Toast 由调用方在主线程展示。
 fun saveTodayBitmap(context: Context, bitmap: Bitmap): Boolean {
     val filename = "MeowFit_Today_${System.currentTimeMillis()}.png"
-    var outputStream: java.io.OutputStream? = null
-    try {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+    var insertedUri: Uri? = null
+    fun cleanupFailedInsert() {
+        insertedUri?.let { uri ->
+            runCatching { context.contentResolver.delete(uri, null, null) }
+        }
+        insertedUri = null
+    }
+    return try {
+        val outputStream = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val values = ContentValues().apply {
                 put(MediaStore.MediaColumns.DISPLAY_NAME, filename)
                 put(MediaStore.MediaColumns.MIME_TYPE, "image/png")
                 put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/MeowFit")
             }
             val uri = context.contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
-            if (uri != null) {
-                outputStream = context.contentResolver.openOutputStream(uri)
+                ?: return false
+            insertedUri = uri
+            context.contentResolver.openOutputStream(uri) ?: run {
+                cleanupFailedInsert() // Avoid leaving a 0-byte broken entry in the gallery
+                return false
             }
         } else {
             val picturesDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES)
             val appDir = File(picturesDir, "MeowFit")
             if (!appDir.exists()) appDir.mkdirs()
             val imageFile = File(appDir, filename)
-            outputStream = FileOutputStream(imageFile)
+            FileOutputStream(imageFile)
         }
 
-        if (outputStream != null) {
-            bitmap.compress(Bitmap.CompressFormat.PNG, 100, outputStream)
-            outputStream.close()
-            Toast.makeText(context, "图片已保存到相册", Toast.LENGTH_SHORT).show()
-            return true
-        } else {
-            Toast.makeText(context, "保存失败", Toast.LENGTH_SHORT).show()
-            return false
-        }
+        val success = outputStream.use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        if (!success) cleanupFailedInsert()
+        success
     } catch (e: Exception) {
-        Toast.makeText(context, "保存失败: ${e.message}", Toast.LENGTH_SHORT).show()
-        return false
+        cleanupFailedInsert()
+        false
     }
 }
 
-fun shareTodayBitmap(context: Context, bitmap: Bitmap) {
+// PNG 压缩写文件在 IO 线程执行，随后回到主线程发起分享 Intent。
+suspend fun shareTodayBitmap(context: Context, bitmap: Bitmap) {
     try {
-        val cachePath = File(context.cacheDir, "images")
-        cachePath.mkdirs()
-        val file = File(cachePath, "share_today.png")
-        FileOutputStream(file).use { stream ->
-            bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)
+        val uri = withContext(Dispatchers.IO) {
+            val cachePath = File(context.cacheDir, "images")
+            cachePath.mkdirs()
+            val file = File(cachePath, "share_today.png")
+            FileOutputStream(file).use { stream ->
+                bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)
+            }
+            FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
         }
-        val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
         val shareIntent = Intent(Intent.ACTION_SEND).apply {
             type = "image/png"
             putExtra(Intent.EXTRA_STREAM, uri)
@@ -3378,7 +3523,7 @@ fun MedicationReminderDialog(
                 onClick = onTakeAll,
                 colors = ButtonDefaults.buttonColors(
                     containerColor = accentColor,
-                    contentColor = Color.White
+                    contentColor = PixelInk
                 ),
                 shape = RoundedCornerShape(10.dp)
             ) {

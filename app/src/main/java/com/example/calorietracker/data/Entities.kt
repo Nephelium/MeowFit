@@ -70,6 +70,14 @@ data class CalorieItemEntity(
     val mealCategory: String? = null,
     val imageUrl: String? = null,
     val notes: String? = null,
+    val nutritionReferenceAmount: Double? = null,
+    val nutritionActualAmount: Double? = null,
+    val nutritionAmountUnit: String? = null,
+    val nutritionReferenceEnergy: Double? = null,
+    val nutritionEnergyUnit: String? = null,
+    val nutritionReferenceCarbs: Double? = null,
+    val nutritionReferenceProtein: Double? = null,
+    val nutritionReferenceFat: Double? = null,
     val createdAt: String
 )
 

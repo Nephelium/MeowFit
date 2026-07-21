@@ -1,12 +1,12 @@
 package com.example.calorietracker
 
-import android.app.Activity
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,25 +20,20 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AutoGraph
-import androidx.compose.material.icons.filled.DateRange
-import androidx.compose.material.icons.filled.FitnessCenter
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Settings
+import androidx.compose.foundation.shape.CutCornerShape as RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -49,7 +44,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -65,11 +62,18 @@ import com.example.calorietracker.ui.BackupViewModel
 import com.example.calorietracker.ui.BackupViewModelFactory
 import com.example.calorietracker.ui.screens.*
 import com.example.calorietracker.ui.theme.CalorieTrackerTheme
+import com.example.calorietracker.ui.theme.AppFontMode
+import com.example.calorietracker.ui.theme.FontPreferences
 import com.example.calorietracker.ui.AiViewModel
+import com.example.calorietracker.ui.components.PixelBackdrop
+import com.example.calorietracker.ui.components.PixelNavDestination
+import com.example.calorietracker.ui.components.PixelNavIcon
 import com.example.calorietracker.util.IconManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import android.graphics.BitmapFactory
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -89,18 +93,33 @@ class MainActivity : ComponentActivity() {
         val aiViewModel: AiViewModel by viewModels()
 
         setContent {
-            CalorieTrackerTheme {
+            val context = LocalContext.current
+            var fontMode by remember { mutableStateOf(FontPreferences.read(context)) }
+            CalorieTrackerTheme(fontMode = fontMode) {
                 val userProfile by viewModel.userProfile.collectAsState()
-                
-                // If no profile, force setup first (simplified flow)
-                if (userProfile == null) {
+                val isProfileLoaded by viewModel.isProfileLoaded.collectAsState()
+
+                if (!isProfileLoaded) {
+                    // Wait for the first DB emission to avoid flashing the setup screen
+                    PixelBackdrop(modifier = Modifier.fillMaxSize()) {}
+                } else if (userProfile == null) {
+                    // If no profile, force setup first (simplified flow)
                     ProfileSetupScreen(
                         onSave = { profile ->
                             viewModel.saveProfile(profile)
                         }
                     )
                 } else {
-                    MainApp(viewModel, aiViewModel, backupViewModel)
+                    MainApp(
+                        viewModel = viewModel,
+                        aiViewModel = aiViewModel,
+                        backupViewModel = backupViewModel,
+                        fontMode = fontMode,
+                        onFontModeChange = { mode ->
+                            FontPreferences.write(context, mode)
+                            fontMode = mode
+                        }
+                    )
                 }
             }
         }
@@ -108,19 +127,19 @@ class MainActivity : ComponentActivity() {
 }
 
 private object BottomNavTuning {
-    val barHeight = 60.dp
-    val iconSize = 22.dp
-    val itemVerticalOffset = (-5).dp
+    val barHeight = 64.dp
+    val iconSize = 36.dp
+    val itemVerticalOffset = 0.dp
     val iconVerticalOffset = 0.dp
-    val iconBottomPadding = 1.dp
-    val labelVerticalOffset = 14.dp
-    val labelTopPadding = 1.dp
-    val labelFontSize = 12.sp
-    val labelLineHeight = 12.sp
+    val iconBottomPadding = 0.dp
+    val labelVerticalOffset = 0.dp
+    val labelTopPadding = 0.dp
+    val labelFontSize = 11.sp
+    val labelLineHeight = 14.sp
     const val selectedIndicatorBlendToWhiteLight = 0.05f
     const val selectedIndicatorBlendToBlackDark = 0.05f
-    const val selectedIndicatorAlphaLight = 0.8f
-    const val selectedIndicatorAlphaDark = 0.8f
+    const val selectedIndicatorAlphaLight = 0.18f
+    const val selectedIndicatorAlphaDark = 0.24f
 }
 
 private object ScreenOffsetTuning {
@@ -145,7 +164,13 @@ private fun Modifier.upwardOffsetWithoutBottomGap(offsetY: Dp): Modifier = this.
 )
 
 @Composable
-fun MainApp(viewModel: MainViewModel, aiViewModel: AiViewModel, backupViewModel: BackupViewModel) {
+fun MainApp(
+    viewModel: MainViewModel,
+    aiViewModel: AiViewModel,
+    backupViewModel: BackupViewModel,
+    fontMode: AppFontMode,
+    onFontModeChange: (AppFontMode) -> Unit
+) {
     val navController = rememberNavController()
     val userProfile by viewModel.userProfile.collectAsState()
     val selectedThemeIndex = userProfile?.selectedTodayThemeIndex ?: 0
@@ -154,26 +179,20 @@ fun MainApp(viewModel: MainViewModel, aiViewModel: AiViewModel, backupViewModel:
     val isDarkTheme = androidx.compose.foundation.isSystemInDarkTheme()
     val accentColor = remember(selectedTheme, isDarkTheme) { themedAccentColor(selectedTheme, isDarkTheme) }
     val navCardColor = remember(selectedTheme, isDarkTheme) { themedDashboardCardColor(selectedTheme, isDarkTheme) }
+    val navBackgroundColor = remember(selectedTheme, isDarkTheme) {
+        Color(if (isDarkTheme) selectedTheme.darkBgColor else selectedTheme.lightBgColor)
+    }
     val navOnCardColor = com.example.calorietracker.ui.theme.onCardColor(navCardColor, isDarkTheme)
-    val selectedIndicatorColor = remember(navCardColor, isDarkTheme) {
-        if (isDarkTheme) {
-            lerp(navCardColor, Color.Black, BottomNavTuning.selectedIndicatorBlendToBlackDark)
-                .copy(alpha = BottomNavTuning.selectedIndicatorAlphaDark)
-        } else {
-            lerp(navCardColor, Color.White, BottomNavTuning.selectedIndicatorBlendToWhiteLight)
-                .copy(alpha = BottomNavTuning.selectedIndicatorAlphaLight)
-        }
+    val selectedIndicatorColor = remember(accentColor, isDarkTheme) {
+        accentColor.copy(
+            alpha = if (isDarkTheme) BottomNavTuning.selectedIndicatorAlphaDark
+            else BottomNavTuning.selectedIndicatorAlphaLight
+        )
     }
-    val view = LocalView.current
     val context = LocalContext.current
-    SideEffect {
-        val window = (view.context as Activity).window
-        WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !isDarkTheme
-        WindowCompat.getInsetsController(window, view).isAppearanceLightNavigationBars = !isDarkTheme
-    }
 
     // Auto-update check on startup (only when online)
-    val currentVersion = "1.5.2"
+    val currentVersion = BuildConfig.VERSION_NAME
     val autoRelease by viewModel.autoUpdateRelease.collectAsState()
     LaunchedEffect(Unit) {
         viewModel.checkAutoUpdate(context, currentVersion)
@@ -191,9 +210,9 @@ fun MainApp(viewModel: MainViewModel, aiViewModel: AiViewModel, backupViewModel:
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text("新版本: ${autoRelease!!.tagName}")
                     Text("当前版本: $currentVersion")
-                    if (autoRelease!!.body.isNotBlank()) {
+                    if (autoRelease?.body.orEmpty().isNotBlank()) {
                         Text(
-                            autoRelease!!.body.take(300),
+                            autoRelease?.body.orEmpty().take(300),
                             style = MaterialTheme.typography.bodySmall,
                             color = navOnCardColor.copy(alpha = 0.7f)
                         )
@@ -239,84 +258,94 @@ fun MainApp(viewModel: MainViewModel, aiViewModel: AiViewModel, backupViewModel:
         .fillMaxSize()
         .nestedScroll(scrollConnection)
     ) {
-        TodayBackground(
-            theme = selectedTheme,
-            seed = (selectedThemeIndex + 1) * 1031,
-            isDarkTheme = isDarkTheme,
-            modifier = Modifier
-                .matchParentSize()
-                .blur(if (isDarkTheme) 35.dp else 18.dp)
-        )
+        val navBackStackEntry by navController.currentBackStackEntryAsState()
+        val currentRoute = navBackStackEntry?.destination?.route
+        val topLevelRoutes = remember { setOf("today", "stats", "overview", "analysis", "settings") }
+        val showBottomNavigation = currentRoute in topLevelRoutes
+
+        PixelBackdrop(modifier = Modifier.matchParentSize()) {}
         Scaffold(
         containerColor = Color.Transparent,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         bottomBar = {
-            Box(modifier = Modifier.navigationBarsPadding()) {
-                NavigationBar(
-                    containerColor = navCardColor.copy(alpha = 0.95f),
-                    tonalElevation = 4.dp,
-                    modifier = Modifier.height(BottomNavTuning.barHeight),
-                    windowInsets = WindowInsets(0, 0, 0, 0)
+            if (showBottomNavigation) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(navBackgroundColor)
+                        .navigationBarsPadding()
                 ) {
-                    val navBackStackEntry by navController.currentBackStackEntryAsState()
-                    val currentRoute = navBackStackEntry?.destination?.route
-                    
-                    val items = listOf(
-                        Triple("today", "今日", Icons.Default.Home),
-                        Triple("stats", "运动统计", Icons.Default.FitnessCenter),
-                        Triple("overview", "日历", Icons.Default.DateRange),
-                        Triple("analysis", "分析", Icons.Default.AutoGraph),
-                        Triple("settings", "设置", Icons.Default.Settings)
-                    )
+                    Column(Modifier.fillMaxWidth()) {
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .height(1.dp)
+                                .background(accentColor.copy(alpha = 0.18f))
+                        )
 
-                    items.forEach { (route, label, icon) ->
-                        val selected = currentRoute == route
-                        
-                        NavigationBarItem(
-                            selected = selected,
-                            onClick = {
-                                navController.navigate(route) {
-                                    popUpTo(navController.graph.findStartDestination().id) {
-                                        saveState = true
-                                    }
-                                    launchSingleTop = true
-                                    restoreState = true
-                                }
-                            },
-                            modifier = Modifier.offset(y = BottomNavTuning.itemVerticalOffset),
-                            icon = {
+                        val items = listOf(
+                            Triple("today", "今日", PixelNavDestination.TODAY),
+                            Triple("stats", "运动统计", PixelNavDestination.STATS),
+                            Triple("overview", "日历", PixelNavDestination.CALENDAR),
+                            Triple("analysis", "分析", PixelNavDestination.ANALYSIS),
+                            Triple("settings", "设置", PixelNavDestination.SETTINGS)
+                        )
+
+                        Row(modifier = Modifier.fillMaxWidth().height(BottomNavTuning.barHeight)) {
+                            items.forEach { (route, label, destination) ->
+                                val selected = currentRoute == route
+                                val itemColor = if (selected) accentColor else navOnCardColor.copy(alpha = 0.56f)
                                 Box(
                                     modifier = Modifier
-                                        .padding(bottom = BottomNavTuning.iconBottomPadding)
-                                        .offset(y = BottomNavTuning.iconVerticalOffset)
+                                        .weight(1f)
+                                        .fillMaxHeight()
+                                        .semantics {
+                                            contentDescription = label
+                                            this.selected = selected
+                                        }
+                                        .clickable {
+                                            navController.navigate(route) {
+                                                popUpTo(navController.graph.findStartDestination().id) {
+                                                    saveState = true
+                                                }
+                                                launchSingleTop = true
+                                                restoreState = true
+                                            }
+                                        },
+                                    contentAlignment = Alignment.Center
                                 ) {
-                                    Icon(
-                                        icon,
-                                        contentDescription = label,
-                                        modifier = Modifier.size(BottomNavTuning.iconSize)
-                                    )
+                                    Column(
+                                        modifier = Modifier
+                                            .offset(y = BottomNavTuning.itemVerticalOffset)
+                                            .width(46.dp)
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .background(if (selected) selectedIndicatorColor else Color.Transparent)
+                                            .padding(top = 5.dp, bottom = 4.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally
+                                    ) {
+                                        PixelNavIcon(
+                                            destination = destination,
+                                            color = itemColor,
+                                            modifier = Modifier
+                                                .offset(y = BottomNavTuning.iconVerticalOffset)
+                                                .padding(bottom = BottomNavTuning.iconBottomPadding)
+                                                .size(BottomNavTuning.iconSize)
+                                        )
+                                        Text(
+                                            text = label,
+                                            fontSize = BottomNavTuning.labelFontSize,
+                                            lineHeight = BottomNavTuning.labelLineHeight,
+                                            color = if (selected) MaterialTheme.colorScheme.primary
+                                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 1,
+                                            modifier = Modifier
+                                                .offset(y = BottomNavTuning.labelVerticalOffset)
+                                                .padding(top = BottomNavTuning.labelTopPadding)
+                                        )
+                                    }
                                 }
-                            },
-                            label = {
-                                Text(
-                                    label,
-                                    style = MaterialTheme.typography.labelSmall.copy(
-                                        fontSize = BottomNavTuning.labelFontSize,
-                                        lineHeight = BottomNavTuning.labelLineHeight
-                                    ),
-                                    modifier = Modifier
-                                        .padding(top = BottomNavTuning.labelTopPadding)
-                                        .offset(y = BottomNavTuning.labelVerticalOffset)
-                                )
-                            },
-                            colors = NavigationBarItemDefaults.colors(
-                                selectedIconColor = navOnCardColor,
-                                selectedTextColor = accentColor,
-                                indicatorColor = selectedIndicatorColor,
-                                unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        )
+                            }
+                        }
                     }
                 }
             }
@@ -397,7 +426,8 @@ fun MainApp(viewModel: MainViewModel, aiViewModel: AiViewModel, backupViewModel:
                 ) {
                     StatisticsScreen(
                         allItems = allItems,
-                        selectedThemeIndex = selectedThemeIndex
+                        selectedThemeIndex = selectedThemeIndex,
+                        weekStartDay = userProfile?.weekStartDay ?: java.util.Calendar.SUNDAY
                     )
                 }
             }
@@ -494,6 +524,7 @@ fun MainApp(viewModel: MainViewModel, aiViewModel: AiViewModel, backupViewModel:
                 val allItems by viewModel.allCalorieItems.collectAsState()
                 val updateStatus by viewModel.updateStatus.collectAsState()
                 val context = LocalContext.current
+                val iconScope = rememberCoroutineScope()
                 var iconVersion by remember { mutableStateOf(0L) }
                 val hasCustomIcon = remember(iconVersion) { IconManager.hasCustomIcon(context) }
 
@@ -501,12 +532,11 @@ fun MainApp(viewModel: MainViewModel, aiViewModel: AiViewModel, backupViewModel:
                     ActivityResultContracts.GetContent()
                 ) { uri ->
                     if (uri != null) {
-                        val inputStream = context.contentResolver.openInputStream(uri)
-                        val bitmap = inputStream?.use { BitmapFactory.decodeStream(it) }
-                        inputStream?.close()
-                        if (bitmap != null) {
-                            IconManager.saveCustomIcon(context, bitmap)
-                            iconVersion++
+                        iconScope.launch {
+                            val saved = withContext(Dispatchers.IO) {
+                                IconManager.saveCustomIcon(context, uri)
+                            }
+                            if (saved) iconVersion++
                         }
                     }
                 }
@@ -542,7 +572,9 @@ fun MainApp(viewModel: MainViewModel, aiViewModel: AiViewModel, backupViewModel:
                             IconManager.deleteCustomIcon(context)
                             iconVersion++
                         },
-                        hasCustomIcon = hasCustomIcon
+                        hasCustomIcon = hasCustomIcon,
+                        fontMode = fontMode,
+                        onFontModeChange = onFontModeChange
                     )
                 }
             }
@@ -580,15 +612,20 @@ fun MainApp(viewModel: MainViewModel, aiViewModel: AiViewModel, backupViewModel:
             ) { backStackEntry ->
                 val date = backStackEntry.arguments?.getString("date")
                 val userProfile by viewModel.userProfile.collectAsState()
+                val foodTemplates by viewModel.foodTemplates.collectAsState()
                 AddEntryScreen(
                     targetDate = date ?: com.example.calorietracker.util.CalorieUtils.getTodayString(),
                     aiViewModel = aiViewModel,
                     selectedThemeIndex = selectedThemeIndex,
                     userWeight = userProfile?.weight ?: 70f,
                     showMacros = userProfile?.showMacros ?: false,
+                    foodTemplates = foodTemplates,
+                    onSaveFoodTemplate = viewModel::saveFoodTemplate,
+                    onDeleteFoodTemplate = viewModel::deleteFoodTemplate,
                     onSave = { items ->
-                        items.forEach { item ->
-                            viewModel.addRecordItem(
+                        viewModel.addRecordItems(
+                            drafts = items.map { item ->
+                                com.example.calorietracker.data.RecordItemDraft(
                                 type = item.type,
                                 name = item.name,
                                 calories = item.calories,
@@ -599,9 +636,18 @@ fun MainApp(viewModel: MainViewModel, aiViewModel: AiViewModel, backupViewModel:
                                 mealCategory = item.mealCategory,
                                 notes = item.notes,
                                 imageUrl = item.imagePath,
-                                targetDate = date
+                                nutritionReferenceAmount = item.nutritionReferenceAmount,
+                                nutritionActualAmount = item.nutritionActualAmount,
+                                nutritionAmountUnit = item.nutritionAmountUnit,
+                                nutritionReferenceEnergy = item.nutritionReferenceEnergy,
+                                nutritionEnergyUnit = item.nutritionEnergyUnit,
+                                nutritionReferenceCarbs = item.nutritionReferenceCarbs,
+                                nutritionReferenceProtein = item.nutritionReferenceProtein,
+                                nutritionReferenceFat = item.nutritionReferenceFat
+                                )
+                            },
+                            targetDate = date ?: com.example.calorietracker.util.CalorieUtils.getTodayString()
                             )
-                        }
                         navController.popBackStack()
                     },
                     onCancel = { navController.popBackStack() }

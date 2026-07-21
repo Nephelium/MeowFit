@@ -4,7 +4,7 @@ import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CutCornerShape as RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -23,6 +23,10 @@ import com.example.calorietracker.CalorieTrackerApp
 import com.example.calorietracker.data.*
 import com.example.calorietracker.data.ai.AiService
 import com.example.calorietracker.ui.AiViewModel
+import com.example.calorietracker.ui.components.PixelJournalBanner
+import com.example.calorietracker.ui.components.PixelCat
+import com.example.calorietracker.ui.components.PixelCatMood
+import com.example.calorietracker.ui.theme.OfficialGreen
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
 import java.time.DayOfWeek
@@ -64,7 +68,7 @@ fun buildWeeklyDataText(
     allItems: List<CalorieItemEntity>,
     userProfile: UserProfileEntity?
 ): String {
-    val monday = LocalDate.parse(weekStart)
+    val monday = try { LocalDate.parse(weekStart) } catch (_: Exception) { getCurrentWeekMonday() }
     val sunday = getWeekSunday(monday)
 
     val weekRecords = records.filter { r ->
@@ -279,7 +283,7 @@ fun AnalysisScreen(
     // Check if first visit - show consent dialog
     val consentKey = "analysis_consent_given"
     val prefs = remember { context.getSharedPreferences("analysis_prefs", android.content.Context.MODE_PRIVATE) }
-    val consentGiven = remember { prefs.getBoolean(consentKey, false) }
+    var consentGiven by remember { mutableStateOf(prefs.getBoolean(consentKey, false)) }
 
     LaunchedEffect(Unit) {
         if (!consentGiven) {
@@ -312,13 +316,14 @@ fun AnalysisScreen(
                 Text(
                     "分析板块会读取你每周的饮食、运动、睡眠、饮水和体重数据，" +
                     "通过 AI 为你生成详细的周报分析，包括健康评估、饮食建议和运动计划。\n\n" +
-                    "同意后，每周一系统会自动为你生成上周的总结。你也可以随时手动生成。\n\n" +
+                    "同意后，进入分析页时会自动补生成上周总结，你也可以随时手动生成。\n\n" +
                     "是否开启？"
                 )
             },
             confirmButton = {
                 TextButton(onClick = {
                     prefs.edit().putBoolean(consentKey, true).apply()
+                    consentGiven = true
                     showConsentDialog = false
                     autoGenerateAfterConsent = true
                 }) {
@@ -338,13 +343,20 @@ fun AnalysisScreen(
         )
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding())
-            .padding(16.dp)
-    ) {
+    Box(modifier = Modifier.fillMaxSize()) {
+        TodayBackground(
+            theme = selectedTheme,
+            seed = (selectedThemeIndex + 1) * 1597,
+            isDarkTheme = isDarkTheme,
+            modifier = Modifier.matchParentSize()
+        )
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding())
+                .padding(horizontal = 12.dp, vertical = 8.dp)
+        ) {
         Spacer(modifier = Modifier.height(4.dp))
         // Header row with title + compact toggle
         Row(
@@ -362,6 +374,14 @@ fun AnalysisScreen(
         }
 
         Spacer(modifier = Modifier.height(6.dp))
+
+        PixelJournalBanner(
+            title = "猫猫周报站",
+            subtitle = "把饮食、运动与睡眠拼成一周的小故事",
+            accentColor = accentColor
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
 
         // Year navigator
         Row(
@@ -401,7 +421,7 @@ fun AnalysisScreen(
                         "${m}月",
                         modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
                         style = MaterialTheme.typography.labelMedium,
-                        color = if (isSelected) Color.White else onCardColor.copy(alpha = 0.8f),
+                        color = if (isSelected) MaterialTheme.colorScheme.onPrimary else onCardColor.copy(alpha = 0.8f),
                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
                     )
                 }
@@ -449,7 +469,7 @@ fun AnalysisScreen(
                                 Text(
                                     "有报告",
                                     style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
-                                    color = Color(0xFF4CAF50)
+                                    color = OfficialGreen
                                 )
                             } else {
                                 Text(
@@ -481,7 +501,7 @@ fun AnalysisScreen(
                 color = onCardColor.copy(alpha = 0.6f)
             )
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
             // Generating banner
             if (generatingWeek != null) {
@@ -565,10 +585,10 @@ fun AnalysisScreen(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(32.dp),
+                            .padding(20.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        Text("📊", fontSize = 48.sp)
+                        PixelCat(PixelCatMood.HAPPY, modifier = Modifier.size(104.dp))
                         Spacer(modifier = Modifier.height(12.dp))
                         Text(
                             "尚未开启每周分析",
@@ -601,7 +621,7 @@ fun AnalysisScreen(
                     shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = accentColor,
-                        contentColor = Color.White
+                        contentColor = MaterialTheme.colorScheme.onPrimary
                     ),
                     elevation = ButtonDefaults.buttonElevation(defaultElevation = 2.dp)
                 ) {
@@ -645,7 +665,7 @@ fun AnalysisScreen(
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Column(
-                            modifier = Modifier.fillMaxWidth().padding(32.dp),
+                            modifier = Modifier.fillMaxWidth().padding(20.dp),
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
                             Text(
@@ -724,6 +744,8 @@ fun AnalysisScreen(
                                                 status = "generated"
                                             )
                                         )
+                                        // 只在新周报成功落库后清理旧对话，避免 API 失败时丢历史。
+                                        app.repository.clearAiMessagesByWeek(summary.weekStartDate)
                                         generatingWeek = null
                                     } catch (e: Exception) {
                                         generatingWeek = null
@@ -752,7 +774,7 @@ fun AnalysisScreen(
                     onDismissRequest = { showStartPicker = false },
                     colors = DatePickerDefaults.colors(
                         selectedDayContainerColor = accentColor,
-                        selectedDayContentColor = Color.White,
+                        selectedDayContentColor = MaterialTheme.colorScheme.onPrimary,
                         todayContentColor = accentColor,
                         todayDateBorderColor = accentColor,
                     ),
@@ -772,7 +794,7 @@ fun AnalysisScreen(
                         state = startPickerState,
                         colors = DatePickerDefaults.colors(
                             selectedDayContainerColor = accentColor,
-                            selectedDayContentColor = Color.White,
+                            selectedDayContentColor = MaterialTheme.colorScheme.onPrimary,
                             todayContentColor = accentColor,
                             todayDateBorderColor = accentColor,
                         )
@@ -788,7 +810,7 @@ fun AnalysisScreen(
                     onDismissRequest = { showEndPicker = false },
                     colors = DatePickerDefaults.colors(
                         selectedDayContainerColor = accentColor,
-                        selectedDayContentColor = Color.White,
+                        selectedDayContentColor = MaterialTheme.colorScheme.onPrimary,
                         todayContentColor = accentColor,
                         todayDateBorderColor = accentColor,
                     ),
@@ -808,7 +830,7 @@ fun AnalysisScreen(
                         state = endPickerState,
                         colors = DatePickerDefaults.colors(
                             selectedDayContainerColor = accentColor,
-                            selectedDayContentColor = Color.White,
+                            selectedDayContentColor = MaterialTheme.colorScheme.onPrimary,
                             todayContentColor = accentColor,
                             todayDateBorderColor = accentColor,
                         )
@@ -875,6 +897,7 @@ fun AnalysisScreen(
                 titleContentColor = onCardColor,
                 textContentColor = onCardColor.copy(alpha = 0.8f)
             )
+        }
         }
     }
 }
@@ -972,7 +995,7 @@ fun WeeklySummaryCard(
                     Icon(
                         Icons.Default.Refresh,
                         contentDescription = "重新分析",
-                        tint = Color.White,
+                        tint = MaterialTheme.colorScheme.onPrimary,
                         modifier = Modifier.padding(start = 24.dp)
                     )
                 }
@@ -1061,9 +1084,17 @@ fun WeeklySummaryCard(
             if (summary.status == "generated") {
                 Spacer(modifier = Modifier.height(4.dp))
                 // Show first few lines of summary as preview with markdown
-                val preview = summary.summaryText.trim().take(80)
+                val trimmedSummary = summary.summaryText.trim()
+                val preview = if (trimmedSummary.length > 80) {
+                    val cut = trimmedSummary.take(80)
+                    // 在最后一个空白/标点处截断，避免切断 Markdown 语法
+                    val lastBreak = cut.indexOfLast { it.isWhitespace() || it in ",.!?;，。！？；、" }
+                    if (lastBreak >= 40) cut.take(lastBreak).trimEnd() else cut
+                } else {
+                    trimmedSummary
+                }
                 MarkdownText(
-                    text = preview + if (summary.summaryText.length > 80) "..." else "",
+                    text = preview + if (trimmedSummary.length > 80) "..." else "",
                     baseColor = onCardColor.copy(alpha = 0.7f),
                     baseFontSize = 11f,
                     lineHeight = 15f,

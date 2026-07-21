@@ -20,7 +20,7 @@ import java.util.Locale
 
 class BackupViewModel(application: Application) : AndroidViewModel(application) {
     private val db = AppDatabase.getDatabase(application)
-    private val backupManager = BackupManager(application, db.userDao(), db.recordDao(), db.analysisDao())
+    private val backupManager = BackupManager(application, db)
 
     private val _status = MutableStateFlow<String>("就绪")
     val status: StateFlow<String> = _status.asStateFlow()
@@ -59,10 +59,11 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
     fun performAutoBackup() {
         viewModelScope.launch {
             try {
-                backupManager.performAutoBackup()
+                val success = backupManager.performAutoBackup()
                 _lastAutoBackupTime.value = formatTime(backupManager.getAutoBackupTime())
+                if (!success) _status.value = "自动备份未能写入下载目录，下次启动会重试"
             } catch (e: Exception) {
-                // Silent fail for auto backup or log
+                _status.value = "自动备份失败: ${e.localizedMessage ?: "未知错误"}"
             }
         }
     }

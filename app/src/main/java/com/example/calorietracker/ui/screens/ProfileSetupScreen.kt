@@ -59,6 +59,22 @@ fun ProfileSetupScreen(
     var activityLevel by remember { mutableStateOf(userProfile?.activityLevel ?: "sedentary") }
     var goal by remember { mutableStateOf(userProfile?.goal ?: "lose") }
 
+    val validBirthDate = remember(birthYear, birthMonth, birthDay) {
+        runCatching {
+            java.time.LocalDate.of(
+                birthYear.toInt(),
+                birthMonth.toInt(),
+                birthDay.toInt()
+            )
+        }.getOrNull()?.takeIf {
+            !it.isAfter(java.time.LocalDate.now()) && it.isAfter(java.time.LocalDate.now().minusYears(121))
+        }
+    }
+    val heightValue = height.toFloatOrNull()?.takeIf { it.isFinite() && it in 100f..250f }
+    val weightValue = weight.toFloatOrNull()?.takeIf { it.isFinite() && it in 20f..400f }
+    val targetWeightValue = targetWeight.toFloatOrNull()?.takeIf { it.isFinite() && it in 20f..400f }
+    val formIsValid = validBirthDate != null && heightValue != null && weightValue != null && targetWeightValue != null
+
     val scrollState = rememberScrollState()
 
     Scaffold(
@@ -129,12 +145,19 @@ fun ProfileSetupScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)
             )
+            if (!formIsValid) {
+                Text(
+                    "请填写真实日期，身高限 100–250 cm，体重限 20–400 kg。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
 
             OutlinedTextField(
                 value = height,
                 onValueChange = { height = it },
                 label = { Text("身高 (cm)") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                 modifier = Modifier.fillMaxWidth()
             )
 
@@ -142,7 +165,7 @@ fun ProfileSetupScreen(
                 value = weight,
                 onValueChange = { weight = it },
                 label = { Text("当前体重 (kg)") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                 modifier = Modifier.fillMaxWidth()
             )
 
@@ -150,7 +173,7 @@ fun ProfileSetupScreen(
                 value = targetWeight,
                 onValueChange = { targetWeight = it },
                 label = { Text("目标体重 (kg)") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                 modifier = Modifier.fillMaxWidth()
             )
 
@@ -209,20 +232,28 @@ fun ProfileSetupScreen(
 
             Button(
                 onClick = {
-                    val y = birthYear.toIntOrNull() ?: 2000
-                    val m = birthMonth.toIntOrNull() ?: 1
-                    val d = birthDay.toIntOrNull() ?: 1
-                    val dateStr = String.format("%04d-%02d-%02d", y, m, d)
-
-                    val heightFloat = height.toFloatOrNull() ?: 170f
-                    val weightFloat = weight.toFloatOrNull() ?: 60f
-                    val targetWeightFloat = targetWeight.toFloatOrNull() ?: 55f
+                    val date = validBirthDate ?: return@Button
+                    val dateStr = date.toString()
+                    val heightFloat = heightValue ?: return@Button
+                    val weightFloat = weightValue ?: return@Button
+                    val targetWeightFloat = targetWeightValue ?: return@Button
                     
                     val dailyTarget = CalorieUtils.calculateDailyTarget(
                         gender, weightFloat, heightFloat, ageInt, activityLevel, goal
                     )
 
-                    val profile = UserProfileEntity(
+                    val profile = userProfile?.copy(
+                        name = name.ifEmpty { "用户" },
+                        gender = gender,
+                        age = ageInt,
+                        birthDate = dateStr,
+                        height = heightFloat,
+                        weight = weightFloat,
+                        targetWeight = targetWeightFloat,
+                        activityLevel = activityLevel,
+                        goal = goal,
+                        dailyCalorieTarget = dailyTarget
+                    ) ?: UserProfileEntity(
                         name = name.ifEmpty { "用户" },
                         gender = gender,
                         age = ageInt,
@@ -233,17 +264,12 @@ fun ProfileSetupScreen(
                         activityLevel = activityLevel,
                         goal = goal,
                         dailyCalorieTarget = dailyTarget,
-                        sleepGoal = userProfile?.sleepGoal ?: 7.5f,
-                        showMacros = userProfile?.showMacros ?: false,
-                        weekStartDay = userProfile?.weekStartDay ?: java.util.Calendar.SUNDAY,
-                        selectedTodayThemeIndex = userProfile?.selectedTodayThemeIndex ?: 0,
-                        hasSelectedTodayTheme = userProfile?.hasSelectedTodayTheme ?: false,
-                        excludedExercises = userProfile?.excludedExercises ?: "",
-                        createdAt = userProfile?.createdAt ?: java.time.Instant.now().toString()
+                        createdAt = java.time.Instant.now().toString()
                     )
                     onSave(profile)
                 },
                 modifier = Modifier.fillMaxWidth(),
+                enabled = formIsValid,
                 colors = ButtonDefaults.buttonColors(
                     containerColor = accentColor,
                     contentColor = Color.White

@@ -8,70 +8,82 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
+import androidx.compose.material3.Shapes
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.foundation.shape.CutCornerShape
+import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
 
 private val LightColorScheme = lightColorScheme(
-    primary = BrandGreen,
-    onPrimary = Color.White,
-    primaryContainer = BrandGreenLight.copy(alpha = 0.3f),
-    onPrimaryContainer = BrandGreenDark,
+    primary = PixelPink,
+    onPrimary = PixelInk, // dark ink on candy pink for readable contrast
+    primaryContainer = PixelPinkSoft,
+    onPrimaryContainer = PixelInk,
     
-    secondary = BrandOrange,
-    onSecondary = Color.White,
-    secondaryContainer = BrandOrangeLight.copy(alpha = 0.3f),
-    onSecondaryContainer = BrandOrangeDark,
+    secondary = PixelMint,
+    onSecondary = PixelInk,
+    secondaryContainer = PixelMintSoft,
+    onSecondaryContainer = PixelInk,
     
-    tertiary = BrandBlue,
+    tertiary = PixelLavender,
     
-    background = LightBackground,
-    onBackground = LightTextPrimary,
+    background = PixelCream,
+    onBackground = PixelInk,
     
-    surface = LightSurface,
-    onSurface = LightTextPrimary,
+    surface = PixelPaper,
+    onSurface = PixelInk,
     
-    surfaceVariant = LightSurfaceVariant,
-    onSurfaceVariant = LightTextSecondary,
+    surfaceVariant = PixelPinkSoft, // opaque: alpha variants drift over different backgrounds
+    onSurfaceVariant = PixelInk.copy(alpha = 0.78f),
     
-    outline = LightDivider,
+    outline = PixelInk.copy(alpha = 0.52f),
     error = ErrorRed
 )
 
 private val DarkColorScheme = darkColorScheme(
-    primary = BrandGreenLight, // Lighter color for dark mode
-    onPrimary = BrandGreenDark,
-    primaryContainer = BrandGreen.copy(alpha = 0.2f),
-    onPrimaryContainer = BrandGreenLight,
+    primary = Color(0xFFFF93B6),
+    onPrimary = PixelPlum,
+    primaryContainer = Color(0xFF61374D),
+    onPrimaryContainer = PixelPinkSoft,
     
-    secondary = BrandOrangeLight,
-    onSecondary = BrandOrangeDark,
-    secondaryContainer = BrandOrange.copy(alpha = 0.2f),
-    onSecondaryContainer = BrandOrangeLight,
+    secondary = Color(0xFF74E2BE),
+    onSecondary = PixelPlum,
+    secondaryContainer = Color(0xFF244E46),
+    onSecondaryContainer = PixelMintSoft,
     
-    tertiary = BrandBlue,
+    tertiary = Color(0xFFBCA9FF),
     
-    background = DarkBackground,
-    onBackground = DarkTextPrimary,
+    background = PixelPlum,
+    onBackground = PixelDarkText,
     
-    surface = DarkSurface,
-    onSurface = DarkTextPrimary,
+    surface = PixelPlumSurface,
+    onSurface = PixelDarkText,
     
-    surfaceVariant = DarkSurfaceVariant,
-    onSurfaceVariant = DarkTextSecondary,
+    surfaceVariant = Color(0xFF493751),
+    onSurfaceVariant = PixelDarkText.copy(alpha = 0.78f),
     
-    outline = DarkDivider,
+    outline = PixelPinkSoft.copy(alpha = 0.45f),
     error = ErrorRedLight
+)
+
+private val PixelShapes = Shapes(
+    extraSmall = CutCornerShape(2.dp),
+    small = CutCornerShape(4.dp),
+    medium = CutCornerShape(6.dp),
+    large = CutCornerShape(10.dp),
+    extraLarge = CutCornerShape(14.dp)
 )
 
 @Composable
 fun CalorieTrackerTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     dynamicColor: Boolean = false, // We stick to our brand colors
+    fontMode: AppFontMode = AppFontMode.MEOW_FIT,
     content: @Composable () -> Unit
 ) {
     val colorScheme = when {
@@ -95,7 +107,8 @@ fun CalorieTrackerTheme(
 
     MaterialTheme(
         colorScheme = colorScheme,
-        typography = Typography,
+        typography = meowFitTypography(fontMode),
+        shapes = PixelShapes,
         content = content
     )
 }

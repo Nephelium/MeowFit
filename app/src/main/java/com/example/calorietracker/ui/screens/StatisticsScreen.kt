@@ -7,7 +7,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CutCornerShape as RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.ChevronLeft
@@ -22,11 +22,11 @@ import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -64,7 +64,8 @@ enum class ChartMetric(val label: String) {
 @Composable
 fun StatisticsScreen(
     allItems: List<CalorieItemEntity>,
-    selectedThemeIndex: Int
+    selectedThemeIndex: Int,
+    weekStartDay: Int = Calendar.SUNDAY
 ) {
     val isDarkTheme = androidx.compose.foundation.isSystemInDarkTheme()
     val selectedTheme = remember(selectedThemeIndex) { getTodayVisualTheme(selectedThemeIndex) }
@@ -72,16 +73,19 @@ fun StatisticsScreen(
     val cardColor = remember(selectedTheme, isDarkTheme) { themedDashboardCardColor(selectedTheme, isDarkTheme) }
     val onCardColor = com.example.calorietracker.ui.theme.onCardColor(cardColor, isDarkTheme)
     val accentColor = remember(selectedTheme, isDarkTheme) { themedAccentColor(selectedTheme, isDarkTheme) }
-    var selectedTab by remember { mutableStateOf(StatsTab.MONTH) }
+    var selectedTab by rememberSaveable { mutableStateOf(StatsTab.MONTH) }
     var chartMetric by remember { mutableStateOf(ChartMetric.DURATION) }
     var previewImagePath by remember { mutableStateOf<String?>(null) }
     
-    // Date navigation state
-    var currentCalendar by remember { mutableStateOf(Calendar.getInstance()) }
+    // Date navigation state (rememberSaveable：存储 timeInMillis，重建时恢复)
+    var currentCalendarMillis by rememberSaveable { mutableStateOf(Calendar.getInstance().timeInMillis) }
+    val currentCalendar = remember(currentCalendarMillis) {
+        Calendar.getInstance().apply { timeInMillis = currentCalendarMillis }
+    }
     
     // Filter items based on tab and date
-    val filteredItems = remember(allItems, selectedTab, currentCalendar.timeInMillis) {
-        filterItems(allItems, selectedTab, currentCalendar)
+    val filteredItems = remember(allItems, selectedTab, currentCalendar.timeInMillis, weekStartDay) {
+        filterItems(allItems, selectedTab, currentCalendar, weekStartDay)
     }
 
     val durationMap = remember(filteredItems) {
@@ -151,7 +155,7 @@ fun StatisticsScreen(
                 }
 
                 item {
-                    DateNavigator(selectedTab, currentCalendar, accentColor, onCardColor) { dir ->
+                    DateNavigator(selectedTab, currentCalendar, accentColor, onCardColor, weekStartDay) { dir ->
                         val newCal = currentCalendar.clone() as Calendar
                         when (selectedTab) {
                             StatsTab.WEEK -> newCal.add(Calendar.WEEK_OF_YEAR, dir)
@@ -159,7 +163,7 @@ fun StatisticsScreen(
                             StatsTab.YEAR -> newCal.add(Calendar.YEAR, dir)
                             else -> {}
                         }
-                        currentCalendar = newCal
+                        currentCalendarMillis = newCal.timeInMillis
                     }
                 }
 
@@ -191,7 +195,7 @@ fun StatisticsScreen(
                                     ChartMetric.values().forEach { metric ->
                                         val selected = chartMetric == metric
                                         val bgColor = if (selected) accentColor else Color.Transparent
-                                        val contentColor = if (selected) Color.White else onCardColor.copy(alpha = 0.82f)
+                                        val contentColor = if (selected) MaterialTheme.colorScheme.onPrimary else onCardColor.copy(alpha = 0.82f)
 
                                         Box(
                                             modifier = Modifier
@@ -216,6 +220,7 @@ fun StatisticsScreen(
                                 tab = selectedTab,
                                 currentDate = currentCalendar,
                                 metric = chartMetric,
+                                weekStartDay = weekStartDay,
                                 barColor = accentColor,
                                 labelColor = onCardColor,
                                 modifier = Modifier
@@ -334,17 +339,15 @@ fun StatsTabRow(
                 Color.Transparent
             }
             val itemTextColor = if (isSelected) {
-                if (isDarkTheme) accentColor else Color.White
+                if (isDarkTheme) accentColor else MaterialTheme.colorScheme.onPrimary
             } else {
                 textColor.copy(alpha = 0.82f)
             }
-            val shadowElevation = if (isSelected) 2.dp else 0.dp
             
             Box(
                 modifier = Modifier
                     .weight(1f)
                     .height(32.dp)
-                    .shadow(shadowElevation, RoundedCornerShape(20.dp))
                     .clip(RoundedCornerShape(20.dp))
                     .background(bgColor)
                     .clickable { onTabSelected(tab) },
@@ -364,16 +367,29 @@ fun StatsTabRow(
 }
 
 @Composable
-fun DateNavigator(tab: StatsTab, calendar: Calendar, accentColor: Color, textColor: Color, onNavigate: (Int) -> Unit) {
+fun DateNavigator(tab: StatsTab, calendar: Calendar, accentColor: Color, textColor: Color, weekStartDay: Int = Calendar.SUNDAY, onNavigate: (Int) -> Unit) {
     if (tab == StatsTab.TOTAL) return
     
-    val format = when (tab) {
-        StatsTab.WEEK -> "'第'w'周' yyyy"
-        StatsTab.MONTH -> "yyyy'年'MM'月'"
-        StatsTab.YEAR -> "yyyy'年'"
-        else -> ""
+    // 周标签显示周起止日期（与统计按 weekStartDay 切周的口径一致）
+    val dateText = when (tab) {
+        StatsTab.WEEK -> {
+            val c = calendar.clone() as Calendar
+            c.firstDayOfWeek = if (weekStartDay == Calendar.MONDAY) Calendar.MONDAY else Calendar.SUNDAY
+            c.set(Calendar.DAY_OF_WEEK, c.firstDayOfWeek)
+            val fmt = SimpleDateFormat("M/d", Locale.getDefault())
+            val start = fmt.format(c.time)
+            c.add(Calendar.DAY_OF_WEEK, 6)
+            "$start - ${fmt.format(c.time)}"
+        }
+        else -> {
+            val format = when (tab) {
+                StatsTab.MONTH -> "yyyy'年'MM'月'"
+                StatsTab.YEAR -> "yyyy'年'"
+                else -> ""
+            }
+            SimpleDateFormat(format, Locale.getDefault()).format(calendar.time)
+        }
     }
-    val dateText = SimpleDateFormat(format, Locale.getDefault()).format(calendar.time)
 
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -569,6 +585,7 @@ fun StatsBarChart(
     tab: StatsTab,
     currentDate: Calendar,
     metric: ChartMetric,
+    weekStartDay: Int,
     barColor: Color,
     labelColor: Color,
     modifier: Modifier = Modifier
@@ -576,8 +593,8 @@ fun StatsBarChart(
     val labelColorArgb = labelColor.copy(alpha = 0.85f).toArgb()
     
     // Generate data based on tab
-    val data = remember(items, tab, currentDate.timeInMillis, metric) {
-        generateChartData(items, tab, currentDate, metric)
+    val data = remember(items, tab, currentDate.timeInMillis, metric, weekStartDay) {
+        generateChartData(items, tab, currentDate, metric, weekStartDay)
     }
     
     val maxVal = data.maxOfOrNull { it.second } ?: 1
@@ -631,13 +648,19 @@ fun StatsBarChart(
 }
 
 // Reuse helper functions or redefine if moved
-fun filterItems(items: List<CalorieItemEntity>, tab: StatsTab, calendar: Calendar): List<CalorieItemEntity> {
+fun filterItems(
+    items: List<CalorieItemEntity>,
+    tab: StatsTab,
+    calendar: Calendar,
+    weekStartDay: Int = Calendar.SUNDAY
+): List<CalorieItemEntity> {
     val exerciseItems = items.filter { it.type == "exercise" }
     val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
     
     return when (tab) {
         StatsTab.WEEK -> {
             val c = calendar.clone() as Calendar
+            c.firstDayOfWeek = if (weekStartDay == Calendar.MONDAY) Calendar.MONDAY else Calendar.SUNDAY
             c.set(Calendar.DAY_OF_WEEK, c.firstDayOfWeek)
             val start = c.time
             c.add(Calendar.DAY_OF_WEEK, 6)
@@ -666,7 +689,8 @@ fun generateChartData(
     items: List<CalorieItemEntity>, 
     tab: StatsTab, 
     calendar: Calendar,
-    metric: ChartMetric
+    metric: ChartMetric,
+    weekStartDay: Int = Calendar.SUNDAY
 ): List<Pair<String, Int>> {
     val durationMap = items.associate { it.id to CalorieUtils.parseDuration(it.notes) }
     
@@ -681,6 +705,7 @@ fun generateChartData(
     return when (tab) {
         StatsTab.WEEK -> {
             val c = calendar.clone() as Calendar
+            c.firstDayOfWeek = if (weekStartDay == Calendar.MONDAY) Calendar.MONDAY else Calendar.SUNDAY
             c.set(Calendar.DAY_OF_WEEK, c.firstDayOfWeek)
             (0..6).map { 
                 val dateStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(c.time)

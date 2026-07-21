@@ -74,7 +74,11 @@ fun SystemPromptSettingsScreen(
                 }
             }
 
-            Text("注意：系统会自动在提示词末尾追加用户的体重信息，无需手动添加。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                "系统会自动追加用户体重和固定 JSON 记录协议；即使自定义提示词，也不会再覆盖卡片所需的返回结构。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
 
             // Tab row for three prompt types
             TabRow(

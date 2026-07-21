@@ -2,11 +2,11 @@ package com.example.calorietracker.util
 
 import android.content.Context
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.net.Uri
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
+import java.util.UUID
 
 object ImageStorageUtils {
     private const val IMAGE_DIR_NAME = "record_images"
@@ -41,7 +41,8 @@ object ImageStorageUtils {
             compressed = compress(bitmap, quality)
         }
 
-        val file = File(getImageDir(context), "img_${System.currentTimeMillis()}.jpg")
+        // 拼 UUID 防止同一毫秒内两张图互相覆盖
+        val file = File(getImageDir(context), "img_${System.currentTimeMillis()}_${UUID.randomUUID()}.jpg")
         return try {
             FileOutputStream(file).use { it.write(compressed) }
             file.absolutePath
@@ -50,20 +51,20 @@ object ImageStorageUtils {
         }
     }
 
+    fun deleteRecordImage(context: Context, path: String?): Boolean {
+        if (path.isNullOrBlank()) return true
+        return runCatching {
+            val root = getImageDir(context).canonicalPath + File.separator
+            val target = File(path)
+            if (!target.canonicalPath.startsWith(root)) return false
+            !target.exists() || target.delete()
+        }.getOrDefault(false)
+    }
+
     private fun decodeScaledBitmap(context: Context, uri: Uri, maxLongSide: Int): Bitmap? {
         return try {
-            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-            context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
-            if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
-
-            var sampleSize = 1
-            while ((bounds.outWidth / sampleSize) > maxLongSide || (bounds.outHeight / sampleSize) > maxLongSide) {
-                sampleSize *= 2
-            }
-
-            val decodeOptions = BitmapFactory.Options().apply { inSampleSize = sampleSize }
-            val decoded = context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, decodeOptions) } ?: return null
-
+            // BitmapUtils 负责采样与 EXIF 旋转校正，这里再把最长边严格压到 maxLongSide 以内
+            val decoded = BitmapUtils.decodeSampledFromUri(context.contentResolver, uri, maxLongSide) ?: return null
             val width = decoded.width
             val height = decoded.height
             val scale = if (width >= height) maxLongSide.toFloat() / width else maxLongSide.toFloat() / height

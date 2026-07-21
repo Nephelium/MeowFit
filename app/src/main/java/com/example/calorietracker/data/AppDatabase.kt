@@ -7,12 +7,24 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [UserProfileEntity::class, DailyRecordEntity::class, CalorieItemEntity::class, AiChatMessageEntity::class, WeeklySummaryEntity::class], version = 15, exportSchema = false)
+@Database(
+    entities = [
+        UserProfileEntity::class,
+        DailyRecordEntity::class,
+        CalorieItemEntity::class,
+        AiChatMessageEntity::class,
+        WeeklySummaryEntity::class,
+        FoodTemplateEntity::class
+    ],
+    version = 17,
+    exportSchema = true
+)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun userDao(): UserDao
     abstract fun recordDao(): RecordDao
     abstract fun aiDao(): AiDao
     abstract fun analysisDao(): AnalysisDao
+    abstract fun foodTemplateDao(): FoodTemplateDao
 
     companion object {
         val MIGRATION_5_6 = object : Migration(5, 6) {
@@ -163,6 +175,44 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_15_16 = object : Migration(15, 16) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE ai_chat_messages ADD COLUMN weekStartDate TEXT")
+            }
+        }
+
+        val MIGRATION_16_17 = object : Migration(16, 17) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE calorie_items ADD COLUMN nutritionReferenceAmount REAL")
+                database.execSQL("ALTER TABLE calorie_items ADD COLUMN nutritionActualAmount REAL")
+                database.execSQL("ALTER TABLE calorie_items ADD COLUMN nutritionAmountUnit TEXT")
+                database.execSQL("ALTER TABLE calorie_items ADD COLUMN nutritionReferenceEnergy REAL")
+                database.execSQL("ALTER TABLE calorie_items ADD COLUMN nutritionEnergyUnit TEXT")
+                database.execSQL("ALTER TABLE calorie_items ADD COLUMN nutritionReferenceCarbs REAL")
+                database.execSQL("ALTER TABLE calorie_items ADD COLUMN nutritionReferenceProtein REAL")
+                database.execSQL("ALTER TABLE calorie_items ADD COLUMN nutritionReferenceFat REAL")
+                database.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS food_templates (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        name TEXT NOT NULL,
+                        referenceAmount REAL NOT NULL,
+                        amountUnit TEXT NOT NULL,
+                        energyValue REAL NOT NULL,
+                        energyUnit TEXT NOT NULL,
+                        carbs REAL NOT NULL,
+                        protein REAL NOT NULL,
+                        fat REAL NOT NULL,
+                        createdAt INTEGER NOT NULL,
+                        updatedAt INTEGER NOT NULL
+                    )
+                    """.trimIndent()
+                )
+                database.execSQL("CREATE INDEX IF NOT EXISTS index_food_templates_name ON food_templates(name)")
+                database.execSQL("CREATE INDEX IF NOT EXISTS index_food_templates_updatedAt ON food_templates(updatedAt)")
+            }
+        }
+
         @Volatile
         private var INSTANCE: AppDatabase? = null
 
@@ -173,7 +223,20 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "calorie_tracker_database"
                 )
-                .addMigrations(MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15)
+                .addMigrations(
+                    MIGRATION_5_6,
+                    MIGRATION_6_7,
+                    MIGRATION_7_8,
+                    MIGRATION_8_9,
+                    MIGRATION_9_10,
+                    MIGRATION_10_11,
+                    MIGRATION_11_12,
+                    MIGRATION_12_13,
+                    MIGRATION_13_14,
+                    MIGRATION_14_15,
+                    MIGRATION_15_16,
+                    MIGRATION_16_17
+                )
                 .build()
                 INSTANCE = instance
                 instance

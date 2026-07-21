@@ -7,7 +7,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CutCornerShape as RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
@@ -25,6 +25,7 @@ import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
@@ -48,7 +49,12 @@ import java.text.SimpleDateFormat
 import java.util.*
 
 import com.example.calorietracker.data.UserProfileEntity
+import com.example.calorietracker.ui.components.PixelJournalBanner
+import com.example.calorietracker.util.BitmapUtils
 import com.example.calorietracker.util.CalorieUtils
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
@@ -276,6 +282,11 @@ private fun prepareChartData(
 private fun computeTarget(dateStr: String, records: List<DailyRecordEntity>, userProfile: UserProfileEntity?): Int {
     val profile = userProfile ?: return 2000
     val weight = CalorieUtils.getEffectiveWeight(dateStr, records, userProfile)
+    return computeTargetWithWeight(weight, profile)
+}
+
+/** 统一的热量目标计算入口：年龄口径固定为 birthDate 优先（非 @Composable，可在 IO 线程使用）。 */
+private fun computeTargetWithWeight(weight: Float, profile: UserProfileEntity): Int {
     val currentAge = if (profile.birthDate.isNotBlank()) CalorieUtils.calculateAge(profile.birthDate) else profile.age
     return CalorieUtils.calculateDailyTarget(profile.gender, weight, profile.height, currentAge, profile.activityLevel, profile.goal)
 }
@@ -309,6 +320,8 @@ fun OverviewScreen(
     
     var heatmapMetric by remember { mutableStateOf(HeatmapMetric.Net) }
     var previewCalendarBitmap by remember { mutableStateOf<Bitmap?>(null) }
+    var isGeneratingShareImage by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
     
     val recordMap = remember(records) {
         records.mapNotNull { record ->
@@ -338,8 +351,14 @@ fun OverviewScreen(
         )
     }
 
+    // 释放预览大图（年视图可达 ~27MB），避免只置 null 等待 GC
+    fun dismissPreview() {
+        previewCalendarBitmap?.let { if (!it.isRecycled) it.recycle() }
+        previewCalendarBitmap = null
+    }
+
     if (previewCalendarBitmap != null) {
-        Dialog(onDismissRequest = { previewCalendarBitmap = null }) {
+        Dialog(onDismissRequest = { dismissPreview() }) {
             Card(
                 shape = RoundedCornerShape(18.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
@@ -358,22 +377,52 @@ fun OverviewScreen(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.End
                     ) {
-                        TextButton(onClick = { previewCalendarBitmap = null }) {
+                        TextButton(onClick = { dismissPreview() }) {
                             Text("取消")
                         }
                         TextButton(onClick = {
-                            saveCalendarToGallery(context, previewCalendarBitmap!!)
+                            val bmp = previewCalendarBitmap
                             previewCalendarBitmap = null
+                            if (bmp != null) {
+                                scope.launch(Dispatchers.IO) {
+                                    saveCalendarToGallery(context, bmp)
+                                    if (!bmp.isRecycled) bmp.recycle()
+                                }
+                            }
                         }) {
                             Text("保存到相册")
                         }
                         TextButton(onClick = {
-                            shareCalendarImage(context, previewCalendarBitmap!!)
+                            val bmp = previewCalendarBitmap
                             previewCalendarBitmap = null
+                            if (bmp != null) {
+                                scope.launch(Dispatchers.IO) {
+                                    shareCalendarImage(context, bmp)
+                                    if (!bmp.isRecycled) bmp.recycle()
+                                }
+                            }
                         }) {
                             Text("分享给朋友")
                         }
                     }
+                }
+            }
+        }
+    }
+
+    if (isGeneratingShareImage) {
+        Dialog(onDismissRequest = { }) {
+            Card(
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            ) {
+                Row(
+                    modifier = Modifier.padding(24.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    CircularProgressIndicator(modifier = Modifier.size(32.dp))
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Text("正在生成分享图…")
                 }
             }
         }
@@ -412,22 +461,55 @@ fun OverviewScreen(
                     selectedMonth = cal.get(Calendar.MONTH)
                 },
                 onShare = {
-                    previewCalendarBitmap = generateCalendarBitmap(
-                        context = context,
-                        year = selectedYear,
-                        month = selectedMonth,
-                        records = records,
-                        allItems = allItems,
-                        metric = heatmapMetric,
-                        userProfile = userProfile,
-                        weekStartDay = weekStartDay
-                    )
+                    if (!isGeneratingShareImage) {
+                        isGeneratingShareImage = true
+                        scope.launch(Dispatchers.IO) {
+                            val bitmap = runCatching {
+                                generateCalendarBitmap(
+                                    context = context,
+                                    year = selectedYear,
+                                    month = selectedMonth,
+                                    records = records,
+                                    allItems = allItems,
+                                    metric = heatmapMetric,
+                                    userProfile = userProfile,
+                                    weekStartDay = weekStartDay
+                                )
+                            }.getOrNull()
+                            withContext(Dispatchers.Main) {
+                                isGeneratingShareImage = false
+                                if (bitmap != null) {
+                                    previewCalendarBitmap = bitmap
+                                } else {
+                                    Toast.makeText(context, "生成分享图失败，请重试", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        }
+                    }
                 },
                 containerColor = Color.Transparent,
                 titleContentColor = onCardColor,
                 accentColor = accentColor,
                 modifier = Modifier
             )
+
+            // 像素猫手账横幅：副标题动态显示本期记录天数
+            val journalSubtitle = remember(recordMap, selectedYear, selectedMonth) {
+                val prefix = if (selectedMonth == null) {
+                    String.format("%04d-", selectedYear)
+                } else {
+                    String.format("%04d-%02d-", selectedYear, selectedMonth!! + 1)
+                }
+                val days = recordMap.keys.count { it.startsWith(prefix) }
+                if (days > 0) "本期已记录 $days 天，继续保持喵~" else "还没有记录，今天开始打卡喵~"
+            }
+            PixelJournalBanner(
+                title = "喵喵健康手账",
+                subtitle = journalSubtitle,
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
 
             // Heatmap Card
             Card(
@@ -456,7 +538,8 @@ fun OverviewScreen(
                             HeatmapMetric.values().forEach { metric ->
                                 val selected = heatmapMetric == metric
                                 val bgColor = if (selected) accentColor else Color.Transparent
-                                val contentColor = if (selected) Color.White else onCardColor.copy(alpha = 0.8f)
+                                // 糖果色底上用深色字保证对比度（主题 onPrimary 已修为深色 PixelInk）
+                                val contentColor = if (selected) MaterialTheme.colorScheme.onPrimary else onCardColor.copy(alpha = 0.8f)
                                 
                                 Box(
                                     modifier = Modifier
@@ -641,18 +724,33 @@ fun generateCalendarBitmap(
     weekStartDay: Int
 ): Bitmap {
     // 1. Calculate stats
+    // 预计算：按日期分组的记录条目（避免年视图每天 filter 全量 allItems，O(天数×记录数)）
+    val itemsByDate: Map<String, List<CalorieItemEntity>> = allItems.groupBy { toCanonicalDate(it.date) ?: it.date }
+    val excludedExerciseNames = userProfile?.excludedExercises?.split(",")?.map { it.trim() } ?: emptyList()
+
+    // 预计算有效体重：按日期排序一次扫描，最近一条不晚于当天的体重记录即有效体重
+    val sortedWeightRecords = records.mapNotNull { record ->
+        val key = toCanonicalDate(record.date) ?: return@mapNotNull null
+        val weight = record.weight
+        if (weight != null && weight.isFinite() && weight > 0f) key to weight else null
+    }.sortedBy { it.first }
+    val fallbackWeight = userProfile?.weight ?: 70f
+    val effectiveWeightCache = mutableMapOf<String, Float>()
+    fun effectiveWeightFor(dateStr: String): Float {
+        effectiveWeightCache[dateStr]?.let { return it }
+        var weight = fallbackWeight
+        for ((date, w) in sortedWeightRecords) {
+            if (date > dateStr) break
+            weight = w
+        }
+        effectiveWeightCache[dateStr] = weight
+        return weight
+    }
+
+    // 与 UI 各视图统一口径：同一 computeTargetWithWeight 入口（birthDate 优先计算年龄）
     fun getTarget(date: String): Int {
-        return if (userProfile != null) {
-            val effectiveWeight = CalorieUtils.getEffectiveWeight(date, records, userProfile)
-            CalorieUtils.calculateDailyTarget(
-                gender = userProfile.gender,
-                weight = effectiveWeight,
-                height = userProfile.height,
-                age = userProfile.age,
-                activityLevel = userProfile.activityLevel,
-                goal = userProfile.goal
-            )
-        } else 2000
+        val profile = userProfile ?: return 2000
+        return computeTargetWithWeight(effectiveWeightFor(date), profile)
     }
 
     val relevantRecords = records.filter { record ->
@@ -1106,10 +1204,9 @@ fun generateCalendarBitmap(
                         HeatmapMetric.Water -> record?.totalWater ?: 0
                         HeatmapMetric.Intake -> record?.totalIntake ?: 0
                         HeatmapMetric.Burned -> {
-                            // Calculate excluded burned
-                             val excludedList = userProfile?.excludedExercises?.split(",")?.map { it.trim() } ?: emptyList()
-                             val dayItems = allItems.filter { it.date == dateStr && it.type == "exercise" }
-                             val validItems = dayItems.filter { !excludedList.contains(it.name) }
+                            // Calculate excluded burned (itemsByDate 已预计算)
+                             val dayItems = itemsByDate[dateStr].orEmpty().filter { it.type == "exercise" }
+                             val validItems = dayItems.filter { !excludedExerciseNames.contains(it.name) }
                              validItems.sumOf { it.calories }.roundToInt()
                         }
                         HeatmapMetric.Net -> {
@@ -1227,10 +1324,9 @@ fun generateCalendarBitmap(
                 HeatmapMetric.Water -> record?.totalWater ?: 0
                 HeatmapMetric.Intake -> record?.totalIntake ?: 0
                 HeatmapMetric.Burned -> {
-                    // Calculate excluded burned
-                     val excludedList = userProfile?.excludedExercises?.split(",")?.map { it.trim() } ?: emptyList()
-                     val dayItems = allItems.filter { it.date == dateStr && it.type == "exercise" }
-                     val validItems = dayItems.filter { !excludedList.contains(it.name) }
+                    // Calculate excluded burned (itemsByDate 已预计算)
+                     val dayItems = itemsByDate[dateStr].orEmpty().filter { it.type == "exercise" }
+                     val validItems = dayItems.filter { !excludedExerciseNames.contains(it.name) }
                      validItems.sumOf { it.calories }.roundToInt()
                 }
                 HeatmapMetric.Net -> {
@@ -1420,8 +1516,17 @@ fun generateCalendarBitmap(
     val iconY = brandingY + 50f
     val iconSize = 100f
     
-    // Load App Icon
-    val loadedIcon = com.example.calorietracker.util.IconManager.loadIconBitmap(context, iconSize.toInt())
+    // Load App Icon（采样解码，避免全尺寸解码；本函数现运行于 IO 线程）
+    val loadedIcon = run {
+        val iconFile = com.example.calorietracker.util.IconManager.getCustomIconFile(context)
+        val decoded = if (iconFile.exists()) {
+            BitmapUtils.decodeSampledFromPath(iconFile.absolutePath, iconSize.toInt() * 2)
+        } else {
+            val iconId = context.resources.getIdentifier("app_icon", "drawable", context.packageName)
+            if (iconId != 0) android.graphics.BitmapFactory.decodeResource(context.resources, iconId) else null
+        }
+        decoded?.let { Bitmap.createScaledBitmap(it, iconSize.toInt(), iconSize.toInt(), true) }
+    }
     if (loadedIcon != null) {
         val scaledIcon = loadedIcon
         canvas.save()
@@ -1455,13 +1560,18 @@ fun generateCalendarBitmap(
     return bitmap
 }
 
+private fun showToastOnMain(context: android.content.Context, message: String) {
+    android.os.Handler(android.os.Looper.getMainLooper()).post {
+        Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+    }
+}
+
 fun saveCalendarToGallery(context: android.content.Context, bitmap: Bitmap) {
     val filename = "CalorieTracker_${System.currentTimeMillis()}.png"
-    var fos: java.io.OutputStream? = null
     var uri: Uri? = null
 
     try {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        val saved = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val contentValues = ContentValues().apply {
                 put(MediaStore.MediaColumns.DISPLAY_NAME, filename)
                 put(MediaStore.MediaColumns.MIME_TYPE, "image/png")
@@ -1469,9 +1579,11 @@ fun saveCalendarToGallery(context: android.content.Context, bitmap: Bitmap) {
             }
             val resolver = context.contentResolver
             uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
-            if (uri != null) {
-                fos = resolver.openOutputStream(uri)
-            }
+            uri?.let { u ->
+                resolver.openOutputStream(u)?.use { out ->
+                    bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+                }
+            } ?: false
         } else {
             // For older versions, we might need WRITE_EXTERNAL_STORAGE.
             // Assuming permission is granted or not strictly enforced for some paths on older APIs
@@ -1482,22 +1594,24 @@ fun saveCalendarToGallery(context: android.content.Context, bitmap: Bitmap) {
             val appDir = File(imagesDir, "CalorieTracker")
             if (!appDir.exists()) appDir.mkdirs()
             val image = File(appDir, filename)
-            fos = FileOutputStream(image)
-            
+            FileOutputStream(image).use { out ->
+                bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+            }
             // Trigger media scan
             // MediaScannerConnection.scanFile(context, arrayOf(image.toString()), null, null)
         }
 
-        if (fos != null) {
-            bitmap.compress(Bitmap.CompressFormat.PNG, 100, fos)
-            fos.close()
-            Toast.makeText(context, "图片已保存到相册", Toast.LENGTH_SHORT).show()
+        if (saved) {
+            showToastOnMain(context, "图片已保存到相册")
         } else {
-            Toast.makeText(context, "保存失败", Toast.LENGTH_SHORT).show()
+            // 压缩/写流失败：删除可能残留的 0 字节坏图
+            uri?.let { runCatching { context.contentResolver.delete(it, null, null) } }
+            showToastOnMain(context, "保存失败")
         }
     } catch (e: Exception) {
         e.printStackTrace()
-        Toast.makeText(context, "保存出错: ${e.message}", Toast.LENGTH_SHORT).show()
+        uri?.let { runCatching { context.contentResolver.delete(it, null, null) } }
+        showToastOnMain(context, "保存出错: ${e.message}")
     }
 }
 
@@ -1506,39 +1620,88 @@ fun shareCalendarImage(context: android.content.Context, bitmap: Bitmap) {
         val cachePath = File(context.cacheDir, "images")
         cachePath.mkdirs()
         val file = File(cachePath, "share_calendar.png")
-        val stream = FileOutputStream(file)
-        bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)
-        stream.close()
-        
+        FileOutputStream(file).use { stream ->
+            bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)
+        }
+
         val contentUri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
-        
+
         val shareIntent = Intent(Intent.ACTION_SEND).apply {
             type = "image/png"
             putExtra(Intent.EXTRA_STREAM, contentUri)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
-        context.startActivity(Intent.createChooser(shareIntent, "分享我的日历"))
+        android.os.Handler(android.os.Looper.getMainLooper()).post {
+            context.startActivity(Intent.createChooser(shareIntent, "分享我的日历"))
+        }
     } catch (e: Exception) {
         e.printStackTrace()
-        Toast.makeText(context, "分享失败: ${e.message}", Toast.LENGTH_SHORT).show()
+        showToastOnMain(context, "分享失败: ${e.message}")
     }
 }
 
 @Composable
 fun getHeatmapColor(
-    value: Int, 
-    metric: HeatmapMetric, 
+    value: Int,
+    metric: HeatmapMetric,
     userProfile: UserProfileEntity? = null,
     min: Float = 0f,
-    max: Float = 100f
+    max: Float = 100f,
+    isDarkTheme: Boolean = isSystemInDarkTheme()
 ): Color {
-    if (value == 0) return when(metric) {
-        HeatmapMetric.Intake -> Color(0xFFFFF8E1)
-        HeatmapMetric.Burned -> Color(0xFFFCE4EC)
-        HeatmapMetric.Water -> Color(0xFFE1F5FE) // Very light light-blue
-        HeatmapMetric.Sleep -> Color(0xFFEDE7F6) // Very light deep-purple
-        HeatmapMetric.Weight -> Color(0xFFE0F7FA) // Very light cyan
-        else -> Color.Transparent.copy(alpha = 0.05f)
+    if (value == 0) {
+        if (isDarkTheme) return HeatmapDark0 // 空格子：深色灰
+        return when(metric) {
+            HeatmapMetric.Intake -> Color(0xFFFFF8E1)
+            HeatmapMetric.Burned -> Color(0xFFFCE4EC)
+            HeatmapMetric.Water -> Color(0xFFE1F5FE) // Very light light-blue
+            HeatmapMetric.Sleep -> Color(0xFFEDE7F6) // Very light deep-purple
+            HeatmapMetric.Weight -> Color(0xFFE0F7FA) // Very light cyan
+            else -> Color.Transparent.copy(alpha = 0.05f)
+        }
+    }
+
+    if (isDarkTheme) {
+        // GitHub 风格深色热力梯度：最低=Dark1，最高=Dark4
+        fun darkLevel(fraction: Float): Color = when {
+            fraction < 0.25f -> HeatmapDark1
+            fraction < 0.5f -> HeatmapDark2
+            fraction < 0.75f -> HeatmapDark3
+            else -> HeatmapDark4
+        }
+        return when (metric) {
+            HeatmapMetric.Net -> {
+                // Net: Positive (Surplus) = Red/Bad, Negative (Deficit) = Green/Good
+                if (value > 0) {
+                    val alpha = (value / 1000f).coerceIn(0.3f, 1.0f)
+                    MaterialTheme.colorScheme.error.copy(alpha = alpha)
+                } else {
+                    darkLevel(Math.abs(value) / 1000f)
+                }
+            }
+            HeatmapMetric.Sleep -> {
+                val durationHours = value / 60f
+                when {
+                    durationHours < 3f -> SurplusRedSoft // Warning Red
+                    durationHours > 12f -> Color(0xFF90A4AE) // Warning Blue Grey
+                    else -> darkLevel((durationHours - 3f) / (12f - 3f))
+                }
+            }
+            HeatmapMetric.Water -> darkLevel(value / 2500f)
+            HeatmapMetric.Intake -> darkLevel(value / 3000f)
+            HeatmapMetric.Burned -> darkLevel(value / 3000f)
+            HeatmapMetric.Weight -> {
+                val weight = decodeWeightForCalendar(value)
+                val range = if (max > min) max - min else 1f
+                val progress = if (range > 0) (weight - min) / range else 0.5f
+                darkLevel(progress)
+            }
+            HeatmapMetric.Meds -> {
+                val totalMeds = userProfile?.medications?.split(",")?.map { it.trim() }?.filter { it.isNotBlank() }?.size ?: 5
+                val fraction = if (totalMeds > 0) value / totalMeds.toFloat() else 0f
+                darkLevel(fraction)
+            }
+        }
     }
 
     return when (metric) {
@@ -1552,7 +1715,7 @@ fun getHeatmapColor(
                 // Deficit (value is negative) - Green
                 val absValue = Math.abs(value)
                 val alpha = (absValue / 1000f).coerceIn(0.3f, 1.0f)
-                Color(0xFF4CAF50).copy(alpha = alpha)
+                deficitColor().copy(alpha = alpha)
             }
         }
         HeatmapMetric.Sleep -> {
@@ -1561,7 +1724,7 @@ fun getHeatmapColor(
             
             if (durationHours < 3f) {
                 // Less than 3 hours: Warning Red
-                Color(0xFFE57373)
+                SurplusRedSoft
             } else if (durationHours > 12f) {
                 // More than 12 hours: Warning Blue Grey
                 Color(0xFF90A4AE)
@@ -1693,6 +1856,7 @@ fun MonthCalendarMini(
     onHeaderClick: (Int) -> Unit,
     onDayClick: (String) -> Unit
 ) {
+    val isDarkTheme = isSystemInDarkTheme()
     Column {
         Text(
             text = "${month + 1}月",
@@ -1735,19 +1899,8 @@ fun MonthCalendarMini(
                                      validItems.sumOf { it.calories }.roundToInt()
                                 }
                                 HeatmapMetric.Net -> {
-                                    // Calculate dynamic net
-                                    val target = if (userProfile != null) {
-                                        val effectiveWeight = CalorieUtils.getEffectiveWeight(dateStr, records, userProfile)
-                                        CalorieUtils.calculateDailyTarget(
-                                            gender = userProfile.gender,
-                                            weight = effectiveWeight,
-                                            height = userProfile.height,
-                                            age = userProfile.age,
-                                            activityLevel = userProfile.activityLevel,
-                                            goal = userProfile.goal
-                                        )
-                                    } else 2000
-                                    
+                                    // Calculate dynamic net (统一 computeTarget 口径)
+                                    val target = computeTarget(dateStr, records, userProfile)
                                     val intake = record?.totalIntake ?: 0
                                     val burned = record?.totalBurned ?: 0
                                     intake - (target + burned)
@@ -1789,7 +1942,7 @@ fun MonthCalendarMini(
                             }
                             
                             // Use raw value for color calculation now
-                            val bgColor = if (!hasDataForMetric) Color.Transparent else getHeatmapColor(value, metric, userProfile, minWeight, maxWeight)
+                            val bgColor = if (!hasDataForMetric) Color.Transparent else getHeatmapColor(value, metric, userProfile, minWeight, maxWeight, isDarkTheme)
                             val contentColor = getContentColorForBackground(bgColor)
 
                             Box(
@@ -1870,6 +2023,7 @@ fun MonthHeatmapView(
     weekStartDay: Int,
     onDayClick: (String) -> Unit
 ) {
+    val isDarkTheme = isSystemInDarkTheme()
     val calendar = Calendar.getInstance()
     calendar.set(year, month, 1)
     val daysInMonth = calendar.getActualMaximum(Calendar.DAY_OF_MONTH)
@@ -1924,19 +2078,8 @@ fun MonthHeatmapView(
                                      validItems.sumOf { it.calories }.roundToInt()
                                 }
                                 HeatmapMetric.Net -> {
-                                    // Calculate dynamic net
-                                    val target = if (userProfile != null) {
-                                        val effectiveWeight = CalorieUtils.getEffectiveWeight(dateStr, records, userProfile)
-                                        CalorieUtils.calculateDailyTarget(
-                                            gender = userProfile.gender,
-                                            weight = effectiveWeight,
-                                            height = userProfile.height,
-                                            age = userProfile.age,
-                                            activityLevel = userProfile.activityLevel,
-                                            goal = userProfile.goal
-                                        )
-                                    } else 2000
-                                    
+                                    // Calculate dynamic net (统一 computeTarget 口径)
+                                    val target = computeTarget(dateStr, records, userProfile)
                                     val intake = record?.totalIntake ?: 0
                                     val burned = record?.totalBurned ?: 0
                                     intake - (target + burned)
@@ -1978,7 +2121,7 @@ fun MonthHeatmapView(
                             }
                             
                             // Use raw value for color
-                            val bgColor = if (!hasDataForMetric) Color.Transparent else getHeatmapColor(value, metric, userProfile, minWeight, maxWeight)
+                            val bgColor = if (!hasDataForMetric) Color.Transparent else getHeatmapColor(value, metric, userProfile, minWeight, maxWeight, isDarkTheme)
                             val contentColor = getContentColorForBackground(bgColor)
                             
                             Box(
@@ -2285,20 +2428,8 @@ fun DayDetailDialog(
                         StatBox("运动", "${record?.totalBurned ?: 0}", accentColor)
                             
                             // Net = Intake - (Target + Burned)
-                            // Calculate target dynamically using effective weight
-                            val target = if (userProfile != null) {
-                                val effectiveWeight = CalorieUtils.getEffectiveWeight(date, records, userProfile)
-                                CalorieUtils.calculateDailyTarget(
-                                    gender = userProfile.gender,
-                                    weight = effectiveWeight,
-                                    height = userProfile.height,
-                                    age = userProfile.age,
-                                    activityLevel = userProfile.activityLevel,
-                                    goal = userProfile.goal
-                                )
-                            } else {
-                                2000
-                            }
+                            // Calculate target dynamically using effective weight (统一 computeTarget 口径)
+                            val target = computeTarget(date, records, userProfile)
                             
                             val intake = record?.totalIntake ?: 0
                             val burned = record?.totalBurned ?: 0
@@ -2306,7 +2437,8 @@ fun DayDetailDialog(
                             
                             // Display signed value
                             val displayNet = if (net > 0) "+$net" else "$net"
-                            StatBox("热量缺口", displayNet, if (net <= 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
+                            // 缺口=好 → 语义绿；盈余 → 语义红
+                            StatBox("热量缺口", displayNet, if (net <= 0) deficitColor() else MaterialTheme.colorScheme.error)
                         }
                         
                         Divider(modifier = Modifier.padding(vertical = 20.dp), color = MaterialTheme.colorScheme.outlineVariant)
@@ -2364,17 +2496,8 @@ fun DayDetailDialog(
                         Text("记录详情", style = MaterialTheme.typography.labelMedium, color = onCardColor.copy(alpha = 0.72f))
                         Spacer(modifier = Modifier.height(8.dp))
                         
-                        val foodSections = listOf(
-                            Triple(CalorieUtils.MealCategory.BREAKFAST, "早餐", MaterialTheme.colorScheme.primary),
-                            Triple(CalorieUtils.MealCategory.MORNING_EXTRA, "早加餐", Color(0xFF6D4C41)),
-                            Triple(CalorieUtils.MealCategory.LUNCH, "午餐", Color(0xFF26A69A)),
-                            Triple(CalorieUtils.MealCategory.AFTERNOON_EXTRA, "午加餐", Color(0xFF00897B)),
-                            Triple(CalorieUtils.MealCategory.AFTERNOON_TEA, "下午茶", Color(0xFFFFB300)),
-                            Triple(CalorieUtils.MealCategory.DINNER, "晚餐", Color(0xFFFF7043)),
-                            Triple(CalorieUtils.MealCategory.EVENING_EXTRA, "晚加餐", Color(0xFF5D4037)),
-                            Triple(CalorieUtils.MealCategory.SNACK, "零食", Color(0xFF8E24AA)),
-                            Triple(CalorieUtils.MealCategory.NIGHT_SNACK, "夜宵", Color(0xFF7E57C2))
-                        ).map { (category, title, color) ->
+                        // 餐次颜色统一来源：ui/theme/MealColors.kt
+                        val foodSections = mealCategoryColors().map { (category, title, color) ->
                             Triple(
                                 title,
                                 color,
@@ -2402,7 +2525,7 @@ fun DayDetailDialog(
                                             textColor = onCardColor
                                         )
                                     }
-                                    items(section.third) { item ->
+                                    items(section.third, key = { it.id }) { item ->
                                         DetailRecordRow(item, textColor = onCardColor)
                                         Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                                     }
@@ -2416,7 +2539,7 @@ fun DayDetailDialog(
                                             textColor = onCardColor
                                         )
                                     }
-                                    items(exerciseItems) { item ->
+                                    items(exerciseItems, key = { it.id }) { item ->
                                         DetailRecordRow(item, textColor = onCardColor)
                                         Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                                     }
@@ -2430,7 +2553,8 @@ fun DayDetailDialog(
                             onClick = onAddRecord,
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = Color.White)
+                            // 糖果色底上用深色字保证对比度（主题 onPrimary 已修为深色 PixelInk）
+                            colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = MaterialTheme.colorScheme.onPrimary)
                         ) {
                             Text("补录饮食/运动")
                         }
@@ -2498,7 +2622,9 @@ fun MetricTrendChart(
     val textColor = contentColor.copy(alpha = 0.72f)
 
     // Determine date range (capped at today)
-    val dateRange = remember(year, month, viewMode) {
+    // today 作为 key：跨天后重组时重新计算，避免结束日期停留在昨天
+    val today = java.time.LocalDate.now()
+    val dateRange = remember(year, month, viewMode, today) {
         val cal = java.util.Calendar.getInstance()
         val endYear: Int; val endMonth: Int; val endDay: Int
         val startYear: Int; val startMonth: Int; val startDay: Int
@@ -2525,7 +2651,6 @@ fun MetricTrendChart(
                 endDay = cal.getActualMaximum(java.util.Calendar.DAY_OF_MONTH)
             }
         }
-        val today = java.time.LocalDate.now()
         val calcStart = java.time.LocalDate.of(startYear, startMonth, startDay)
         val calcEnd = java.time.LocalDate.of(endYear, endMonth, endDay)
         val actualEnd = if (calcEnd.isAfter(today)) today else calcEnd
@@ -2541,7 +2666,7 @@ fun MetricTrendChart(
         applyMovingAverage(rawPoints, smoothDays)
     }
 
-    val realPoints = rawPoints.filter { !it.isInterpolated }
+    val realPoints = remember(rawPoints) { rawPoints.filter { !it.isInterpolated } }
 
     Column {
         // Title row: title + view mode
@@ -2733,18 +2858,10 @@ fun MetricTrendChart(
 
                 // ---- Draw interpolated segments as dashed straight lines (middle layer) ----
                 val interpPath = Path()
-                var prevInterpPos: Offset? = null
-                for (i in smoothedPositions.indices) {
-                    val (offset, pt) = smoothedPositions[i]
-                    if (pt.isInterpolated) {
-                        if (prevInterpPos == null) {
-                            interpPath.moveTo(offset.x, offset.y)
-                        } else {
-                            interpPath.lineTo(offset.x, offset.y)
-                        }
-                        prevInterpPos = offset
-                    } else {
-                        prevInterpPos = null
+                smoothedPositions.zipWithNext().forEach { (start, end) ->
+                    if (start.second.isInterpolated || end.second.isInterpolated) {
+                        interpPath.moveTo(start.first.x, start.first.y)
+                        interpPath.lineTo(end.first.x, end.first.y)
                     }
                 }
                 if (smoothedPoints.any { it.isInterpolated }) {
@@ -2758,40 +2875,69 @@ fun MetricTrendChart(
 
                 // ---- Draw smoothed line: Bézier on moving-averaged points, with gap detection (top layer) ----
                 val realSmoothed = smoothedPositions.filter { !it.second.isInterpolated }
-                if (realSmoothed.size >= 2) {
-                    val realPath = Path()
-                    realPath.moveTo(realSmoothed.first().first.x, realSmoothed.first().first.y)
-                    for (i in 1 until realSmoothed.size) {
-                        val p0 = realSmoothed[i - 1]
-                        val p1 = realSmoothed[i]
-                        val gapDays = ((p1.second.date.toEpochDay() - p0.second.date.toEpochDay()).toInt())
-                        if (gapDays <= smoothDays) {
-                            val x0 = p0.first.x; val y0 = p0.first.y
-                            val x1 = p1.first.x; val y1 = p1.first.y
-                            // Cubic Bézier with horizontal control points for visual smoothness
-                            val dx = (x1 - x0) / 3f
-                            realPath.cubicTo(x0 + dx, y0, x1 - dx, y1, x1, y1)
-                        } else {
-                            realPath.moveTo(p1.first.x, p1.first.y)
+                val realSegments = mutableListOf<MutableList<Pair<Offset, ChartPoint>>>()
+                realSmoothed.forEach { point ->
+                    val current = realSegments.lastOrNull()
+                    val previous = current?.lastOrNull()
+                    val gapDays = previous?.let {
+                        (point.second.date.toEpochDay() - it.second.date.toEpochDay()).toInt()
+                    }
+                    if (current == null || gapDays == null || gapDays > smoothDays) {
+                        realSegments += mutableListOf(point)
+                    } else {
+                        current += point
+                    }
+                }
+
+                realSegments.forEach { segment ->
+                    if (segment.size == 1) {
+                        drawCircle(lineColor, 4.dp.toPx(), segment.first().first)
+                        return@forEach
+                    }
+
+                    val linePath = Path().apply {
+                        moveTo(segment.first().first.x, segment.first().first.y)
+                        for (i in 1 until segment.size) {
+                            val p0 = segment[i - 1].first
+                            val p1 = segment[i].first
+                            val dx = (p1.x - p0.x) / 3f
+                            cubicTo(p0.x + dx, p0.y, p1.x - dx, p1.y, p1.x, p1.y)
                         }
                     }
-                    // Glow + shadow effects
+                    val areaPath = Path().apply {
+                        moveTo(segment.first().first.x, height)
+                        lineTo(segment.first().first.x, segment.first().first.y)
+                        for (i in 1 until segment.size) {
+                            val p0 = segment[i - 1].first
+                            val p1 = segment[i].first
+                            val dx = (p1.x - p0.x) / 3f
+                            cubicTo(p0.x + dx, p0.y, p1.x - dx, p1.y, p1.x, p1.y)
+                        }
+                        lineTo(segment.last().first.x, height)
+                        close()
+                    }
+                    drawPath(
+                        path = areaPath,
+                        brush = Brush.verticalGradient(
+                            colors = listOf(lineColor.copy(alpha = 0.24f), lineColor.copy(alpha = 0.02f)),
+                            startY = 0f,
+                            endY = height
+                        ),
+                        style = Fill
+                    )
                     drawContext.canvas.save()
                     drawContext.canvas.translate(2.dp.toPx(), 4.dp.toPx())
-                    drawPath(realPath, Color.Black.copy(alpha = 0.15f),
+                    drawPath(linePath, Color.Black.copy(alpha = 0.15f),
                         style = Stroke(width = 5.dp.toPx(), cap = StrokeCap.Round))
                     drawContext.canvas.restore()
-                    drawPath(realPath, lineColor.copy(alpha = 0.14f),
+                    drawPath(linePath, lineColor.copy(alpha = 0.14f),
                         style = Stroke(width = 12.dp.toPx(), cap = StrokeCap.Round))
-                    drawPath(realPath, lineColor.copy(alpha = 0.28f),
+                    drawPath(linePath, lineColor.copy(alpha = 0.28f),
                         style = Stroke(width = 7.dp.toPx(), cap = StrokeCap.Round))
-                    drawPath(realPath, lineColor,
+                    drawPath(linePath, lineColor,
                         style = Stroke(width = 4.dp.toPx(), cap = StrokeCap.Round))
-                    // Thin white center line for visual depth
-                    drawPath(realPath, Color.White.copy(alpha = 0.45f),
+                    drawPath(linePath, Color.White.copy(alpha = 0.45f),
                         style = Stroke(width = 1.dp.toPx(), cap = StrokeCap.Round))
-                } else if (realSmoothed.size == 1) {
-                    drawCircle(lineColor, 4.dp.toPx(), realSmoothed.first().first)
                 }
 
                 // ---- Touch tooltip ----

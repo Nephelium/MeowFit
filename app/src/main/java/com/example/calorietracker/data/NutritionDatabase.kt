@@ -11,23 +11,36 @@ import java.io.InputStreamReader
  */
 object NutritionDatabase {
 
-    private var allFoods: List<NutritionFoodItem> = emptyList()
-    private var loaded = false
+    private var appContext: Context? = null
+    private var allFoods: List<NutritionFoodItem>? = null
 
-    /** Call once during app init to load the database from assets */
+    /**
+     * Call once during app init. Only stores the context; the ~886KB JSON is parsed
+     * lazily on first use (off the main thread) instead of blocking Application.onCreate.
+     */
     fun init(context: Context) {
-        if (loaded) return
-        try {
-            val stream = context.assets.open("nutrition_database.json")
-            val reader = InputStreamReader(stream, "UTF-8")
-            val type = object : TypeToken<List<NutritionFoodItem>>() {}.type
-            allFoods = Gson().fromJson(reader, type)
-            reader.close()
-            loaded = true
-        } catch (e: Exception) {
-            e.printStackTrace()
-            allFoods = emptyList()
-            loaded = true // Don't retry
+        appContext = context.applicationContext
+    }
+
+    @Synchronized
+    private fun ensureLoaded() {
+        if (allFoods != null) return
+        val context = appContext
+        allFoods = if (context == null) {
+            emptyList()
+        } else {
+            try {
+                val type = object : TypeToken<List<NutritionFoodItem>>() {}.type
+                val parsed: List<NutritionFoodItem>? = context.assets.open("nutrition_database.json").use { stream ->
+                    InputStreamReader(stream, Charsets.UTF_8).use { reader ->
+                        Gson().fromJson(reader, type)
+                    }
+                }
+                parsed ?: emptyList()
+            } catch (e: Exception) {
+                e.printStackTrace()
+                emptyList() // Don't retry
+            }
         }
     }
 
@@ -39,9 +52,11 @@ object NutritionDatabase {
      */
     fun search(keyword: String, limit: Int = 20): List<NutritionFoodItem> {
         if (keyword.isBlank()) return emptyList()
+        ensureLoaded()
+        val foods = allFoods ?: return emptyList()
         val kw = keyword.trim().lowercase()
 
-        return allFoods
+        return foods
             .filter { it.foodName.lowercase().contains(kw) }
             .sortedWith(
                 compareBy<NutritionFoodItem> { !it.foodName.lowercase().equals(kw) }  // exact match first
@@ -51,12 +66,16 @@ object NutritionDatabase {
             .take(limit)
     }
 
-    fun isLoaded(): Boolean = loaded
+    fun isLoaded(): Boolean = allFoods != null
 
-    fun size(): Int = allFoods.size
+    fun size(): Int {
+        ensureLoaded()
+        return allFoods?.size ?: 0
+    }
 
     /** Get a food by exact name match */
     fun getByName(name: String): NutritionFoodItem? {
-        return allFoods.firstOrNull { it.foodName == name.trim() }
+        ensureLoaded()
+        return allFoods?.firstOrNull { it.foodName == name.trim() }
     }
 }

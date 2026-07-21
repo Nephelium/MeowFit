@@ -10,5 +10,6 @@ data class AiChatMessageEntity(
     val role: String, // "user" or "assistant"
     val content: String,
     val imageUrl: String? = null, // Base64 or path
+    val weekStartDate: String? = null, // YYYY-MM-DD, null = global chat
     val timestamp: Long = System.currentTimeMillis()
 )

@@ -5,7 +5,6 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.util.Base64
 import com.google.gson.Gson
-import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
@@ -123,6 +122,21 @@ class AiService(context: Context) {
 - "notes": (字符串) 可选，备注信息（份量、强度等）。
 """
 
+        const val RECORD_JSON_PROTOCOL = """
+【不可覆盖的返回协议】
+无论用户是在补充信息、闲聊、确认，还是已经可以生成记录，你的整条回复都必须是一个可解析的 JSON 对象。禁止 Markdown 代码块，禁止在 JSON 前后添加解释，禁止把数字写成带单位的字符串。
+
+唯一允许的顶层结构：
+{"message":"给用户看的自然语言回复","items":[{"name":"具体名称","calories":0,"carbs":0,"protein":0,"fat":0,"type":"food","time":"HH:mm","notes":"份量或强度"}]}
+
+硬性要求：
+- 顶层必须同时包含 "message" 和 "items"；没有可添加记录时 "items" 必须为 []。
+- items 中每一项必须包含 name、calories、carbs、protein、fat、type；数值字段必须是 JSON 数字。
+- type 只能是 "food" 或 "exercise"；运动的 carbs、protein、fat 均为 0。
+- time 和 notes 可以省略；不得使用 records、foods、data 等其他字段名替代 items。
+- 信息不足时，在 message 中追问，仍然按上述 JSON 对象返回。
+"""
+
         const val DEFAULT_IMAGE_PROMPT = """
 你是一个专业的营养师和运动教练。请分析用户上传的图片（可能有多张），判断是食物还是运动场景。
 
@@ -194,7 +208,7 @@ class AiService(context: Context) {
         val basePrompt = config.customChatPrompt?.takeIf { it.isNotBlank() } ?: DEFAULT_CHAT_PROMPT
         
         // Append user context dynamically
-        val systemPrompt = "$basePrompt\n\n当前用户体重: ${userWeight}kg。"
+        val systemPrompt = "$basePrompt\n\n$RECORD_JSON_PROTOCOL\n\n当前用户体重: ${userWeight}kg。"
 
         val actualMax = if (config.maxContext >= 21) Int.MAX_VALUE else config.maxContext
         val contextMessages = history.takeLast(actualMax).map { msg ->
@@ -242,7 +256,7 @@ class AiService(context: Context) {
 
         val basePrompt = config.customImagePrompt?.takeIf { it.isNotBlank() } ?: DEFAULT_IMAGE_PROMPT
         
-        var prompt = "$basePrompt\n\n当前用户信息:"
+        var prompt = "$basePrompt\n\n$RECORD_JSON_PROTOCOL\n\n当前用户信息:"
         prompt += "\n- 体重: ${userWeight}kg"
         if (!notes.isNullOrBlank()) {
             prompt += "\n- 用户备注: $notes (请重点参考备注内容)"
@@ -312,11 +326,17 @@ class AiService(context: Context) {
         }
     }
 
+    /** 服务端错误体脱敏 + 截断：防止泄露凭据或超长内容进入异常信息。 */
+    private fun sanitizeErrorBody(body: String): String {
+        val masked = body.replace(Regex("""Bearer\s+\S+"""), "Bearer ***")
+        return masked.take(500)
+    }
+
     private fun executeRequest(request: Request): AiResponse {
         client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) {
                 // Try to read error body
-                val errorBody = response.body?.string() ?: "No error body"
+                val errorBody = sanitizeErrorBody(response.body?.string() ?: "No error body")
                 throw Exception("API Error: ${response.code} ${response.message} - $errorBody")
             }
             
@@ -338,101 +358,29 @@ class AiService(context: Context) {
                 throw Exception("Failed to parse response structure: ${e.localizedMessage}")
             }
 
-            if (content.isBlank()) {
-                return AiResponse(emptyList())
-            }
-            
-            // Robust JSON extraction
-            var jsonString = content.trim()
-            
-            // 1. Remove markdown code blocks if present
-            // Simple removal of ```json and ```
-            if (jsonString.startsWith("```")) {
-                val firstNewline = jsonString.indexOf('\n')
-                if (firstNewline != -1) {
-                    jsonString = jsonString.substring(firstNewline + 1)
-                }
-                val lastBackticks = jsonString.lastIndexOf("```")
-                if (lastBackticks != -1) {
-                    jsonString = jsonString.substring(0, lastBackticks)
-                }
-            }
-            
-            jsonString = jsonString.trim()
-            
-            // 2. Find first '{' or '['
-            val firstBrace = jsonString.indexOfFirst { it == '{' } // Expecting Object now
-            if (firstBrace == -1) {
-                // If no JSON object found, maybe it's just text?
-                // If we changed the prompt to ALWAYS return JSON, this is an error.
-                // But for robustness, if it looks like plain text, treat as message with empty items.
-                 return AiResponse(emptyList(), jsonString)
-            }
-            
-            // 3. Find last '}'
-            val lastBrace = jsonString.lastIndexOf('}')
-            if (lastBrace == -1 || lastBrace < firstBrace) {
-                 throw Exception("Incomplete JSON in response: $content")
-            }
-            
-            jsonString = jsonString.substring(firstBrace, lastBrace + 1)
-
-            try {
-                val jsonElement = com.google.gson.JsonParser.parseString(jsonString)
-                
-                if (jsonElement.isJsonObject) {
-                    val jsonObject = jsonElement.asJsonObject
-                    
-                    var message: String? = null
-                    if (jsonObject.has("message") && !jsonObject.get("message").isJsonNull) {
-                        message = jsonObject.get("message").asString
-                    }
-                    
-                    var items: List<AiResponseItem> = emptyList()
-                    if (jsonObject.has("items")) {
-                        val itemsArray = jsonObject.get("items")
-                        if (itemsArray.isJsonArray) {
-                            val itemType = object : TypeToken<List<AiResponseItem>>() {}.type
-                            items = gson.fromJson<List<AiResponseItem>>(itemsArray, itemType) ?: emptyList()
-                        }
-                    }
-                    
-                    // Backward compatibility: old prompt format used "summary" instead of "message"
-                    if (message == null && jsonObject.has("summary")) {
-                        message = jsonObject.get("summary").asString
-                    }
-                    
-                    return AiResponse(items, message)
-                }
-                
-                // If it returned an array directly (old format), handle it
-                if (jsonElement.isJsonArray) {
-                    val itemType = object : TypeToken<List<AiResponseItem>>() {}.type
-                    val items = gson.fromJson<List<AiResponseItem>>(jsonElement, itemType) ?: emptyList()
-                    return AiResponse(items, "已识别 ${items.size} 条记录")
-                }
-                
-                return AiResponse(emptyList(), content)
-            } catch (e: Exception) {
-                // If JSON parsing fails, return the content as message
-                return AiResponse(emptyList(), content)
-            }
+            if (content.isBlank()) return AiResponse(emptyList())
+            return AiResponseParser.parse(content)
         }
     }
 
     suspend fun sendPlainChat(
         messages: List<Map<String, String>>,
+        @Suppress("UNUSED_PARAMETER")
         userWeight: Float
     ): String {
         val config = getConfig()
         if (config.apiKey.isBlank()) throw Exception("API Key is missing")
 
-        val basePrompt = config.customChatPrompt?.takeIf { it.isNotBlank() } ?: DEFAULT_CHAT_PROMPT
-        val systemPrompt = "$basePrompt\n\n当前用户体重: ${userWeight}kg。"
-
-        val allMessages = mutableListOf<Map<String, Any>>()
-        allMessages.add(mapOf("role" to "system", "content" to systemPrompt))
-        allMessages.addAll(messages.map { mapOf("role" to it["role"]!!, "content" to it["content"]!!) })
+        val normalizedMessages = messages.mapNotNull { message ->
+            val role = message["role"]?.takeIf { it in setOf("system", "user", "assistant") }
+            val content = message["content"]?.takeIf { it.isNotBlank() }
+            if (role == null || content == null) null else mapOf("role" to role, "content" to content)
+        }
+        val systemMessage = normalizedMessages.firstOrNull { it["role"] == "system" }
+        val actualMax = if (config.maxContext >= 21) Int.MAX_VALUE else config.maxContext.coerceAtLeast(1)
+        val conversationalMessages = normalizedMessages.filterNot { it["role"] == "system" }.takeLast(actualMax)
+        val allMessages = listOfNotNull(systemMessage) + conversationalMessages
+        if (allMessages.isEmpty()) throw IllegalArgumentException("聊天上下文为空")
 
         return withContext(Dispatchers.IO) {
             val jsonBody = gson.toJson(mapOf("model" to config.modelName, "messages" to allMessages))
@@ -445,14 +393,19 @@ class AiService(context: Context) {
 
             client.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) {
-                    val errorBody = response.body?.string() ?: "No error body"
+                    val errorBody = sanitizeErrorBody(response.body?.string() ?: "No error body")
                     throw Exception("API Error: ${response.code} - $errorBody")
                 }
                 val responseBody = response.body?.string() ?: throw Exception("Empty response")
                 val jsonObject = com.google.gson.JsonParser.parseString(responseBody).asJsonObject
                 val choices = jsonObject.getAsJsonArray("choices")
-                    ?: throw Exception("No choices in response")
+                if (choices == null || choices.size() == 0) {
+                    throw Exception("No choices in response")
+                }
                 val msg = choices.get(0).asJsonObject.getAsJsonObject("message")
+                if (msg == null || !msg.has("content") || msg.get("content").isJsonNull) {
+                    throw Exception("Empty content in response")
+                }
                 msg.get("content").asString
             }
         }
@@ -483,14 +436,19 @@ class AiService(context: Context) {
 
             client.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) {
-                    val errorBody = response.body?.string() ?: "No error body"
+                    val errorBody = sanitizeErrorBody(response.body?.string() ?: "No error body")
                     throw Exception("API Error: ${response.code} - $errorBody")
                 }
                 val responseBody = response.body?.string() ?: throw Exception("Empty response")
                 val jsonObject = com.google.gson.JsonParser.parseString(responseBody).asJsonObject
                 val choices = jsonObject.getAsJsonArray("choices")
-                    ?: throw Exception("No choices in response")
+                if (choices == null || choices.size() == 0) {
+                    throw Exception("No choices in response")
+                }
                 val message = choices.get(0).asJsonObject.getAsJsonObject("message")
+                if (message == null || !message.has("content") || message.get("content").isJsonNull) {
+                    throw Exception("Empty content in response")
+                }
                 message.get("content").asString
             }
         }

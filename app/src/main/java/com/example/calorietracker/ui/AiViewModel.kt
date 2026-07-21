@@ -2,6 +2,7 @@ package com.example.calorietracker.ui
 
 import android.app.Application
 import android.graphics.Bitmap
+import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.calorietracker.CalorieTrackerApp
@@ -10,6 +11,7 @@ import com.example.calorietracker.data.ai.AiConfig
 import com.example.calorietracker.data.ai.AiResponseItem
 import com.example.calorietracker.data.ai.AiService
 import com.example.calorietracker.ui.screens.ChatMessage
+import com.example.calorietracker.util.AppImageStore
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -58,7 +60,17 @@ class AiViewModel(application: Application) : AndroidViewModel(application) {
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     fun updateConfig(apiKey: String, provider: String, baseUrl: String, modelName: String, maxContext: Int, customChatPrompt: String? = null, customImagePrompt: String? = null, customAnalysisPrompt: String? = null) {
-        val newConfig = AiConfig(apiKey, provider, baseUrl, modelName, maxContext, customChatPrompt, customImagePrompt, customAnalysisPrompt)
+        val current = _config.value
+        val newConfig = AiConfig(
+            apiKey = apiKey,
+            provider = provider,
+            baseUrl = baseUrl,
+            modelName = modelName,
+            maxContext = maxContext,
+            customChatPrompt = customChatPrompt ?: current.customChatPrompt,
+            customImagePrompt = customImagePrompt ?: current.customImagePrompt,
+            customAnalysisPrompt = customAnalysisPrompt ?: current.customAnalysisPrompt
+        )
         aiService.saveConfig(newConfig)
         _config.value = newConfig
     }
@@ -70,32 +82,47 @@ class AiViewModel(application: Application) : AndroidViewModel(application) {
 
     fun analyzeImage(bitmaps: List<Bitmap>, userWeight: Float, notes: String? = null) {
         viewModelScope.launch {
+            analyzeImageInternal(bitmaps, userWeight, notes)
+        }
+    }
+
+    fun analyzeImageUris(imageUris: List<Uri>, userWeight: Float, notes: String? = null) {
+        viewModelScope.launch {
             _photoUiState.value = AiUiState.Loading
-            try {
-                val response = aiService.analyzeImage(bitmaps, userWeight, notes)
-                val newItems = response.items.map { 
-                    com.example.calorietracker.ui.screens.EntryItem(
-                        type = it.type,
-                        name = it.name,
-                        calories = it.calories,
-                        carbs = it.carbs,
-                        protein = it.protein,
-                        fat = it.fat,
-                        time = it.time ?: "",
-                        mealCategory = null,
-                        notes = it.notes ?: ""
-                    )
-                }
-                // Update the persistent list
-                val current = _photoItemsFlow.value.toMutableList()
-                current.addAll(newItems)
-                _photoItemsFlow.value = current
-                
-                _photoUiState.value = AiUiState.Success(response.items, response.summary)
-            } catch (e: Exception) {
-                val errorMsg = if (e.message?.contains("429") == true) "AI服务繁忙 (429)，请稍后再试" else e.localizedMessage ?: "Unknown error"
-                _photoUiState.value = AiUiState.Error(errorMsg)
+            val bitmaps = AppImageStore.decodeForAi(getApplication(), imageUris)
+            if (bitmaps.isEmpty()) {
+                _photoUiState.value = AiUiState.Error("无法读取所选图片")
+                return@launch
             }
+            analyzeImageInternal(bitmaps, userWeight, notes)
+        }
+    }
+
+    private suspend fun analyzeImageInternal(bitmaps: List<Bitmap>, userWeight: Float, notes: String?) {
+        _photoUiState.value = AiUiState.Loading
+        try {
+            val response = aiService.analyzeImage(bitmaps, userWeight, notes)
+            val newItems = response.items.map {
+                com.example.calorietracker.ui.screens.EntryItem(
+                    type = it.type,
+                    name = it.name,
+                    calories = it.calories,
+                    carbs = it.carbs,
+                    protein = it.protein,
+                    fat = it.fat,
+                    time = it.time ?: "",
+                    mealCategory = null,
+                    notes = it.notes ?: ""
+                )
+            }
+            val current = _photoItemsFlow.value.toMutableList()
+            current.addAll(newItems)
+            _photoItemsFlow.value = current
+
+            _photoUiState.value = AiUiState.Success(response.items, response.summary)
+        } catch (e: Exception) {
+            val errorMsg = if (e.message?.contains("429") == true) "AI服务繁忙 (429)，请稍后再试" else e.localizedMessage ?: "Unknown error"
+            _photoUiState.value = AiUiState.Error(errorMsg)
         }
     }
     
@@ -146,30 +173,45 @@ class AiViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
     
-    fun sendMessageWithImage(text: String, bitmaps: List<Bitmap>, imageUris: List<String>, userWeight: Float) {
-         viewModelScope.launch {
-            // Capture history BEFORE adding new message
-            val history = chatMessages.value
+    fun sendMessageWithImage(text: String, bitmaps: List<Bitmap>, userWeight: Float) {
+        viewModelScope.launch {
+            sendMessageWithImageInternal(text, bitmaps, userWeight)
+        }
+    }
 
-            // Save images to internal storage to persist them
-            val savedImageUris = bitmaps.mapIndexed { index, bitmap ->
-                saveImageToInternalStorage(bitmap, "chat_image_${System.currentTimeMillis()}_$index.jpg")
+    fun sendMessageWithImageUris(text: String, imageUris: List<Uri>, userWeight: Float) {
+        viewModelScope.launch {
+            _uiState.value = AiUiState.Loading
+            val bitmaps = AppImageStore.decodeForAi(getApplication(), imageUris)
+            if (bitmaps.isEmpty()) {
+                _uiState.value = AiUiState.Error("无法读取所选图片")
+                return@launch
             }
+            sendMessageWithImageInternal(text, bitmaps, userWeight)
+        }
+    }
+
+    private suspend fun sendMessageWithImageInternal(text: String, bitmaps: List<Bitmap>, userWeight: Float) {
+        val history = chatMessages.value
+        val savedImageUris = bitmaps.mapNotNull { bitmap ->
+            AppImageStore.saveChatBitmap(getApplication(), bitmap)
+        }
             
-            // Save user message
-            val imageTag = if (bitmaps.isNotEmpty()) "" else "[图片]" // Hide text tag if we have real images
-            // Store URIs as pipe-separated string
-            val imageUrls = if (savedImageUris.isNotEmpty()) savedImageUris.joinToString("|") else null
+        // Keep an explicit text marker so image-only messages remain valid in Room and old backups.
+        val imageTag = if (bitmaps.isNotEmpty()) "[图片]" else ""
+        val imageUrls = savedImageUris.takeIf { it.isNotEmpty() }?.joinToString("|")
             
-            repository.addAiMessage(AiChatMessageEntity(
-                role = "user", 
+        repository.addAiMessage(
+            AiChatMessageEntity(
+                role = "user",
                 content = "$text $imageTag".trim(),
                 imageUrl = imageUrls
-            ))
+            )
+        )
             
-            _uiState.value = AiUiState.Loading
-            try {
-                val response = aiService.sendMessageWithImage(text, bitmaps, userWeight, history)
+        _uiState.value = AiUiState.Loading
+        try {
+            val response = aiService.sendMessageWithImage(text, bitmaps, userWeight, history)
                 
                 repository.addAiMessage(AiChatMessageEntity(role = "assistant", content = response.summary ?: "已识别 ${response.items.size} 条记录。"))
                 
@@ -193,30 +235,18 @@ class AiViewModel(application: Application) : AndroidViewModel(application) {
                     _chatItemsFlow.value = current
                 }
                 
-                _uiState.value = AiUiState.Success(response.items, response.summary)
-            } catch (e: Exception) {
-                val errorMsg = if (e.message?.contains("429") == true) "AI服务繁忙 (429)，请稍后再试" else e.localizedMessage ?: "Unknown error"
-                _uiState.value = AiUiState.Error(errorMsg)
-            }
-         }
-    }
-
-    private fun saveImageToInternalStorage(bitmap: Bitmap, filename: String): String {
-        return try {
-            val file = java.io.File(getApplication<Application>().filesDir, filename)
-            val stream = java.io.FileOutputStream(file)
-            bitmap.compress(Bitmap.CompressFormat.JPEG, 80, stream)
-            stream.close()
-            android.net.Uri.fromFile(file).toString()
+            _uiState.value = AiUiState.Success(response.items, response.summary)
         } catch (e: Exception) {
-            e.printStackTrace()
-            ""
+            val errorMsg = if (e.message?.contains("429") == true) "AI服务繁忙 (429)，请稍后再试" else e.localizedMessage ?: "Unknown error"
+            _uiState.value = AiUiState.Error(errorMsg)
         }
     }
 
     fun clearHistory() {
         viewModelScope.launch {
+            val imageUrls = repository.getGlobalAiMessagesSync().map { it.imageUrl }
             repository.clearAiMessages()
+            AppImageStore.deleteChatImages(getApplication(), imageUrls)
             _chatItemsFlow.value = emptyList() // Also clear pending items? Maybe
         }
     }

@@ -7,6 +7,8 @@ import androidx.lifecycle.viewModelScope
 import com.example.calorietracker.data.CalorieItemEntity
 import com.example.calorietracker.data.CalorieRepository
 import com.example.calorietracker.data.DailyRecordEntity
+import com.example.calorietracker.data.FoodTemplateEntity
+import com.example.calorietracker.data.RecordItemDraft
 import com.example.calorietracker.data.UserProfileEntity
 import com.example.calorietracker.util.CalorieUtils
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -52,6 +54,12 @@ class MainViewModel(private val repository: CalorieRepository) : ViewModel() {
     val userProfile: StateFlow<UserProfileEntity?> = repository.userProfile
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
+    // Becomes true once the first profile value (null or not) arrives from DB,
+    // so UI can avoid flashing the setup screen on cold start.
+    val isProfileLoaded: StateFlow<Boolean> = repository.userProfile
+        .map { true }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
     @OptIn(ExperimentalCoroutinesApi::class)
     val dailyRecord: StateFlow<DailyRecordEntity?> = _selectedDate
         .flatMapLatest { date -> repository.getDailyRecord(date) }
@@ -66,6 +74,9 @@ class MainViewModel(private val repository: CalorieRepository) : ViewModel() {
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val allCalorieItems: StateFlow<List<CalorieItemEntity>> = repository.getAllCalorieItems()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val foodTemplates: StateFlow<List<FoodTemplateEntity>> = repository.getAllFoodTemplates()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     fun setDate(date: String) {
@@ -91,26 +102,67 @@ class MainViewModel(private val repository: CalorieRepository) : ViewModel() {
         imageUrl: String? = null,
         targetDate: String? = null
     ) {
+        addRecordItems(
+            drafts = listOf(
+                RecordItemDraft(
+                    type = type,
+                    name = name,
+                    calories = calories,
+                    carbs = carbs,
+                    protein = protein,
+                    fat = fat,
+                    time = time,
+                    mealCategory = mealCategory,
+                    notes = notes,
+                    imageUrl = imageUrl
+                )
+            ),
+            targetDate = targetDate
+        )
+    }
+
+    fun addRecordItems(drafts: List<RecordItemDraft>, targetDate: String? = null) {
+        if (drafts.isEmpty()) return
         viewModelScope.launch {
-            val item = CalorieItemEntity(
-                id = CalorieUtils.generateId(),
-                date = targetDate ?: _selectedDate.value,
-                type = type,
-                name = name,
-                calories = calories,
-                carbs = carbs,
-                protein = protein,
-                fat = fat,
-                time = time.ifEmpty { 
-                    java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date()) 
-                },
-                mealCategory = mealCategory,
-                imageUrl = imageUrl,
-                notes = notes,
-                createdAt = java.time.Instant.now().toString()
-            )
-            repository.addRecordItem(item)
+            val date = targetDate ?: _selectedDate.value
+            val nowTime = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
+                .format(java.util.Date())
+            val createdAt = java.time.Instant.now().toString()
+            val items = drafts.map { draft ->
+                CalorieItemEntity(
+                    id = CalorieUtils.generateId(),
+                    date = date,
+                    type = draft.type,
+                    name = draft.name,
+                    calories = draft.calories,
+                    carbs = draft.carbs,
+                    protein = draft.protein,
+                    fat = draft.fat,
+                    time = draft.time.ifEmpty { nowTime },
+                    mealCategory = draft.mealCategory,
+                    imageUrl = draft.imageUrl,
+                    notes = draft.notes,
+                    nutritionReferenceAmount = draft.nutritionReferenceAmount,
+                    nutritionActualAmount = draft.nutritionActualAmount,
+                    nutritionAmountUnit = draft.nutritionAmountUnit,
+                    nutritionReferenceEnergy = draft.nutritionReferenceEnergy,
+                    nutritionEnergyUnit = draft.nutritionEnergyUnit,
+                    nutritionReferenceCarbs = draft.nutritionReferenceCarbs,
+                    nutritionReferenceProtein = draft.nutritionReferenceProtein,
+                    nutritionReferenceFat = draft.nutritionReferenceFat,
+                    createdAt = createdAt
+                )
+            }
+            repository.addRecordItems(items)
         }
+    }
+
+    fun saveFoodTemplate(template: FoodTemplateEntity) {
+        viewModelScope.launch { repository.saveFoodTemplate(template) }
+    }
+
+    fun deleteFoodTemplate(template: FoodTemplateEntity) {
+        viewModelScope.launch { repository.deleteFoodTemplate(template) }
     }
 
     fun updateRecordItem(item: CalorieItemEntity) {

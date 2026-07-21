@@ -12,8 +12,8 @@ android {
         applicationId = "com.example.calorietracker"
         minSdk = 26
         targetSdk = 34
-        versionCode = 14
-        versionName = "1.5.2"
+        versionCode = 15
+        versionName = "2.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -36,6 +36,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.4"
@@ -45,6 +46,20 @@ android {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
     }
+}
+
+androidComponents {
+    onVariants(selector().all()) { variant ->
+        variant.outputs.forEach { output ->
+            val outputImpl = output as com.android.build.api.variant.impl.VariantOutputImpl
+            val version = output.versionName.orNull ?: "unknown"
+            outputImpl.outputFileName.set("MeowFit-v${version}-${variant.buildType}.apk")
+        }
+    }
+}
+
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
 }
 
 // Suppress obsolete warning for Java 8
@@ -86,12 +101,16 @@ dependencies {
 
     // OkHttp for API
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+
+    // EXIF orientation handling for camera images
+    implementation("androidx.exifinterface:exifinterface:1.3.7")
     
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
     androidTestImplementation(platform("androidx.compose:compose-bom:2023.08.00"))
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
+    androidTestImplementation("androidx.room:room-testing:$room_version")
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
 }

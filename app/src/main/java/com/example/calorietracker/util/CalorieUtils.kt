@@ -52,21 +52,12 @@ object CalorieUtils {
 
     fun calculateAge(birthDateStr: String): Int {
         if (birthDateStr.isBlank()) return 0
-        try {
-            val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-            val birthDate = sdf.parse(birthDateStr) ?: return 0
-            val today = java.util.Calendar.getInstance()
-            val dob = java.util.Calendar.getInstance().apply { time = birthDate }
-            
-            var age = today.get(java.util.Calendar.YEAR) - dob.get(java.util.Calendar.YEAR)
-            
-            if (today.get(java.util.Calendar.DAY_OF_YEAR) < dob.get(java.util.Calendar.DAY_OF_YEAR)) {
-                age--
-            }
-            
-            return age
+        return try {
+            // Period.between 正确处理闰年 2/29 出生的情况（原 DAY_OF_YEAR 比较会让平年生日当天年龄少 1 岁）
+            val birthDate = java.time.LocalDate.parse(birthDateStr.trim())
+            java.time.Period.between(birthDate, java.time.LocalDate.now()).years.coerceAtLeast(0)
         } catch (e: Exception) {
-            return 0
+            0
         }
     }
 

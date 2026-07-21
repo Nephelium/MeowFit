@@ -45,7 +45,6 @@ fun ApiSettingsScreen(
         "Aliyun (Qwen)" to "https://dashscope.aliyuncs.com/compatible-mode/v1/",
         "Zhipu (GLM)" to "https://open.bigmodel.cn/api/paas/v4/",
         "Volcengine Ark (Doubao)" to "https://ark.cn-beijing.volces.com/api/v3/",
-        "Baidu (Ernie)" to "https://aip.baidubce.com/rpc/2.0/ai_custom/v1/wenxinworkshop/chat/", // Note: Baidu API usually requires access token flow, might not work directly with standard OpenAI client format. Keeping for reference or proxy usage.
         "SiliconFlow" to "https://api.siliconflow.cn/v1/",
         "Custom" to ""
     )
@@ -77,9 +76,6 @@ fun ApiSettingsScreen(
             "doubao-seed-1-6-251015",
             "doubao-1-5-pro-32k-250115",
             "doubao-1-5-vision-pro-32k-250115"
-        ),
-        "Baidu (Ernie)" to listOf(
-            "ernie-4.5-turbo-128k", "ernie-4.0-8k"
         ),
         "SiliconFlow" to listOf(
             "deepseek-ai/DeepSeek-V3.2",

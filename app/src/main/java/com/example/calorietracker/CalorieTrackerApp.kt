@@ -7,7 +7,7 @@ import com.example.calorietracker.data.NutritionDatabase
 
 class CalorieTrackerApp : Application() {
     val database by lazy { AppDatabase.getDatabase(this) }
-    val repository by lazy { CalorieRepository(database.userDao(), database.recordDao(), database.aiDao()) }
+    val repository by lazy { CalorieRepository(database, applicationContext) }
 
     override fun onCreate() {
         super.onCreate()

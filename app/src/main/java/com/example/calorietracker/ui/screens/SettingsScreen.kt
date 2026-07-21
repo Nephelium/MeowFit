@@ -9,7 +9,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CutCornerShape as RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Person
@@ -24,6 +24,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import com.example.calorietracker.data.UserProfileEntity
+import com.example.calorietracker.BuildConfig
 
 import androidx.compose.material.icons.filled.Backup
 import androidx.compose.material.icons.filled.Bedtime
@@ -42,6 +43,9 @@ import com.example.calorietracker.util.IconManager
 import androidx.compose.foundation.Image
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import com.example.calorietracker.ui.components.PixelJournalBanner
+import com.example.calorietracker.ui.components.PixelSectionLabel
+import com.example.calorietracker.ui.theme.AppFontMode
 
 @Composable
 fun SettingsScreen(
@@ -63,9 +67,11 @@ fun SettingsScreen(
     onDismissUpdateDialog: () -> Unit = {},
     onPickAppIcon: () -> Unit = {},
     onResetAppIcon: () -> Unit = {},
-    hasCustomIcon: Boolean = false
+    hasCustomIcon: Boolean = false,
+    fontMode: AppFontMode = AppFontMode.MEOW_FIT,
+    onFontModeChange: (AppFontMode) -> Unit = {}
 ) {
-    val currentVersion = "1.5.2"
+    val currentVersion = BuildConfig.VERSION_NAME
     val isDarkTheme = androidx.compose.foundation.isSystemInDarkTheme()
     val selectedThemeIndex = userProfile?.selectedTodayThemeIndex ?: 0
     val selectedTheme = remember(selectedThemeIndex) { getTodayVisualTheme(selectedThemeIndex) }
@@ -81,6 +87,7 @@ fun SettingsScreen(
     var showWeekStartDialog by remember { mutableStateOf(false) }
     var showMedicationDialog by remember { mutableStateOf(false) }
     var showAppIconDialog by remember { mutableStateOf(false) }
+    var showFontDialog by remember { mutableStateOf(false) }
 
     // Auto-show dialog if status changes to something relevant
     if (updateStatus !is UpdateStatus.Idle) {
@@ -185,6 +192,20 @@ fun SettingsScreen(
         )
     }
 
+    if (showFontDialog) {
+        FontModeDialog(
+            currentMode = fontMode,
+            cardColor = cardColor,
+            textColor = onCardColor,
+            accentColor = accentColor,
+            onDismiss = { showFontDialog = false },
+            onSelect = {
+                onFontModeChange(it)
+                showFontDialog = false
+            }
+        )
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
         TodayBackground(
             theme = selectedTheme,
@@ -200,22 +221,26 @@ fun SettingsScreen(
                 .background(Color.Transparent)
                 .verticalScroll(rememberScrollState())
                 .padding(top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding())
-                .padding(16.dp)
+                .padding(horizontal = 12.dp, vertical = 8.dp)
         ) {
         Text(
             "设置", 
             style = MaterialTheme.typography.headlineMedium, 
             color = onCardColor,
-            modifier = Modifier.padding(vertical = 16.dp)
+            modifier = Modifier.padding(top = 4.dp, bottom = 8.dp)
         )
-        
-        Text(
-            "账户与资料", 
-            style = MaterialTheme.typography.titleMedium,
-            color = sectionTitleColor,
-            modifier = Modifier.padding(bottom = 8.dp, start = 4.dp)
+
+        PixelJournalBanner(
+            title = "猫猫手账小屋",
+            subtitle = "把设置整理好，记录会更顺手喵",
+            accentColor = accentColor
         )
-        
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        PixelSectionLabel("账户与资料", accentColor = accentColor, textColor = sectionTitleColor)
+        Spacer(modifier = Modifier.height(6.dp))
+
         SettingsItem(
             icon = Icons.Default.Person,
             title = "个人信息",
@@ -238,14 +263,10 @@ fun SettingsScreen(
             textColor = onCardColor
         )
         
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(12.dp))
 
-        Text(
-            "服药管理", 
-            style = MaterialTheme.typography.titleMedium,
-            color = sectionTitleColor,
-            modifier = Modifier.padding(bottom = 8.dp, start = 4.dp)
-        )
+        PixelSectionLabel("服药管理", accentColor = accentColor, textColor = sectionTitleColor)
+        Spacer(modifier = Modifier.height(6.dp))
 
         SwitchSettingsItem(
             icon = Icons.Default.Face,
@@ -273,14 +294,10 @@ fun SettingsScreen(
             )
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(12.dp))
 
-        Text(
-            "目标设置", 
-            style = MaterialTheme.typography.titleMedium,
-            color = sectionTitleColor,
-            modifier = Modifier.padding(bottom = 8.dp, start = 4.dp)
-        )
+        PixelSectionLabel("目标设置", accentColor = accentColor, textColor = sectionTitleColor)
+        Spacer(modifier = Modifier.height(6.dp))
 
         SettingsItem(
             icon = Icons.Default.Close, // Using Close as Block/Ban icon
@@ -294,14 +311,10 @@ fun SettingsScreen(
             textColor = onCardColor
         )
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(12.dp))
 
-        Text(
-            "显示设置", 
-            style = MaterialTheme.typography.titleMedium,
-            color = sectionTitleColor,
-            modifier = Modifier.padding(bottom = 8.dp, start = 4.dp)
-        )
+        PixelSectionLabel("显示设置", accentColor = accentColor, textColor = sectionTitleColor)
+        Spacer(modifier = Modifier.height(6.dp))
 
         SwitchSettingsItem(
             icon = Icons.Default.Restaurant,
@@ -329,6 +342,18 @@ fun SettingsScreen(
         Spacer(modifier = Modifier.height(8.dp))
 
         SettingsItem(
+            icon = Icons.Default.Edit,
+            title = "字体风格",
+            subtitle = if (fontMode == AppFontMode.MEOW_FIT) "猫猫手账字体" else "手机系统字体",
+            onClick = { showFontDialog = true },
+            cardColor = cardColor,
+            iconTint = accentColor,
+            textColor = onCardColor
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        SettingsItem(
             icon = Icons.Default.DateRange,
             title = "每周起始日",
             subtitle = if ((userProfile?.weekStartDay ?: java.util.Calendar.SUNDAY) == java.util.Calendar.MONDAY) "周一" else "周日",
@@ -342,22 +367,18 @@ fun SettingsScreen(
 
         SettingsItem(
             icon = Icons.Default.Face,
-            title = "应用图标",
-            subtitle = if (hasCustomIcon) "已自定义" else "默认图标",
+            title = "图标图片预览",
+            subtitle = if (hasCustomIcon) "已保存预览图（不会替换桌面图标）" else "预览默认图标",
             onClick = { showAppIconDialog = true },
             cardColor = cardColor,
             iconTint = accentColor,
             textColor = onCardColor
         )
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(12.dp))
 
-        Text(
-            "AI 助手",
-            style = MaterialTheme.typography.titleMedium,
-            color = sectionTitleColor,
-            modifier = Modifier.padding(bottom = 8.dp, start = 4.dp)
-        )
+        PixelSectionLabel("AI 助手", accentColor = accentColor, textColor = sectionTitleColor)
+        Spacer(modifier = Modifier.height(6.dp))
 
         SettingsItem(
             icon = Icons.Default.Face,
@@ -381,14 +402,10 @@ fun SettingsScreen(
             textColor = onCardColor
         )
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(12.dp))
 
-        Text(
-            "数据管理", 
-            style = MaterialTheme.typography.titleMedium,
-            color = sectionTitleColor,
-            modifier = Modifier.padding(bottom = 8.dp, start = 4.dp)
-        )
+        PixelSectionLabel("数据管理", accentColor = accentColor, textColor = sectionTitleColor)
+        Spacer(modifier = Modifier.height(6.dp))
 
         SettingsItem(
             icon = Icons.Default.Backup,
@@ -400,14 +417,10 @@ fun SettingsScreen(
             textColor = onCardColor
         )
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(12.dp))
 
-        Text(
-            "关于",
-            style = MaterialTheme.typography.titleMedium,
-            color = sectionTitleColor,
-            modifier = Modifier.padding(bottom = 8.dp, start = 4.dp)
-        )
+        PixelSectionLabel("关于", accentColor = accentColor, textColor = sectionTitleColor)
+        Spacer(modifier = Modifier.height(6.dp))
 
         SettingsItem(
             icon = Icons.Default.Update,
@@ -503,9 +516,9 @@ fun CheckUpdateDialog(
                             style = MaterialTheme.typography.titleMedium,
                             color = accentColor
                         )
-                        if (status.release.body.isNotBlank()) {
+                        if (status.release.body.orEmpty().isNotBlank()) {
                             MarkdownText(
-                                text = status.release.body,
+                                text = status.release.body.orEmpty(),
                                 baseColor = textColor.copy(alpha = 0.9f),
                                 baseFontSize = 14f,
                                 modifier = Modifier
@@ -582,6 +595,62 @@ fun CheckUpdateDialog(
 }
 
 @Composable
+private fun FontModeDialog(
+    currentMode: AppFontMode,
+    cardColor: Color,
+    textColor: Color,
+    accentColor: Color,
+    onDismiss: () -> Unit,
+    onSelect: (AppFontMode) -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = cardColor,
+        titleContentColor = textColor,
+        textContentColor = textColor,
+        title = { Text("选择字体") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf(
+                    Triple(AppFontMode.MEOW_FIT, "猫猫手账字体", "清晰无衬线正文 + 像素数字标签"),
+                    Triple(AppFontMode.SYSTEM, "手机系统字体", "跟随当前手机的默认字体")
+                ).forEach { (mode, title, subtitle) ->
+                    val selected = currentMode == mode
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onSelect(mode) },
+                        shape = RoundedCornerShape(10.dp),
+                        color = if (selected) accentColor.copy(alpha = 0.16f) else textColor.copy(alpha = 0.05f),
+                        border = BorderStroke(1.dp, if (selected) accentColor else textColor.copy(alpha = 0.14f))
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = selected,
+                                onClick = { onSelect(mode) },
+                                colors = RadioButtonDefaults.colors(selectedColor = accentColor)
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = textColor.copy(alpha = 0.7f))
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("取消", color = accentColor) }
+        }
+    )
+}
+
+@Composable
 fun SettingsItem(
     icon: ImageVector,
     title: String,
@@ -595,31 +664,40 @@ fun SettingsItem(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
         colors = CardDefaults.cardColors(containerColor = cardColor),
-        shape = RoundedCornerShape(16.dp)
+        shape = RoundedCornerShape(10.dp),
+        border = BorderStroke(1.dp, iconTint.copy(alpha = 0.22f))
     ) {
         Row(
             modifier = Modifier
-                .padding(16.dp)
+                .padding(horizontal = 11.dp, vertical = 8.dp)
                 .fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = iconTint,
-                modifier = Modifier.size(24.dp)
-            )
-            Spacer(modifier = Modifier.width(16.dp))
+            Box(
+                modifier = Modifier
+                    .size(32.dp)
+                    .background(iconTint.copy(alpha = 0.13f), RoundedCornerShape(7.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = iconTint,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+            Spacer(modifier = Modifier.width(10.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text(title, style = MaterialTheme.typography.titleMedium, color = textColor)
-                Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = textColor.copy(alpha = 0.82f))
+                Text(title, style = MaterialTheme.typography.titleSmall, color = textColor, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
+                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = textColor.copy(alpha = 0.72f), maxLines = 2)
             }
             Icon(
                 imageVector = Icons.Default.ChevronRight,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                tint = textColor.copy(alpha = 0.35f),
+                modifier = Modifier.size(18.dp)
             )
         }
     }
@@ -1187,7 +1265,7 @@ fun AppIconDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("应用图标", color = textColor) },
+        title = { Text("图标图片预览", color = textColor) },
         containerColor = containerColor,
         titleContentColor = textColor,
         textContentColor = textColor,
@@ -1198,7 +1276,7 @@ fun AppIconDialog(
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 Text(
-                    if (hasCustomIcon) "当前使用自定义图标" else "当前使用默认图标",
+                    if (hasCustomIcon) "已保存自定义预览图。Android 不允许用任意图片动态替换桌面启动图标。" else "当前预览默认图标。",
                     style = MaterialTheme.typography.bodySmall,
                     color = textColor.copy(alpha = 0.82f)
                 )

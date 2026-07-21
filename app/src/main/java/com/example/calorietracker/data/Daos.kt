@@ -38,6 +38,12 @@ interface RecordDao {
     @Query("SELECT * FROM calorie_items WHERE date = :date ORDER BY time DESC")
     fun getItemsForDate(date: String): Flow<List<CalorieItemEntity>>
 
+    @Query("SELECT * FROM calorie_items WHERE date = :date ORDER BY time DESC")
+    suspend fun getItemsForDateSync(date: String): List<CalorieItemEntity>
+
+    @Query("SELECT * FROM calorie_items WHERE id = :id LIMIT 1")
+    suspend fun getItemById(id: String): CalorieItemEntity?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertItem(item: CalorieItemEntity)
 
@@ -49,6 +55,40 @@ interface RecordDao {
 
     @Query("DELETE FROM calorie_items WHERE id = :id")
     suspend fun deleteItemById(id: String)
+
+    @Query(
+        """
+        UPDATE daily_records SET
+            totalIntake = :totalIntake,
+            totalBurned = :totalBurned,
+            netCalories = :netCalories,
+            totalCarbs = :totalCarbs,
+            totalProtein = :totalProtein,
+            totalFat = :totalFat
+        WHERE date = :date
+        """
+    )
+    suspend fun updateCalculatedTotals(
+        date: String,
+        totalIntake: Int,
+        totalBurned: Int,
+        netCalories: Int,
+        totalCarbs: Int,
+        totalProtein: Int,
+        totalFat: Int
+    )
+
+    @Query("UPDATE daily_records SET totalWater = :amount WHERE date = :date")
+    suspend fun updateWaterValue(date: String, amount: Int)
+
+    @Query("UPDATE daily_records SET sleepDuration = :duration WHERE date = :date")
+    suspend fun updateSleepValue(date: String, duration: Int)
+
+    @Query("UPDATE daily_records SET weight = :weight WHERE date = :date")
+    suspend fun updateWeightValue(date: String, weight: Float?)
+
+    @Query("UPDATE daily_records SET medicationTaken = :taken WHERE date = :date")
+    suspend fun updateMedicationTakenValue(date: String, taken: String)
     
     @Query("SELECT * FROM daily_records ORDER BY date DESC")
     fun getAllRecords(): Flow<List<DailyRecordEntity>>

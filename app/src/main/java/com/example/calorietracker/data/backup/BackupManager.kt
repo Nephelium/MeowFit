@@ -2,13 +2,17 @@ package com.example.calorietracker.data.backup
 
 import android.content.Context
 import android.net.Uri
+import androidx.room.withTransaction
+import com.example.calorietracker.data.AiChatMessageEntity
+import com.example.calorietracker.data.AppDatabase
 import com.example.calorietracker.data.CalorieItemEntity
 import com.example.calorietracker.data.DailyRecordEntity
-import com.example.calorietracker.data.RecordDao
-import com.example.calorietracker.data.UserDao
+import com.example.calorietracker.data.FoodTemplateEntity
 import com.example.calorietracker.data.UserProfileEntity
 import com.example.calorietracker.data.WeeklySummaryEntity
-import com.example.calorietracker.data.AnalysisDao
+import com.example.calorietracker.domain.nutrition.AmountUnit
+import com.example.calorietracker.domain.nutrition.EnergyUnit
+import com.example.calorietracker.util.AppImageStore
 import com.example.calorietracker.util.ImageStorageUtils
 import com.example.calorietracker.util.IconManager
 import com.google.gson.Gson
@@ -20,13 +24,16 @@ import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
+import java.io.InputStream
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.Calendar
+import java.util.UUID
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
+import kotlin.math.roundToInt
 
 // DTO for UserProfile to handle version compatibility (missing fields in JSON)
 data class BackupUserProfile(
@@ -49,30 +56,35 @@ data class BackupUserProfile(
     val excludedExercises: String? = null,
     val medicationEnabled: Boolean? = null,
     val medications: String? = null,
+    val medicationTimes: String? = null,
     val createdAt: String? = null
 ) {
-    fun toEntity(): UserProfileEntity {
+    fun toEntity(existing: UserProfileEntity? = null): UserProfileEntity {
         return UserProfileEntity(
-            id = id,
-            name = name ?: "User",
-            gender = gender ?: "male",
-            age = age ?: 25,
-            birthDate = birthDate ?: "",
-            height = height ?: 170f,
-            weight = weight ?: 60f,
-            targetWeight = targetWeight ?: 55f,
-            activityLevel = activityLevel ?: "sedentary",
-            goal = goal ?: "lose",
-            dailyCalorieTarget = dailyCalorieTarget ?: 2000,
-            sleepGoal = sleepGoal ?: 7.5f,
-            showMacros = showMacros ?: false,
-            weekStartDay = if (weekStartDay == Calendar.MONDAY) Calendar.MONDAY else Calendar.SUNDAY,
-            selectedTodayThemeIndex = selectedTodayThemeIndex ?: 0,
-            hasSelectedTodayTheme = hasSelectedTodayTheme ?: false,
-            excludedExercises = excludedExercises ?: "",
-            medicationEnabled = medicationEnabled ?: false,
-            medications = medications ?: "",
-            createdAt = createdAt ?: java.time.Instant.now().toString()
+            id = 1,
+            name = name ?: existing?.name ?: "User",
+            gender = gender ?: existing?.gender ?: "male",
+            age = age ?: existing?.age ?: 25,
+            birthDate = birthDate ?: existing?.birthDate ?: "",
+            height = height ?: existing?.height ?: 170f,
+            weight = weight ?: existing?.weight ?: 60f,
+            targetWeight = targetWeight ?: existing?.targetWeight ?: 55f,
+            activityLevel = activityLevel ?: existing?.activityLevel ?: "sedentary",
+            goal = goal ?: existing?.goal ?: "lose",
+            dailyCalorieTarget = dailyCalorieTarget ?: existing?.dailyCalorieTarget ?: 2000,
+            sleepGoal = sleepGoal ?: existing?.sleepGoal ?: 7.5f,
+            showMacros = showMacros ?: existing?.showMacros ?: false,
+            weekStartDay = when (weekStartDay ?: existing?.weekStartDay) {
+                Calendar.MONDAY -> Calendar.MONDAY
+                else -> Calendar.SUNDAY
+            },
+            selectedTodayThemeIndex = selectedTodayThemeIndex ?: existing?.selectedTodayThemeIndex ?: 0,
+            hasSelectedTodayTheme = hasSelectedTodayTheme ?: existing?.hasSelectedTodayTheme ?: false,
+            excludedExercises = excludedExercises ?: existing?.excludedExercises ?: "",
+            medicationEnabled = medicationEnabled ?: existing?.medicationEnabled ?: false,
+            medications = medications ?: existing?.medications ?: "",
+            medicationTimes = medicationTimes ?: existing?.medicationTimes ?: "",
+            createdAt = createdAt ?: existing?.createdAt ?: java.time.Instant.now().toString()
         )
     }
 
@@ -98,6 +110,7 @@ data class BackupUserProfile(
                 excludedExercises = entity.excludedExercises,
                 medicationEnabled = entity.medicationEnabled,
                 medications = entity.medications,
+                medicationTimes = entity.medicationTimes,
                 createdAt = entity.createdAt
             )
         }
@@ -109,21 +122,33 @@ data class BackupData(
     val dailyRecords: List<DailyRecordEntity>,
     val calorieItems: List<CalorieItemEntity>,
     val weeklySummaries: List<WeeklySummaryEntity> = emptyList(),
+    val aiChatMessages: List<AiChatMessageEntity> = emptyList(),
+    val foodTemplates: List<FoodTemplateEntity> = emptyList(),
     val customChatPrompt: String? = null,
     val customImagePrompt: String? = null,
     val customAnalysisPrompt: String? = null,
-    val version: Int = 3,
+    val version: Int = 6,
     val timestamp: Long = System.currentTimeMillis()
 )
 
 class BackupManager(
     private val context: Context,
-    private val userDao: UserDao,
-    private val recordDao: RecordDao,
-    private val analysisDao: AnalysisDao
+    private val database: AppDatabase
 ) {
+    private val userDao = database.userDao()
+    private val recordDao = database.recordDao()
+    private val analysisDao = database.analysisDao()
+    private val aiDao = database.aiDao()
+    private val foodTemplateDao = database.foodTemplateDao()
     private val gson = Gson()
     private val backupDir = File(context.filesDir, "backups")
+
+    private companion object {
+        const val CURRENT_BACKUP_VERSION = 6
+        const val MAX_ARCHIVE_BYTES = 100L * 1024L * 1024L
+        const val MAX_JSON_BYTES = 10L * 1024L * 1024L
+        const val MAX_IMAGE_BYTES = 20L * 1024L * 1024L
+    }
 
     init {
         if (!backupDir.exists()) {
@@ -139,8 +164,7 @@ class BackupManager(
         val year = parts[0].toIntOrNull() ?: return null
         val month = parts[1].toIntOrNull() ?: return null
         val day = parts[2].toIntOrNull() ?: return null
-        if (month !in 1..12 || day !in 1..31) return null
-        return String.format(Locale.US, "%04d-%02d-%02d", year, month, day)
+        return runCatching { java.time.LocalDate.of(year, month, day).toString() }.getOrNull()
     }
 
     private fun normalizeTime(time: String?): String {
@@ -155,6 +179,7 @@ class BackupManager(
     }
 
     private fun sanitizeBackupData(backupData: BackupData): BackupData {
+        fun nonNegativeOrNull(value: Double?): Double? = value?.takeIf { it.isFinite() && it >= 0.0 }
         val normalizedDailyRecords = backupData.dailyRecords.mapNotNull { record ->
             val date = normalizeDate(runCatching { record.date }.getOrNull()) ?: return@mapNotNull null
             val weight = runCatching { record.weight }.getOrNull()?.takeIf { it.isFinite() && it > 0f }
@@ -169,7 +194,8 @@ class BackupManager(
                 totalFat = runCatching { record.totalFat }.getOrDefault(0).coerceAtLeast(0),
                 totalWater = runCatching { record.totalWater }.getOrDefault(0).coerceAtLeast(0),
                 sleepDuration = runCatching { record.sleepDuration }.getOrDefault(0).coerceAtLeast(0),
-                medicationTaken = runCatching { record.medicationTaken }.getOrDefault("")
+                // Gson 反序列化旧备份缺失字段时不会抛异常而是留下 null，必须判 null 兜底
+                medicationTaken = (runCatching { record.medicationTaken }.getOrNull()) ?: ""
             )
         }.associateBy { it.date }.values.toList()
 
@@ -177,7 +203,7 @@ class BackupManager(
             val date = normalizeDate(runCatching { item.date }.getOrNull()) ?: return@mapNotNull null
             val type = if (runCatching { item.type }.getOrDefault("food") == "exercise") "exercise" else "food"
             val normalizedId = runCatching { item.id }.getOrNull().takeUnless { it.isNullOrBlank() }
-                ?: "${System.currentTimeMillis()}-${date.hashCode()}-${type.hashCode()}"
+                ?: UUID.randomUUID().toString()
             val normalizedName = runCatching { item.name }.getOrNull().takeUnless { it.isNullOrBlank() }
                 ?: if (type == "exercise") "运动" else "食物"
             val calories = runCatching { item.calories }.getOrDefault(0.0).let { if (it.isFinite()) it else 0.0 }.coerceAtLeast(0.0)
@@ -197,8 +223,58 @@ class BackupManager(
                 mealCategory = runCatching { item.mealCategory }.getOrNull(),
                 imageUrl = runCatching { item.imageUrl }.getOrNull(),
                 notes = runCatching { item.notes }.getOrNull(),
+                nutritionReferenceAmount = nonNegativeOrNull(runCatching { item.nutritionReferenceAmount }.getOrNull())
+                    ?.takeIf { it > 0.0 },
+                nutritionActualAmount = nonNegativeOrNull(runCatching { item.nutritionActualAmount }.getOrNull()),
+                nutritionAmountUnit = runCatching { item.nutritionAmountUnit }.getOrNull()
+                    ?.let { AmountUnit.fromStorage(it).name },
+                nutritionReferenceEnergy = nonNegativeOrNull(runCatching { item.nutritionReferenceEnergy }.getOrNull()),
+                nutritionEnergyUnit = runCatching { item.nutritionEnergyUnit }.getOrNull()
+                    ?.let { EnergyUnit.fromStorage(it).name },
+                nutritionReferenceCarbs = nonNegativeOrNull(runCatching { item.nutritionReferenceCarbs }.getOrNull()),
+                nutritionReferenceProtein = nonNegativeOrNull(runCatching { item.nutritionReferenceProtein }.getOrNull()),
+                nutritionReferenceFat = nonNegativeOrNull(runCatching { item.nutritionReferenceFat }.getOrNull()),
                 createdAt = runCatching { item.createdAt }.getOrNull().takeUnless { it.isNullOrBlank() }
                     ?: Date().toString()
+            )
+        }
+
+        // 周报：旧备份可能缺失非空字段（summaryText/status 等），逐字段兜底而非整条丢弃
+        val normalizedSummaries = backupData.weeklySummaries.mapNotNull { summary ->
+            val weekStart = normalizeDate(runCatching { summary.weekStartDate }.getOrNull())
+                ?: return@mapNotNull null
+            val weekEnd = (runCatching { summary.weekEndDate }.getOrNull())?.let(::normalizeDate) ?: weekStart
+            WeeklySummaryEntity(
+                weekStartDate = weekStart,
+                weekEndDate = weekEnd,
+                summaryText = (runCatching { summary.summaryText }.getOrNull()) ?: "",
+                recommendations = (runCatching { summary.recommendations }.getOrNull()) ?: "",
+                dietDays = runCatching { summary.dietDays }.getOrDefault(0).coerceAtLeast(0),
+                exerciseDays = runCatching { summary.exerciseDays }.getOrDefault(0).coerceAtLeast(0),
+                generatedAt = runCatching { summary.generatedAt }.getOrDefault(System.currentTimeMillis()),
+                status = (runCatching { summary.status }.getOrNull())?.takeIf { it.isNotBlank() } ?: "generated"
+            )
+        }
+
+        val normalizedTemplates = backupData.foodTemplates.mapNotNull { template ->
+            val name = runCatching { template.name }.getOrNull()?.trim().takeUnless { it.isNullOrBlank() }
+                ?: return@mapNotNull null
+            val referenceAmount = runCatching { template.referenceAmount }.getOrDefault(0.0)
+            val energyValue = runCatching { template.energyValue }.getOrDefault(0.0)
+            if (!referenceAmount.isFinite() || referenceAmount <= 0.0 || !energyValue.isFinite() || energyValue < 0.0) {
+                return@mapNotNull null
+            }
+            template.copy(
+                id = runCatching { template.id }.getOrNull().takeUnless { it.isNullOrBlank() }
+                    ?: UUID.randomUUID().toString(),
+                name = name,
+                referenceAmount = referenceAmount,
+                amountUnit = AmountUnit.fromStorage(template.amountUnit).name,
+                energyValue = energyValue,
+                energyUnit = EnergyUnit.fromStorage(template.energyUnit).name,
+                carbs = template.carbs.takeIf { it.isFinite() && it >= 0.0 } ?: 0.0,
+                protein = template.protein.takeIf { it.isFinite() && it >= 0.0 } ?: 0.0,
+                fat = template.fat.takeIf { it.isFinite() && it >= 0.0 } ?: 0.0
             )
         }
 
@@ -210,9 +286,23 @@ class BackupManager(
             .map { DailyRecordEntity(date = it) }
         val finalDailyRecords = (normalizedDailyRecords + generatedDailyRecords).sortedBy { it.date }
 
+        val normalizedMessages = backupData.aiChatMessages.mapNotNull { message ->
+            val role = runCatching { message.role }.getOrNull()
+                ?.takeIf { it == "user" || it == "assistant" } ?: return@mapNotNull null
+            val content = runCatching { message.content }.getOrNull()
+                ?.trim()?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            val originalWeek = runCatching { message.weekStartDate }.getOrNull()
+            val normalizedWeek = originalWeek?.let(::normalizeDate)
+            if (originalWeek != null && normalizedWeek == null) return@mapNotNull null
+            message.copy(role = role, content = content, weekStartDate = normalizedWeek)
+        }
+
         return backupData.copy(
             dailyRecords = finalDailyRecords,
-            calorieItems = normalizedItems
+            calorieItems = normalizedItems,
+            weeklySummaries = normalizedSummaries,
+            aiChatMessages = normalizedMessages,
+            foodTemplates = normalizedTemplates
         )
     }
 
@@ -234,16 +324,20 @@ class BackupManager(
         val dailyRecords = parseDailyRecords(obj)
         val calorieItems = parseCalorieItems(obj)
         val weeklySummaries = parseWeeklySummaries(obj)
+        val foodTemplates = parseFoodTemplates(obj)
         val version = obj.getSafeInt("version") ?: 1
         val timestamp = obj.getSafeLong("timestamp") ?: System.currentTimeMillis()
-        val customChatPrompt = if (obj.has("customChatPrompt")) obj.get("customChatPrompt")?.asString else null
-        val customImagePrompt = if (obj.has("customImagePrompt")) obj.get("customImagePrompt")?.asString else null
-        val customAnalysisPrompt = if (obj.has("customAnalysisPrompt")) obj.get("customAnalysisPrompt")?.asString else null
+        val customChatPrompt = obj.getSafeString("customChatPrompt")
+        val customImagePrompt = obj.getSafeString("customImagePrompt")
+        val customAnalysisPrompt = obj.getSafeString("customAnalysisPrompt")
+        val aiChatMessages = parseAiChatMessages(obj)
         return BackupData(
             userProfile = userProfile,
             dailyRecords = dailyRecords,
             calorieItems = calorieItems,
             weeklySummaries = weeklySummaries,
+            aiChatMessages = aiChatMessages,
+            foodTemplates = foodTemplates,
             customChatPrompt = customChatPrompt,
             customImagePrompt = customImagePrompt,
             customAnalysisPrompt = customAnalysisPrompt,
@@ -276,6 +370,18 @@ class BackupManager(
         }
     }
 
+    private fun parseAiChatMessages(obj: JsonObject): List<AiChatMessageEntity> {
+        return parseArray(obj.get("aiChatMessages")).mapNotNull { element ->
+            runCatching { gson.fromJson(element, AiChatMessageEntity::class.java) }.getOrNull()
+        }
+    }
+
+    private fun parseFoodTemplates(obj: JsonObject): List<FoodTemplateEntity> {
+        return parseArray(obj.get("foodTemplates")).mapNotNull { element ->
+            runCatching { gson.fromJson(element, FoodTemplateEntity::class.java) }.getOrNull()
+        }
+    }
+
     private fun parseArray(element: com.google.gson.JsonElement?): JsonArray {
         return if (element != null && element.isJsonArray) element.asJsonArray else JsonArray()
     }
@@ -290,14 +396,35 @@ class BackupManager(
         return runCatching { value.asLong }.getOrNull()
     }
 
+    private fun JsonObject.getSafeString(key: String): String? {
+        val value = get(key) ?: return null
+        if (value.isJsonNull || !value.isJsonPrimitive) return null
+        return runCatching { value.asString }.getOrNull()
+    }
+
     private fun isSafeImageEntryName(entryName: String): Boolean {
         if (!entryName.startsWith("images/")) return false
-        val filename = entryName.removePrefix("images/")
-        if (filename.isBlank()) return false
-        if (filename.contains("..")) return false
-        if (filename.contains("/") || filename.contains("\\")) return false
-        return true
+        val relative = entryName.removePrefix("images/")
+        if (relative.isBlank() || relative.contains("..") || relative.contains("\\")) return false
+        val parts = relative.split('/')
+        return when (parts.size) {
+            1 -> parts[0].isNotBlank() // v1-v5 flat image entries
+            2 -> parts[0] in setOf("records", "chat") && parts[1].isNotBlank()
+            else -> false
+        }
     }
+
+    private fun fileFromStoredUri(value: String): File? = runCatching {
+        val uri = Uri.parse(value)
+        when (uri.scheme) {
+            "file" -> uri.path?.let(::File)
+            null -> File(value)
+            else -> null
+        }
+    }.getOrNull()
+
+    private fun safeArchiveFilename(file: File): String =
+        file.name.replace(Regex("[^A-Za-z0-9._-]"), "_").takeLast(100).ifBlank { "image.jpg" }
 
     private suspend fun getBackupPayload(): BackupPayload {
         return withContext(Dispatchers.IO) {
@@ -313,8 +440,8 @@ class BackupManager(
                     item
                 } else {
                     val file = File(path)
-                    if (file.exists() && file.isFile) {
-                        val entryName = "images/${imageIndex}_${file.name}"
+                    if (file.exists() && file.isFile && file.length() in 1..MAX_IMAGE_BYTES) {
+                        val entryName = "images/records/${imageIndex}_${safeArchiveFilename(file)}"
                         imageIndex += 1
                         mappedImages += file to entryName
                         item.copy(imageUrl = entryName)
@@ -326,11 +453,30 @@ class BackupManager(
 
             // Include custom app icon in backup if exists
             val customIconFile = IconManager.getCustomIconFile(context)
-            if (customIconFile.exists() && customIconFile.isFile) {
+            if (customIconFile.exists() && customIconFile.isFile && customIconFile.length() in 1..MAX_IMAGE_BYTES) {
                 mappedImages += customIconFile to "custom_app_icon.png"
             }
 
+            val aiChatMessages = aiDao.getAllMessagesSync().map { message ->
+                val remapped = message.imageUrl
+                    ?.split('|')
+                    ?.mapNotNull { storedValue ->
+                        val file = fileFromStoredUri(storedValue)
+                        if (file?.exists() == true && file.isFile && file.length() in 1..MAX_IMAGE_BYTES) {
+                            val entryName = "images/chat/${imageIndex}_${safeArchiveFilename(file)}"
+                            imageIndex += 1
+                            mappedImages += file to entryName
+                            entryName
+                        } else {
+                            null
+                        }
+                    }
+                    .orEmpty()
+                message.copy(imageUrl = remapped.takeIf { it.isNotEmpty() }?.joinToString("|"))
+            }
+
             val weeklySummaries = analysisDao.getAllSummariesSync()
+            val foodTemplates = foodTemplateDao.getAllTemplatesSync()
 
             // Read custom system prompts from SharedPreferences for backup
             val aiPrefs = context.getSharedPreferences("ai_prefs", android.content.Context.MODE_PRIVATE)
@@ -344,10 +490,12 @@ class BackupManager(
                     dailyRecords,
                     remappedItems,
                     weeklySummaries,
+                    aiChatMessages = aiChatMessages,
+                    foodTemplates = foodTemplates,
                     customChatPrompt = customChatPrompt,
                     customImagePrompt = customImagePrompt,
                     customAnalysisPrompt = customAnalysisPrompt,
-                    version = 4
+                    version = CURRENT_BACKUP_VERSION
                 ),
                 mappedImages
             )
@@ -365,9 +513,12 @@ class BackupManager(
                 zip.putNextEntry(ZipEntry(entryName))
                 file.inputStream().use { input -> input.copyTo(zip) }
                 zip.closeEntry()
+                require(output.size().toLong() <= MAX_ARCHIVE_BYTES) { "备份文件过大" }
             }
         }
-        return output.toByteArray()
+        return output.toByteArray().also {
+            require(it.size.toLong() <= MAX_ARCHIVE_BYTES) { "备份文件过大" }
+        }
     }
 
     suspend fun performAutoBackup(): Boolean {
@@ -377,8 +528,9 @@ class BackupManager(
                 val zipBytes = buildBackupZipBytes(payload)
                 val file = File(backupDir, "auto_backup.zip")
                 FileOutputStream(file).use { it.write(zipBytes) }
-                exportBackupToDownloads(zipBytes)
-                true
+                val exported = exportBackupToDownloads(zipBytes)
+                if (!exported) file.setLastModified(0L) // Keep the local recovery copy but retry export on next launch.
+                exported
             } catch (e: Exception) {
                 e.printStackTrace()
                 false
@@ -386,8 +538,8 @@ class BackupManager(
         }
     }
     
-    fun exportBackupToDownloads(zipBytes: ByteArray) {
-        try {
+    fun exportBackupToDownloads(zipBytes: ByteArray): Boolean {
+        return try {
             // Fixed filename so auto-backups always overwrite the previous one
             val filename = "MeowFit_AutoBackup.zip"
             
@@ -432,15 +584,23 @@ class BackupManager(
                     uri = resolver.insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, contentValues)
                 }
 
-                uri?.let {
-                    resolver.openOutputStream(it, "wt")?.use { os ->
+                val outputUri = uri ?: return false
+                val written = try {
+                    resolver.openOutputStream(outputUri, "wt")?.use { os ->
                         os.write(zipBytes)
-                    }
-                    val finishValues = android.content.ContentValues().apply {
-                        put(android.provider.MediaStore.MediaColumns.IS_PENDING, 0)
-                    }
-                    resolver.update(it, finishValues, null, null)
+                    } != null
+                } catch (e: Exception) {
+                    false
                 }
+                if (!written) {
+                    // 写入失败：删除仍处于 IS_PENDING=1 的条目，避免留下孤儿
+                    runCatching { resolver.delete(outputUri, null, null) }
+                    return false
+                }
+                val finishValues = android.content.ContentValues().apply {
+                    put(android.provider.MediaStore.MediaColumns.IS_PENDING, 0)
+                }
+                resolver.update(outputUri, finishValues, null, null)
             } else {
                 val downloadsDir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS)
                 val appDir = File(downloadsDir, "MeowFit")
@@ -448,8 +608,10 @@ class BackupManager(
                 val file = File(appDir, filename)
                 FileOutputStream(file).use { it.write(zipBytes) }
             }
+            true
         } catch (e: Exception) {
             e.printStackTrace()
+            false
         }
     }
 
@@ -458,7 +620,8 @@ class BackupManager(
             try {
                 val payload = getBackupPayload()
                 val zipBytes = buildBackupZipBytes(payload)
-                val outputStream = context.contentResolver.openOutputStream(targetUri) ?: return@withContext false
+                // "wt" 模式截断目标文件，防止旧文件更长时残留尾部字节
+                val outputStream = context.contentResolver.openOutputStream(targetUri, "wt") ?: return@withContext false
                 outputStream.use {
                     outputStream.write(zipBytes)
                 }
@@ -470,53 +633,118 @@ class BackupManager(
         }
     }
 
+    /** 恢复过程中待落盘的图片/图标文件：事务成功前都留在 restore_tmp 临时目录。 */
+    private data class PendingRestoreFiles(
+        val moves: List<Pair<File, File>>, // 临时文件 -> 正式文件
+        val tmpDirs: List<File>
+    ) {
+        /** 事务成功后调用：同分区 rename 是原子的，rename 失败退化为复制。 */
+        fun commit() {
+            moves.forEach { (tmp, target) ->
+                runCatching {
+                    if (!tmp.exists()) return@forEach
+                    if (target.exists()) target.delete()
+                    if (!tmp.renameTo(target)) {
+                        tmp.copyTo(target, overwrite = true)
+                        tmp.delete()
+                    }
+                }
+            }
+            tmpDirs.forEach { it.deleteRecursively() }
+        }
+
+        /** 事务失败时调用：删除临时目录，避免孤儿文件。 */
+        fun cleanup() {
+            tmpDirs.forEach { it.deleteRecursively() }
+        }
+    }
+
+    private data class RestoredBackup(
+        val data: BackupData,
+        val pendingFiles: PendingRestoreFiles
+    )
+
     suspend fun restoreFromUri(uri: Uri): Boolean {
         return withContext(Dispatchers.IO) {
+            var pendingRestoreFiles: PendingRestoreFiles? = null
             try {
-                val inputStream = context.contentResolver.openInputStream(uri) ?: return@withContext false
-                inputStream.use {
-                    val backupData = readBackupDataFromZip(inputStream.readBytes())
-                    restoreData(backupData)
+                // 恢复前留一份当前状态；即使这一步失败，数据库事务仍会保护原数据。
+                try {
+                    val recoveryBytes = buildBackupZipBytes(getBackupPayload())
+                    FileOutputStream(File(backupDir, "recovery_before_restore.zip")).use { it.write(recoveryBytes) }
+                } catch (_: Exception) {
+                    // Continue: restore itself remains transactional.
                 }
+
+                val inputStream = context.contentResolver.openInputStream(uri) ?: return@withContext false
+                val zipBytes = inputStream.use { readAllLimited(it, MAX_ARCHIVE_BYTES) }
+                val restored = readBackupDataFromZip(zipBytes)
+                pendingRestoreFiles = restored.pendingFiles
+                restoreData(restored.data)
+                // 数据库事务成功后才把图片/图标从临时目录原子移动到正式位置
+                restored.pendingFiles.commit()
+                pendingRestoreFiles = null
                 true
             } catch (e: Exception) {
                 e.printStackTrace()
+                pendingRestoreFiles?.cleanup()
                 false
             }
         }
     }
 
-    private fun readBackupDataFromZip(zipBytes: ByteArray): BackupData {
+    private fun readAllLimited(input: InputStream, maxBytes: Long): ByteArray {
+        val output = ByteArrayOutputStream()
+        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+        var total = 0L
+        while (true) {
+            val count = input.read(buffer)
+            if (count < 0) break
+            total += count
+            require(total <= maxBytes) { "备份压缩包过大" }
+            output.write(buffer, 0, count)
+        }
+        return output.toByteArray()
+    }
+
+    private fun readZipEntryLimited(zip: ZipInputStream, maxBytes: Long): ByteArray {
+        val output = ByteArrayOutputStream()
+        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+        var total = 0L
+        while (true) {
+            val count = zip.read(buffer)
+            if (count < 0) break
+            total += count
+            require(total <= maxBytes) { "备份条目过大" }
+            output.write(buffer, 0, count)
+        }
+        return output.toByteArray()
+    }
+
+    private fun readBackupDataFromZip(zipBytes: ByteArray): RestoredBackup {
         var backupJson = ""
-        val imageDir = ImageStorageUtils.getImageDir(context)
+        var customIconBytes: ByteArray? = null
+        val imageEntries = linkedMapOf<String, ByteArray>()
+        var totalExtracted = 0L
 
         ZipInputStream(zipBytes.inputStream()).use { zip ->
             var entry = zip.nextEntry
             while (entry != null) {
                 if (!entry.isDirectory) {
                     if (entry.name == "backup.json") {
-                        backupJson = zip.readBytes().toString(Charsets.UTF_8)
+                        val bytes = readZipEntryLimited(zip, MAX_JSON_BYTES)
+                        backupJson = bytes.toString(Charsets.UTF_8)
+                        totalExtracted += bytes.size
                     } else if (entry.name == "custom_app_icon.png") {
-                        val target = IconManager.getCustomIconFile(context)
-                        FileOutputStream(target).use { output ->
-                            zip.copyTo(output)
-                        }
+                        customIconBytes = readZipEntryLimited(zip, MAX_IMAGE_BYTES)
+                        totalExtracted += customIconBytes?.size ?: 0
                     } else if (isSafeImageEntryName(entry.name)) {
-                        val filename = entry.name.removePrefix("images/")
-                        if (filename.isNotBlank()) {
-                            val target = File(imageDir, filename)
-                            val canonicalParent = imageDir.canonicalPath + File.separator
-                            val canonicalTarget = target.canonicalPath
-                            if (!canonicalTarget.startsWith(canonicalParent)) {
-                                zip.closeEntry()
-                                entry = zip.nextEntry
-                                continue
-                            }
-                            FileOutputStream(target).use { output ->
-                                zip.copyTo(output)
-                            }
-                        }
+                        require(entry.name !in imageEntries) { "备份中存在重复图片条目" }
+                        val bytes = readZipEntryLimited(zip, MAX_IMAGE_BYTES)
+                        imageEntries[entry.name] = bytes
+                        totalExtracted += bytes.size
                     }
+                    require(totalExtracted <= MAX_ARCHIVE_BYTES) { "备份解压内容过大" }
                 }
                 zip.closeEntry()
                 entry = zip.nextEntry
@@ -524,48 +752,137 @@ class BackupManager(
         }
 
         val parsed = parseBackupDataSafely(backupJson)
+        val imageDir = ImageStorageUtils.getImageDir(context)
+        val chatDir = AppImageStore.chatDirectory(context)
+        val iconFile = IconManager.getCustomIconFile(context)
+
+        // 文件先写入同目录下的 restore_tmp 临时目录，DB 事务成功后再原子移动
+        val imageTmpDir = File(imageDir, "restore_tmp")
+        val chatTmpDir = File(chatDir, "restore_tmp")
+        val iconTmpDir = File(iconFile.parentFile ?: context.filesDir, "restore_tmp")
+        val tmpDirs = listOf(imageTmpDir, chatTmpDir, iconTmpDir)
+        tmpDirs.forEach {
+            it.deleteRecursively()
+            it.mkdirs()
+        }
+        val moves = mutableListOf<Pair<File, File>>()
+
+        // 写入临时文件，返回正式位置的绝对路径（存库用），并登记待移动映射
+        fun restoreEntry(entryName: String, targetDir: File, tmpDir: File): String? {
+            val bytes = imageEntries[entryName] ?: return null
+            val filename = entryName.substringAfterLast('/')
+            if (filename.isBlank()) return null
+            val tmpTarget = File(tmpDir, filename)
+            val target = File(targetDir, filename)
+            val canonicalTmp = tmpDir.canonicalPath + File.separator
+            require(tmpTarget.canonicalPath.startsWith(canonicalTmp)) { "非法图片路径" }
+            val canonicalParent = targetDir.canonicalPath + File.separator
+            require(target.canonicalPath.startsWith(canonicalParent)) { "非法图片路径" }
+            FileOutputStream(tmpTarget).use { it.write(bytes) }
+            moves += tmpTarget to target
+            return target.absolutePath
+        }
+
         val restoredItems = parsed.calorieItems.map { item ->
             val p = item.imageUrl
             if (!p.isNullOrBlank() && p.startsWith("images/")) {
-                val filename = p.removePrefix("images/")
-                val imageFile = File(imageDir, filename)
-                item.copy(imageUrl = if (imageFile.exists()) imageFile.absolutePath else null)
+                item.copy(imageUrl = restoreEntry(p, imageDir, imageTmpDir))
+            } else if (!p.isNullOrBlank()) {
+                // Absolute paths from another installation are not portable or trustworthy.
+                item.copy(imageUrl = null)
             } else {
                 item
             }
         }
-        return parsed.copy(calorieItems = restoredItems)
+
+        val restoredMessages = parsed.aiChatMessages.map { message ->
+            val restoredUrls = message.imageUrl
+                ?.split('|')
+                ?.mapNotNull { entryName ->
+                    if (entryName.startsWith("images/chat/")) {
+                        restoreEntry(entryName, chatDir, chatTmpDir)?.let { Uri.fromFile(File(it)).toString() }
+                    } else {
+                        null
+                    }
+                }
+                .orEmpty()
+            message.copy(imageUrl = restoredUrls.takeIf { it.isNotEmpty() }?.joinToString("|"))
+        }
+
+        customIconBytes?.let { bytes ->
+            val tmpIcon = File(iconTmpDir, iconFile.name)
+            FileOutputStream(tmpIcon).use { it.write(bytes) }
+            moves += tmpIcon to iconFile
+        }
+        return RestoredBackup(
+            parsed.copy(calorieItems = restoredItems, aiChatMessages = restoredMessages),
+            PendingRestoreFiles(moves, tmpDirs)
+        )
     }
 
     private suspend fun restoreData(backupData: BackupData) {
         val sanitized = sanitizeBackupData(backupData)
-        // Restore User Profile
-        sanitized.userProfile?.let {
-            userDao.insertUserProfile(it.toEntity())
-        }
-        
-        // Restore Records
-        if (sanitized.dailyRecords.isNotEmpty()) {
-            recordDao.insertDailyRecords(sanitized.dailyRecords)
-        }
-        
-        // Restore Items
-        if (sanitized.calorieItems.isNotEmpty()) {
-            recordDao.insertCalorieItems(sanitized.calorieItems)
+        database.withTransaction {
+            sanitized.userProfile?.let { profile ->
+                userDao.insertUserProfile(profile.toEntity(userDao.getUserProfileSync()))
+            }
+
+            sanitized.dailyRecords.forEach { record ->
+                val existing = recordDao.getDailyRecordSync(record.date)
+                if (existing == null) {
+                    recordDao.insertDailyRecord(record)
+                } else {
+                    // 不 REPLACE 父表：SQLite REPLACE 会触发级联删除，导致现有条目消失。
+                    recordDao.updateWeightValue(record.date, record.weight)
+                    recordDao.updateWaterValue(record.date, record.totalWater)
+                    recordDao.updateSleepValue(record.date, record.sleepDuration)
+                    recordDao.updateMedicationTakenValue(record.date, record.medicationTaken)
+                }
+            }
+
+            if (sanitized.calorieItems.isNotEmpty()) {
+                val affectedDates = sanitized.calorieItems.mapTo(mutableSetOf()) { it.date }
+                sanitized.calorieItems.forEach { incoming ->
+                    recordDao.getItemById(incoming.id)?.date?.let(affectedDates::add)
+                }
+                recordDao.insertCalorieItems(sanitized.calorieItems)
+                recalculateDates(affectedDates)
+            }
+            if (sanitized.weeklySummaries.isNotEmpty()) analysisDao.insertSummaries(sanitized.weeklySummaries)
+            sanitized.aiChatMessages.forEach { message ->
+                // 幂等恢复：按 timestamp+role+content 判重，避免重复恢复时聊天记录翻倍
+                if (!aiDao.messageExists(message.timestamp, message.role, message.content)) {
+                    aiDao.insertMessage(message.copy(id = 0))
+                }
+            }
+            if (sanitized.foodTemplates.isNotEmpty()) foodTemplateDao.upsertTemplates(sanitized.foodTemplates)
         }
 
-        // Restore Weekly Summaries
-        if (sanitized.weeklySummaries.isNotEmpty()) {
-            analysisDao.insertSummaries(sanitized.weeklySummaries)
-        }
-
-        // Restore custom system prompts
         val aiPrefs = context.getSharedPreferences("ai_prefs", android.content.Context.MODE_PRIVATE)
         val editor = aiPrefs.edit()
         sanitized.customChatPrompt?.let { editor.putString("custom_chat_prompt", it) }
         sanitized.customImagePrompt?.let { editor.putString("custom_image_prompt", it) }
         sanitized.customAnalysisPrompt?.let { editor.putString("custom_analysis_prompt", it) }
         editor.apply()
+    }
+
+    private suspend fun recalculateDates(dates: Set<String>) {
+        dates.forEach { date ->
+            val items = recordDao.getItemsForDateSync(date)
+            val foodItems = items.filter { it.type == "food" }
+            val exerciseItems = items.filter { it.type == "exercise" }
+            val intake = foodItems.sumOf { it.calories }.roundToInt()
+            val burned = exerciseItems.sumOf { it.calories }.roundToInt()
+            recordDao.updateCalculatedTotals(
+                date = date,
+                totalIntake = intake,
+                totalBurned = burned,
+                netCalories = intake - burned,
+                totalCarbs = foodItems.sumOf { it.carbs }.roundToInt(),
+                totalProtein = foodItems.sumOf { it.protein }.roundToInt(),
+                totalFat = foodItems.sumOf { it.fat }.roundToInt()
+            )
+        }
     }
 
     fun getAutoBackupTime(): Long {

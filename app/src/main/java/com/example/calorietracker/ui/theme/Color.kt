@@ -46,3 +46,33 @@ val HeatmapDark4 = Color(0xFF39D353) // Bright green for max
 // Functional Colors
 val ErrorRed = Color(0xFFBA1A1A)
 val ErrorRedLight = Color(0xFFFFB4AB)
+
+// Semantic colors: single source of truth for status/functional colors across screens.
+// Light-theme values; use deficitColor()/surplusColor() helpers in ThemeUtils for theme-aware picks.
+val DeficitGreen = Color(0xFF2E7D32)      // 热量缺口/达标（浅色主题）
+val DeficitGreenDark = Color(0xFF81C784)  // 热量缺口/达标（深色主题）
+val SurplusRed = Color(0xFFD32F2F)        // 超标（浅色主题；深色主题用 colorScheme.error）
+val SurplusRedSoft = Color(0xFFE57373)    // 超标（热力图/大块填充等柔和场景）
+val OfficialGreen = Color(0xFF4CAF50)     // “官方数据”等认证标记
+val InfoBlue = Color(0xFF2196F3)          // 信息/计时等中性强调
+val WarnAmber = Color(0xFFF9A825)         // 警告
+
+// Macronutrient colors (蛋白/碳水/脂肪)
+val MacroProtein = Color(0xFF69F0AE)
+val MacroCarb = Color(0xFF40C4FF)
+val MacroFat = Color(0xFFFF8A80)
+
+// Pixel-pet palette: warm candy colors with a dark ink outline.
+val PixelInk = Color(0xFF3B2B3F)
+val PixelCream = Color(0xFFFFF7E8)
+val PixelPaper = Color(0xFFFFFCF5)
+val PixelPink = Color(0xFFFF7FA8)
+val PixelPinkSoft = Color(0xFFFFD5E2)
+val PixelMint = Color(0xFF58C9A3)
+val PixelMintSoft = Color(0xFFCFF4E8)
+val PixelLavender = Color(0xFF9B83E6)
+val PixelSky = Color(0xFF6DBCEB)
+val PixelYellow = Color(0xFFFFCD64)
+val PixelPlum = Color(0xFF241B2C)
+val PixelPlumSurface = Color(0xFF35283F)
+val PixelDarkText = Color(0xFFFFF4FA)

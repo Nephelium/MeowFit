@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <!-- API key and provider configuration are intentionally never copied by Android backup. -->
+    <exclude domain="sharedpref" path="ai_prefs.xml" />
+    <exclude domain="file" path="backups/" />
+</full-backup-content>

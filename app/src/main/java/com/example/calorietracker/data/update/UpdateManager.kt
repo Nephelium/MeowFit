@@ -11,7 +11,7 @@ import java.util.concurrent.TimeUnit
 data class ReleaseInfo(
     @SerializedName("tag_name") val tagName: String,
     @SerializedName("html_url") val htmlUrl: String,
-    @SerializedName("body") val body: String,
+    @SerializedName("body") val body: String? = null,
     @SerializedName("published_at") val publishedAt: String
 )
 
@@ -79,8 +79,10 @@ class UpdateManager {
     }
     
     private fun isNewerVersion(remote: String, local: String): Boolean {
-        val remoteParts = remote.split(".").map { it.toIntOrNull() ?: 0 }
-        val localParts = local.split(".").map { it.toIntOrNull() ?: 0 }
+        // 提取各段数字再比较，避免 "1.2.3-beta" 之类带后缀的版本号误判
+        val digitRegex = Regex("""\d+""")
+        val remoteParts = digitRegex.findAll(remote).map { it.value.toIntOrNull() ?: 0 }.toList()
+        val localParts = digitRegex.findAll(local).map { it.value.toIntOrNull() ?: 0 }.toList()
         
         val length = maxOf(remoteParts.size, localParts.size)
         

@@ -5,7 +5,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CutCornerShape as RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -23,6 +23,7 @@ import com.example.calorietracker.CalorieTrackerApp
 import com.example.calorietracker.data.*
 import com.example.calorietracker.data.ai.AiService
 import com.example.calorietracker.ui.AiViewModel
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 
@@ -71,18 +72,41 @@ fun AnalysisDetailScreen(
 
     // Chat state
     var chatInput by remember { mutableStateOf("") }
-    val chatMessages = remember { mutableStateListOf<ChatMessage>() }
+    val chatMessages = remember(weekStartDate) { mutableStateListOf<ChatMessage>() }
+    var loadedInitial by remember(weekStartDate) { mutableStateOf(false) }
     var isLoading by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
 
-    // Approximate token counter (rough: ~1.5 chars per token)
-    fun estimateTokens(text: String): Int = (text.length / 1.5).toInt()
+    // Load persisted chat messages for this week
+    LaunchedEffect(weekStartDate) {
+        try {
+            val entities = app.repository.getAiMessagesByWeek(weekStartDate).first()
+            chatMessages.clear()
+            chatMessages.addAll(entities.map { entity ->
+                ChatMessage(
+                    id = entity.id.toString(),
+                    role = entity.role,
+                    content = entity.content,
+                    imageUrl = entity.imageUrl
+                )
+            })
+            loadedInitial = true
+        } catch (_: Exception) {
+            loadedInitial = true
+        }
+    }
+
+    // Approximate token counter (rough: 1 char per token，中文按 1:1 估算避免系统性低估)
+    fun estimateTokens(text: String): Int = text.length
     val chatTokens = chatMessages.sumOf { estimateTokens(it.content) }
-    val MAX_CHAT_TOKENS = 900_000
-    val showTokenWarning = chatTokens > MAX_CHAT_TOKENS * 0.8
+    val maxChatTokens = remember {
+        val contextMessages = aiService.getConfig().maxContext
+        if (contextMessages >= 21) 900_000 else contextMessages.coerceAtLeast(1) * 4_000
+    }
+    val showTokenWarning = chatTokens > maxChatTokens * 0.8
 
     // Build system context once when summary is loaded
-    val systemContext = remember(summary) {
+    val systemContext = remember(weekStartDate, summary, records, allItems, userProfile) {
         if (summary != null && summary!!.status == "generated") {
             val dataText = buildWeeklyDataText(weekStartDate, records, allItems, userProfile)
             """
@@ -117,18 +141,31 @@ $dataText
 
     fun sendChatMessage() {
         val input = chatInput.trim()
-        if (input.isBlank() || isLoading) return
+        if (input.isBlank() || isLoading || !loadedInitial) return
+
+        // 先校验 API Key，再持久化用户消息
+        val config = aiService.getConfig()
+        if (config.apiKey.isBlank()) {
+            // 错误提示只进内存列表，不落库，避免之后被当作正常历史发给 API
+            chatMessages.add(ChatMessage(role = "assistant", content = "请先在设置中配置 AI API Key。"))
+            return
+        }
+
         chatInput = ""
-        chatMessages.add(ChatMessage(role = "user", content = input))
+        val userMsg = ChatMessage(role = "user", content = input)
+        chatMessages.add(userMsg)
         isLoading = true
 
         scope.launch {
             try {
-                val config = aiService.getConfig()
-                if (config.apiKey.isBlank()) {
-                    chatMessages.add(ChatMessage(role = "assistant", content = "请先在设置中配置 AI API Key。"))
-                    isLoading = false
-                    return@launch
+                runCatching {
+                    app.repository.addAiMessage(
+                        AiChatMessageEntity(
+                            role = "user",
+                            content = input,
+                            weekStartDate = weekStartDate
+                        )
+                    )
                 }
 
                 // Build message list with system context prepended
@@ -136,8 +173,15 @@ $dataText
                 allMsgs.add(mapOf("role" to "system", "content" to systemContext))
                 allMsgs.addAll(chatMessages.map { mapOf("role" to it.role, "content" to it.content) })
                 val reply = aiService.sendPlainChat(allMsgs, userProfile?.weight ?: 70f)
-                chatMessages.add(ChatMessage(role = "assistant", content = reply))
+                val assistantMsg = ChatMessage(role = "assistant", content = reply)
+                chatMessages.add(assistantMsg)
+                runCatching {
+                    app.repository.addAiMessage(
+                        AiChatMessageEntity(role = "assistant", content = reply, weekStartDate = weekStartDate)
+                    )
+                }
             } catch (e: Exception) {
+                // 错误消息只进内存列表，不落库
                 chatMessages.add(ChatMessage(role = "assistant", content = "抱歉，请求失败：${e.localizedMessage}"))
             } finally {
                 isLoading = false
@@ -231,7 +275,7 @@ $dataText
             if (showTokenWarning) {
                 Card(
                     colors = CardDefaults.cardColors(
-                        containerColor = if (chatTokens > MAX_CHAT_TOKENS)
+                        containerColor = if (chatTokens > maxChatTokens)
                             MaterialTheme.colorScheme.errorContainer
                         else
                             MaterialTheme.colorScheme.tertiaryContainer
@@ -239,11 +283,11 @@ $dataText
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(
-                        if (chatTokens > MAX_CHAT_TOKENS) "⚠ 上下文已满，请清理对话"
-                        else "📝 上下文使用: ${(chatTokens * 100 / MAX_CHAT_TOKENS)}%",
+                        if (chatTokens > maxChatTokens) "⚠ 上下文已满，请清理对话"
+                        else "📝 上下文使用: ${(chatTokens * 100 / maxChatTokens)}%",
                         modifier = Modifier.padding(8.dp),
                         style = MaterialTheme.typography.labelSmall,
-                        color = if (chatTokens > MAX_CHAT_TOKENS)
+                        color = if (chatTokens > maxChatTokens)
                             MaterialTheme.colorScheme.onErrorContainer
                         else
                             MaterialTheme.colorScheme.onTertiaryContainer
@@ -281,7 +325,7 @@ $dataText
                                 )
                             }
                         }
-                        items(chatMessages) { msg ->
+                        items(chatMessages, key = { it.id }) { msg ->
                             ChatBubble(
                                 message = msg,
                                 accentColor = accentColor,
@@ -333,10 +377,10 @@ $dataText
                         Spacer(modifier = Modifier.width(8.dp))
                         FilledIconButton(
                             onClick = { sendChatMessage() },
-                            enabled = chatInput.isNotBlank() && !isLoading,
+                            enabled = loadedInitial && chatInput.isNotBlank() && !isLoading && chatTokens <= maxChatTokens,
                             colors = IconButtonDefaults.filledIconButtonColors(
                                 containerColor = accentColor,
-                                contentColor = Color.White
+                                contentColor = MaterialTheme.colorScheme.onPrimary
                             )
                         ) {
                             Icon(Icons.Default.Send, "发送")
