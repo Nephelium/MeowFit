@@ -5,6 +5,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -22,11 +23,17 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.foundation.shape.CutCornerShape as RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.CalendarMonth
+import androidx.compose.material.icons.rounded.FitnessCenter
+import androidx.compose.material.icons.rounded.Insights
+import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.Today
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -47,6 +54,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -68,8 +76,6 @@ import com.example.calorietracker.ui.theme.CalendarDisplayPreferences
 import com.example.calorietracker.domain.CalendarMetricId
 import com.example.calorietracker.ui.AiViewModel
 import com.example.calorietracker.ui.components.PixelBackdrop
-import com.example.calorietracker.ui.components.PixelNavDestination
-import com.example.calorietracker.ui.components.PixelNavIcon
 import com.example.calorietracker.util.IconManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -137,17 +143,10 @@ class MainActivity : ComponentActivity() {
 }
 
 private object BottomNavTuning {
-    val barHeight = 64.dp
-    val iconSize = 36.dp
-    val itemVerticalOffset = 0.dp
-    val iconVerticalOffset = 0.dp
-    val iconBottomPadding = 0.dp
-    val labelVerticalOffset = 0.dp
-    val labelTopPadding = 0.dp
-    val labelFontSize = 11.sp
-    val labelLineHeight = 14.sp
-    const val selectedIndicatorBlendToWhiteLight = 0.05f
-    const val selectedIndicatorBlendToBlackDark = 0.05f
+    val barHeight = 68.dp
+    val iconSize = 25.dp
+    val labelFontSize = 10.sp
+    val labelLineHeight = 12.sp
     const val selectedIndicatorAlphaLight = 0.18f
     const val selectedIndicatorAlphaDark = 0.24f
 }
@@ -286,25 +285,33 @@ fun MainApp(
                         .fillMaxWidth()
                         .background(navBackgroundColor)
                         .navigationBarsPadding()
+                        .padding(horizontal = 12.dp, vertical = 8.dp)
                 ) {
-                    Column(Modifier.fillMaxWidth()) {
-                        Box(
-                            Modifier
-                                .fillMaxWidth()
-                                .height(1.dp)
-                                .background(accentColor.copy(alpha = 0.18f))
-                        )
-
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(BottomNavTuning.barHeight),
+                        shape = RoundedCornerShape(24.dp),
+                        color = navCardColor,
+                        tonalElevation = if (isDarkTheme) 2.dp else 6.dp,
+                        shadowElevation = if (isDarkTheme) 4.dp else 8.dp,
+                        border = BorderStroke(1.dp, accentColor.copy(alpha = 0.12f))
+                    ) {
                         val items = listOf(
-                            Triple("today", "今日", PixelNavDestination.TODAY),
-                            Triple("stats", "运动统计", PixelNavDestination.STATS),
-                            Triple("overview", "日历", PixelNavDestination.CALENDAR),
-                            Triple("analysis", "分析", PixelNavDestination.ANALYSIS),
-                            Triple("settings", "设置", PixelNavDestination.SETTINGS)
+                            Triple("today", "今日", Icons.Rounded.Today),
+                            Triple("stats", "运动统计", Icons.Rounded.FitnessCenter),
+                            Triple("overview", "日历", Icons.Rounded.CalendarMonth),
+                            Triple("analysis", "分析", Icons.Rounded.Insights),
+                            Triple("settings", "设置", Icons.Rounded.Settings)
                         )
 
-                        Row(modifier = Modifier.fillMaxWidth().height(BottomNavTuning.barHeight)) {
-                            items.forEach { (route, label, destination) ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(horizontal = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            items.forEach { (route, label, icon) ->
                                 val selected = currentRoute == route
                                 val itemColor = if (selected) accentColor else navOnCardColor.copy(alpha = 0.56f)
                                 Box(
@@ -328,32 +335,27 @@ fun MainApp(
                                 ) {
                                     Column(
                                         modifier = Modifier
-                                            .offset(y = BottomNavTuning.itemVerticalOffset)
-                                            .width(46.dp)
-                                            .clip(RoundedCornerShape(10.dp))
+                                            .fillMaxWidth(0.9f)
+                                            .clip(RoundedCornerShape(18.dp))
                                             .background(if (selected) selectedIndicatorColor else Color.Transparent)
-                                            .padding(top = 5.dp, bottom = 4.dp),
+                                            .padding(vertical = 6.dp),
                                         horizontalAlignment = Alignment.CenterHorizontally
                                     ) {
-                                        PixelNavIcon(
-                                            destination = destination,
-                                            color = itemColor,
-                                            selected = selected,
+                                        Icon(
+                                            imageVector = icon,
+                                            contentDescription = null,
+                                            tint = itemColor,
                                             modifier = Modifier
-                                                .offset(y = BottomNavTuning.iconVerticalOffset)
-                                                .padding(bottom = BottomNavTuning.iconBottomPadding)
                                                 .size(BottomNavTuning.iconSize)
                                         )
                                         Text(
                                             text = label,
                                             fontSize = BottomNavTuning.labelFontSize,
                                             lineHeight = BottomNavTuning.labelLineHeight,
-                                            color = if (selected) MaterialTheme.colorScheme.primary
-                                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                                            color = itemColor,
                                             maxLines = 1,
-                                            modifier = Modifier
-                                                .offset(y = BottomNavTuning.labelVerticalOffset)
-                                                .padding(top = BottomNavTuning.labelTopPadding)
+                                            modifier = Modifier.padding(top = 2.dp)
                                         )
                                     }
                                 }

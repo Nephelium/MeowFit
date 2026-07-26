@@ -66,6 +66,7 @@ import coil.compose.AsyncImage
 import com.example.calorietracker.data.CalorieItemEntity
 import com.example.calorietracker.data.DailyRecordEntity
 import com.example.calorietracker.data.UserProfileEntity
+import com.example.calorietracker.ui.components.CyclicProgressBar
 import com.example.calorietracker.ui.components.PixelCatStatusCard
 import com.example.calorietracker.ui.components.compactInput
 import com.example.calorietracker.ui.components.resolvePixelCatStatus
@@ -1850,7 +1851,7 @@ fun SummaryCard(
             // Or just a visual indicator of where we are.
             // Simplified: "Intake" vs "Limit"
             val limit = target + burned
-            val progress = (intake.toFloat() / limit.toFloat()).coerceIn(0f, 1.5f) // Allow over 100%
+            val progress = if (limit > 0) intake.toFloat() / limit.toFloat() else 0f
             
             Column {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -1858,14 +1859,18 @@ fun SummaryCard(
                     Text("限额 $limit", style = MaterialTheme.typography.bodySmall, color = secondaryTextColor)
                 }
                 Spacer(modifier = Modifier.height(8.dp))
-                LinearProgressIndicator(
-                    progress = (progress).coerceAtMost(1f),
+                CyclicProgressBar(
+                    progress = progress,
+                    colors = listOf(
+                        deficitColor(),
+                        MaterialTheme.colorScheme.error,
+                        MaterialTheme.colorScheme.tertiary,
+                        InfoBlue
+                    ),
+                    trackColor = MaterialTheme.colorScheme.surfaceVariant,
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(12.dp)
-                        .clip(RoundedCornerShape(6.dp)),
-                    color = if (progress > 1f) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
-                    trackColor = MaterialTheme.colorScheme.surfaceVariant
                 )
                 
                 // Macros (if enabled)

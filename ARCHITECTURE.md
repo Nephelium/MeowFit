@@ -2,7 +2,7 @@
 
 ## 分层
 
-- `ui/screens` 组合页面与输入；`ui/components` 提供像素组件、动态猫和 16×16 像素贴纸底部导航。底部导航只属于五个顶级页面，编辑/详情页保持全屏。
+- `ui/screens` 组合页面与输入；`ui/components` 提供像素组件、动态猫、循环进度条等复用组件。底部主导航使用 Material 圆角线性图标，只属于五个顶级页面，编辑/详情页保持全屏。
 - `ui/theme/CalendarDisplayPreference` 保存本机日历指标可见性；界面按当前可见文字的实测宽度决定显示中文还是 emoji，不按机型硬编码。
 - `ui/*ViewModel` 管理页面状态和协程，将批量记录以单次用例交给 Repository。
 - `domain/CalendarDisplayPolicy` 是不依赖 Android UI 的日历显示规则，负责过滤偏好、禁止空选择和判断文字是否会溢出。

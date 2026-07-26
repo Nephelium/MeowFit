@@ -1736,13 +1736,9 @@ fun getHeatmapColor(
     }
 
     if (isDarkTheme) {
-        // GitHub 风格深色热力梯度：最低=Dark1，最高=Dark4
-        fun darkLevel(fraction: Float): Color = when {
-            fraction < 0.25f -> HeatmapDark1
-            fraction < 0.5f -> HeatmapDark2
-            fraction < 0.75f -> HeatmapDark3
-            else -> HeatmapDark4
-        }
+        fun darkGradient(start: Color, end: Color, fraction: Float): Color =
+            androidx.compose.ui.graphics.lerp(start, end, fraction.coerceIn(0f, 1f))
+
         return when (metric) {
             HeatmapMetric.Net -> {
                 // Net: Positive (Surplus) = Red/Bad, Negative (Deficit) = Green/Good
@@ -1750,7 +1746,11 @@ fun getHeatmapColor(
                     val alpha = (value / 1000f).coerceIn(0.3f, 1.0f)
                     MaterialTheme.colorScheme.error.copy(alpha = alpha)
                 } else {
-                    darkLevel(Math.abs(value) / 1000f)
+                    darkGradient(
+                        start = Color(0xFF123B28),
+                        end = Color(0xFF66BB6A),
+                        fraction = Math.abs(value) / 1000f
+                    )
                 }
             }
             HeatmapMetric.Sleep -> {
@@ -1758,22 +1758,46 @@ fun getHeatmapColor(
                 when {
                     durationHours < 3f -> SurplusRedSoft // Warning Red
                     durationHours > 12f -> Color(0xFF90A4AE) // Warning Blue Grey
-                    else -> darkLevel((durationHours - 3f) / (12f - 3f))
+                    else -> darkGradient(
+                        start = Color(0xFF34224F),
+                        end = Color(0xFFB39DDB),
+                        fraction = (durationHours - 3f) / (12f - 3f)
+                    )
                 }
             }
-            HeatmapMetric.Water -> darkLevel(value / 2500f)
-            HeatmapMetric.Intake -> darkLevel(value / 3000f)
-            HeatmapMetric.Burned -> darkLevel(value / 3000f)
+            HeatmapMetric.Water -> darkGradient(
+                start = Color(0xFF0B3A53),
+                end = Color(0xFF29B6F6),
+                fraction = value / 2500f
+            )
+            HeatmapMetric.Intake -> darkGradient(
+                start = Color(0xFF4B2E0F),
+                end = Color(0xFFFFB74D),
+                fraction = value / 3000f
+            )
+            HeatmapMetric.Burned -> darkGradient(
+                start = Color(0xFF4A1D31),
+                end = Color(0xFFF06292),
+                fraction = value / 3000f
+            )
             HeatmapMetric.Weight -> {
                 val weight = decodeWeightForCalendar(value)
                 val range = if (max > min) max - min else 1f
                 val progress = if (range > 0) (weight - min) / range else 0.5f
-                darkLevel(progress)
+                darkGradient(
+                    start = Color(0xFF123C40),
+                    end = Color(0xFF26C6DA),
+                    fraction = progress
+                )
             }
             HeatmapMetric.Meds -> {
                 val totalMeds = userProfile?.medications?.split(",")?.map { it.trim() }?.filter { it.isNotBlank() }?.size ?: 5
                 val fraction = if (totalMeds > 0) value / totalMeds.toFloat() else 0f
-                darkLevel(fraction)
+                darkGradient(
+                    start = Color(0xFF4B2024),
+                    end = Color(0xFFEF5350),
+                    fraction = fraction
+                )
             }
         }
     }
